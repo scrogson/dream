@@ -610,6 +610,55 @@ impl Scheduler {
                     ExecResult::Jump(fail_target, 1)
                 }
             }
+
+            Instruction::ReceiveMatch {
+                clauses,
+                timeout,
+                timeout_target,
+            } => {
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+
+                // Check for timeout first
+                if process.timeout == Some(0) {
+                    if let Some(p) = self.processes.get_mut(&pid) {
+                        p.timeout = None;
+                    }
+                    return ExecResult::Jump(timeout_target, 1);
+                }
+
+                // Scan mailbox for a matching message
+                let mailbox_len = process.mailbox.len();
+                for i in 0..mailbox_len {
+                    let msg = &process.mailbox[i];
+                    let value = Self::message_to_value(msg.clone());
+
+                    // Try each clause
+                    for (pattern, target) in clauses.iter() {
+                        let mut bindings = Vec::new();
+                        if Self::match_pattern(&value, pattern, &mut bindings) {
+                            // Match found! Remove message and apply bindings
+                            if let Some(p) = self.processes.get_mut(&pid) {
+                                p.mailbox.remove(i);
+                                p.timeout = None;
+                                for (reg, val) in bindings {
+                                    p.registers[reg.0 as usize] = val;
+                                }
+                            }
+                            return ExecResult::Jump(*target, 1);
+                        }
+                    }
+                }
+
+                // No match found - set timeout and wait
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    if p.timeout.is_none() {
+                        p.timeout = timeout.clone();
+                    }
+                }
+                ExecResult::Wait
+            }
         }
     }
 
@@ -740,6 +789,8 @@ impl Scheduler {
             Pattern::Int(n) => matches!(value, Value::Int(v) if v == n),
 
             Pattern::Atom(name) => matches!(value, Value::Atom(a) if a == name),
+
+            Pattern::String(s) => matches!(value, Value::String(v) if v == s),
 
             Pattern::Tuple(patterns) => {
                 let Value::Tuple(elements) = value else {
@@ -2726,5 +2777,236 @@ mod tests {
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         assert_eq!(process.registers[1], Value::Int(100)); // Extracted value
         assert_eq!(process.registers[2], Value::Int(1)); // Success
+    }
+
+    // ========== ReceiveMatch Tests ==========
+
+    #[test]
+    fn test_receive_match_simple() {
+        let mut scheduler = Scheduler::new();
+
+        // Parent sends "hello", child receives with pattern match
+        let child_code = vec![
+            // Receive any message into R0
+            Instruction::ReceiveMatch {
+                clauses: vec![(Pattern::Variable(Register(0)), 2)],
+                timeout: None,
+                timeout_target: 0,
+            },
+            Instruction::End, // unreachable
+            // Clause target: R1 = 1 to indicate success
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        let parent_code = vec![
+            Instruction::Spawn {
+                code: child_code,
+                dest: Register(0),
+            },
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "hello".to_string(),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent_code);
+        run_to_idle(&mut scheduler);
+
+        let child = scheduler.processes.get(&Pid(1)).unwrap();
+        assert_eq!(child.registers[0], Value::String("hello".to_string()));
+        assert_eq!(child.registers[1], Value::Int(1));
+    }
+
+    #[test]
+    fn test_receive_match_specific_string() {
+        let mut scheduler = Scheduler::new();
+
+        // Child waits for "ping" specifically
+        let child_code = vec![
+            Instruction::ReceiveMatch {
+                clauses: vec![(Pattern::String("ping".to_string()), 2)],
+                timeout: None,
+                timeout_target: 0,
+            },
+            Instruction::End,
+            // Match success
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        let parent_code = vec![
+            Instruction::Spawn {
+                code: child_code,
+                dest: Register(0),
+            },
+            // Send "pong" first (won't match)
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "pong".to_string(),
+            },
+            // Then send "ping" (will match)
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "ping".to_string(),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent_code);
+        run_to_idle(&mut scheduler);
+
+        let child = scheduler.processes.get(&Pid(1)).unwrap();
+        assert_eq!(child.registers[0], Value::Int(1));
+        // "pong" should still be in mailbox
+        assert_eq!(child.mailbox.len(), 1);
+    }
+
+    #[test]
+    fn test_receive_match_multiple_clauses() {
+        let mut scheduler = Scheduler::new();
+
+        // Child handles "ping" or "pong" differently
+        let child_code = vec![
+            Instruction::ReceiveMatch {
+                clauses: vec![
+                    (Pattern::String("ping".to_string()), 2), // -> set R0 = 1
+                    (Pattern::String("pong".to_string()), 5), // -> set R0 = 2
+                ],
+                timeout: None,
+                timeout_target: 0,
+            },
+            Instruction::End,
+            // ping handler
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(0),
+            },
+            Instruction::End,
+            Instruction::End, // padding
+            // pong handler
+            Instruction::LoadInt {
+                value: 2,
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        let parent_code = vec![
+            Instruction::Spawn {
+                code: child_code,
+                dest: Register(0),
+            },
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "pong".to_string(),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent_code);
+        run_to_idle(&mut scheduler);
+
+        let child = scheduler.processes.get(&Pid(1)).unwrap();
+        assert_eq!(child.registers[0], Value::Int(2)); // pong handler
+    }
+
+    #[test]
+    fn test_receive_match_timeout() {
+        let mut scheduler = Scheduler::new();
+
+        // Process waits for message with timeout
+        let program = vec![
+            Instruction::ReceiveMatch {
+                clauses: vec![(Pattern::String("hello".to_string()), 3)],
+                timeout: Some(5),
+                timeout_target: 5,
+            },
+            Instruction::End, // unreachable
+            Instruction::End, // padding
+            // Match success (won't happen)
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(0),
+            },
+            Instruction::End,
+            // Timeout handler
+            Instruction::LoadInt {
+                value: 99,
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[0], Value::Int(99)); // Timeout handler ran
+    }
+
+    #[test]
+    fn test_receive_match_selective() {
+        let mut scheduler = Scheduler::new();
+
+        // Test selective receive: skip non-matching messages
+        let child_code = vec![
+            // Wait for "second"
+            Instruction::ReceiveMatch {
+                clauses: vec![(Pattern::String("second".to_string()), 2)],
+                timeout: None,
+                timeout_target: 0,
+            },
+            Instruction::End,
+            // Got "second"
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(0),
+            },
+            // Now receive "first" which was skipped
+            Instruction::ReceiveMatch {
+                clauses: vec![(Pattern::String("first".to_string()), 5)],
+                timeout: None,
+                timeout_target: 0,
+            },
+            Instruction::End,
+            // Got "first"
+            Instruction::LoadInt {
+                value: 2,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        let parent_code = vec![
+            Instruction::Spawn {
+                code: child_code,
+                dest: Register(0),
+            },
+            // Send "first" then "second"
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "first".to_string(),
+            },
+            Instruction::Send {
+                to: Source::Reg(Register(0)),
+                msg: "second".to_string(),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent_code);
+        run_to_idle(&mut scheduler);
+
+        let child = scheduler.processes.get(&Pid(1)).unwrap();
+        assert_eq!(child.registers[0], Value::Int(1)); // Got "second"
+        assert_eq!(child.registers[1], Value::Int(2)); // Then got "first"
     }
 }

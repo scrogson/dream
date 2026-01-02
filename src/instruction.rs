@@ -137,6 +137,20 @@ pub enum Instruction {
         pattern: Pattern,
         fail_target: usize,
     },
+
+    /// Receive with pattern matching
+    /// Scans mailbox for first message matching any clause pattern.
+    /// On match: removes message, binds variables, jumps to clause target.
+    /// No match: blocks until a message arrives.
+    /// Timeout: if set and expires, jumps to timeout_target.
+    ReceiveMatch {
+        /// List of (pattern, jump_target) clauses
+        clauses: Vec<(Pattern, usize)>,
+        /// Optional timeout in reductions
+        timeout: Option<u32>,
+        /// Where to jump on timeout
+        timeout_target: usize,
+    },
 }
 
 /// An operand for arithmetic/comparison operations
@@ -181,6 +195,9 @@ pub enum Pattern {
 
     /// Match a specific atom
     Atom(String),
+
+    /// Match a specific string
+    String(String),
 
     /// Match a tuple with specific arity and element patterns
     Tuple(Vec<Pattern>),

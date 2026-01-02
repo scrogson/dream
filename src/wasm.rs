@@ -368,6 +368,42 @@ fn parse_program(program: JsValue) -> Result<Vec<Instruction>, JsError> {
                 }
             }
 
+            "receive_match" => {
+                // Parse clauses array: [{pattern: ..., target: N}, ...]
+                let clauses_val = Reflect::get(&obj, &"clauses".into())
+                    .map_err(|_| JsError::new("receive_match: missing 'clauses'"))?;
+                let clauses_array = Array::from(&clauses_val);
+                let mut clauses = Vec::with_capacity(clauses_array.length() as usize);
+
+                for i in 0..clauses_array.length() {
+                    let clause = clauses_array.get(i);
+                    let clause_obj = Object::from(clause);
+                    let pattern_val = Reflect::get(&clause_obj, &"pattern".into())
+                        .map_err(|_| JsError::new("clause missing 'pattern'"))?;
+                    let pattern = parse_pattern(pattern_val)?;
+                    let target = Reflect::get(&clause_obj, &"target".into())
+                        .ok()
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0) as usize;
+                    clauses.push((pattern, target));
+                }
+
+                let timeout = Reflect::get(&obj, &"timeout".into())
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .map(|n| n as u32);
+                let timeout_target = Reflect::get(&obj, &"timeout_target".into())
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as usize;
+
+                Instruction::ReceiveMatch {
+                    clauses,
+                    timeout,
+                    timeout_target,
+                }
+            }
+
             other => return Err(JsError::new(&format!("unknown op: {}", other))),
         };
 
@@ -518,6 +554,13 @@ fn parse_pattern(val: JsValue) -> Result<Pattern, JsError> {
                 .and_then(|v| v.as_string())
                 .unwrap_or_default();
             Ok(Pattern::Atom(name))
+        }
+        "string" => {
+            let value = Reflect::get(&obj, &"value".into())
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+            Ok(Pattern::String(value))
         }
         "tuple" => {
             let elements_val = Reflect::get(&obj, &"elements".into())
