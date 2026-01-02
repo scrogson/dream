@@ -1326,4 +1326,28 @@ mod tests {
             panic!("expected function");
         }
     }
+
+    #[test]
+    fn test_rust_keywords_as_function_names() {
+        // This isn't Rust - we can use Rust keywords freely
+        let source = r#"
+            mod test {
+                fn loop(n: int) -> int {
+                    if n == 0 {
+                        0
+                    } else {
+                        loop(n - 1)
+                    }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = &module.items[0] {
+            assert_eq!(f.name, "loop");
+        } else {
+            panic!("expected function");
+        }
+    }
 }

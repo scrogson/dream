@@ -271,4 +271,19 @@ mod tests {
         assert_eq!(lex.next(), Some(Ok(Token::Bang)));
         assert_eq!(lex.next(), Some(Ok(Token::Atom("message".to_string()))));
     }
+
+    #[test]
+    fn test_rust_keywords_are_valid_idents() {
+        // This isn't Rust - we can use Rust keywords as identifiers
+        let mut lex = Token::lexer("loop while for impl trait type use crate super");
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("loop".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("while".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("for".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("impl".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("trait".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("type".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("use".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("crate".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("super".to_string()))));
+    }
 }
