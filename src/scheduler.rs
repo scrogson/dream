@@ -659,6 +659,78 @@ impl Scheduler {
                 }
                 ExecResult::Wait
             }
+
+            Instruction::MakeList { length, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let length = length as usize;
+                if process.stack.len() < length {
+                    return ExecResult::Crash;
+                }
+                // Drain elements - first pushed is at lower index, which becomes first list element
+                let elements: Vec<Value> = process
+                    .stack
+                    .drain(process.stack.len() - length..)
+                    .collect();
+                process.registers[dest.0 as usize] = Value::List(elements);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::Cons { head, tail, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let head_val = process.registers[head.0 as usize].clone();
+                let Value::List(mut elements) = process.registers[tail.0 as usize].clone() else {
+                    return ExecResult::Crash;
+                };
+                elements.insert(0, head_val);
+                process.registers[dest.0 as usize] = Value::List(elements);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::ListHead { list, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let Value::List(elements) = &process.registers[list.0 as usize] else {
+                    return ExecResult::Crash;
+                };
+                if elements.is_empty() {
+                    return ExecResult::Crash;
+                }
+                let head = elements[0].clone();
+                process.registers[dest.0 as usize] = head;
+                ExecResult::Continue(1)
+            }
+
+            Instruction::ListTail { list, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let Value::List(elements) = &process.registers[list.0 as usize] else {
+                    return ExecResult::Crash;
+                };
+                if elements.is_empty() {
+                    return ExecResult::Crash;
+                }
+                let tail = elements[1..].to_vec();
+                process.registers[dest.0 as usize] = Value::List(tail);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::ListIsEmpty { list, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let Value::List(elements) = &process.registers[list.0 as usize] else {
+                    return ExecResult::Crash;
+                };
+                let is_empty = if elements.is_empty() { 1 } else { 0 };
+                process.registers[dest.0 as usize] = Value::Int(is_empty);
+                ExecResult::Continue(1)
+            }
         }
     }
 
@@ -805,6 +877,26 @@ impl Scheduler {
                     }
                 }
                 true
+            }
+
+            Pattern::ListEmpty => {
+                matches!(value, Value::List(elements) if elements.is_empty())
+            }
+
+            Pattern::ListCons { head, tail } => {
+                let Value::List(elements) = value else {
+                    return false;
+                };
+                if elements.is_empty() {
+                    return false;
+                }
+                // Match head against first element
+                if !Self::match_pattern(&elements[0], head, bindings) {
+                    return false;
+                }
+                // Match tail against rest of list
+                let tail_value = Value::List(elements[1..].to_vec());
+                Self::match_pattern(&tail_value, tail, bindings)
             }
         }
     }
@@ -3008,5 +3100,408 @@ mod tests {
         let child = scheduler.processes.get(&Pid(1)).unwrap();
         assert_eq!(child.registers[0], Value::Int(1)); // Got "second"
         assert_eq!(child.registers[1], Value::Int(2)); // Then got "first"
+    }
+
+    // ========== List Tests ==========
+
+    #[test]
+    fn test_make_list() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Push elements onto stack
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::Push {
+                source: Operand::Int(2),
+            },
+            Instruction::Push {
+                source: Operand::Int(3),
+            },
+            // Make list [1, 2, 3]
+            Instruction::MakeList {
+                length: 3,
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(
+            process.registers[0],
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+    }
+
+    #[test]
+    fn test_make_empty_list() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[0], Value::List(vec![]));
+    }
+
+    #[test]
+    fn test_cons() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create empty list
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            // Load 3
+            Instruction::LoadInt {
+                value: 3,
+                dest: Register(1),
+            },
+            // Cons 3 onto empty list: [3]
+            Instruction::Cons {
+                head: Register(1),
+                tail: Register(0),
+                dest: Register(0),
+            },
+            // Load 2
+            Instruction::LoadInt {
+                value: 2,
+                dest: Register(1),
+            },
+            // Cons 2 onto [3]: [2, 3]
+            Instruction::Cons {
+                head: Register(1),
+                tail: Register(0),
+                dest: Register(0),
+            },
+            // Load 1
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            // Cons 1 onto [2, 3]: [1, 2, 3]
+            Instruction::Cons {
+                head: Register(1),
+                tail: Register(0),
+                dest: Register(0),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(
+            process.registers[0],
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+    }
+
+    #[test]
+    fn test_list_head_tail() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create list [1, 2, 3]
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::Push {
+                source: Operand::Int(2),
+            },
+            Instruction::Push {
+                source: Operand::Int(3),
+            },
+            Instruction::MakeList {
+                length: 3,
+                dest: Register(0),
+            },
+            // Get head -> 1
+            Instruction::ListHead {
+                list: Register(0),
+                dest: Register(1),
+            },
+            // Get tail -> [2, 3]
+            Instruction::ListTail {
+                list: Register(0),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1));
+        assert_eq!(
+            process.registers[2],
+            Value::List(vec![Value::Int(2), Value::Int(3)])
+        );
+    }
+
+    #[test]
+    fn test_list_is_empty() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create empty list
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            Instruction::ListIsEmpty {
+                list: Register(0),
+                dest: Register(1),
+            },
+            // Create non-empty list
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::MakeList {
+                length: 1,
+                dest: Register(2),
+            },
+            Instruction::ListIsEmpty {
+                list: Register(2),
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // empty list
+        assert_eq!(process.registers[3], Value::Int(0)); // non-empty list
+    }
+
+    #[test]
+    fn test_list_head_empty_crashes() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            Instruction::ListHead {
+                list: Register(0),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let (_, _, _, crashed) = scheduler.process_count();
+        assert_eq!(crashed, 1);
+    }
+
+    #[test]
+    fn test_match_list_empty() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create empty list
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            // Match against []
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::ListEmpty,
+                fail_target: 4,
+            },
+            // Success
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // Success
+    }
+
+    #[test]
+    fn test_match_list_cons() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create list [1, 2, 3]
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::Push {
+                source: Operand::Int(2),
+            },
+            Instruction::Push {
+                source: Operand::Int(3),
+            },
+            Instruction::MakeList {
+                length: 3,
+                dest: Register(0),
+            },
+            // Match [H | T] binding H to R1, T to R2
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::ListCons {
+                    head: Box::new(Pattern::Variable(Register(1))),
+                    tail: Box::new(Pattern::Variable(Register(2))),
+                },
+                fail_target: 7,
+            },
+            // Success
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(3),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // Head
+        assert_eq!(
+            process.registers[2],
+            Value::List(vec![Value::Int(2), Value::Int(3)])
+        ); // Tail
+        assert_eq!(process.registers[3], Value::Int(1)); // Success
+    }
+
+    #[test]
+    fn test_match_list_cons_on_empty_fails() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create empty list
+            Instruction::MakeList {
+                length: 0,
+                dest: Register(0),
+            },
+            // Try to match [H | T] - should fail
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::ListCons {
+                    head: Box::new(Pattern::Variable(Register(1))),
+                    tail: Box::new(Pattern::Variable(Register(2))),
+                },
+                fail_target: 4,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(3),
+            },
+            Instruction::End,
+            // Fail path
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[3], Value::Int(0)); // Fail path taken
+    }
+
+    #[test]
+    fn test_match_list_nested() {
+        let mut scheduler = Scheduler::new();
+
+        // Match [1, 2 | Rest]
+        let program = vec![
+            // Create list [1, 2, 3, 4]
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::Push {
+                source: Operand::Int(2),
+            },
+            Instruction::Push {
+                source: Operand::Int(3),
+            },
+            Instruction::Push {
+                source: Operand::Int(4),
+            },
+            Instruction::MakeList {
+                length: 4,
+                dest: Register(0),
+            },
+            // Match [1, 2 | Rest] - first must be 1, second must be 2, rest bound
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::ListCons {
+                    head: Box::new(Pattern::Int(1)),
+                    tail: Box::new(Pattern::ListCons {
+                        head: Box::new(Pattern::Int(2)),
+                        tail: Box::new(Pattern::Variable(Register(1))),
+                    }),
+                },
+                fail_target: 8,
+            },
+            // Success
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(2),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(
+            process.registers[1],
+            Value::List(vec![Value::Int(3), Value::Int(4)])
+        ); // Rest
+        assert_eq!(process.registers[2], Value::Int(1)); // Success
     }
 }

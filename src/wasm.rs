@@ -404,6 +404,41 @@ fn parse_program(program: JsValue) -> Result<Vec<Instruction>, JsError> {
                 }
             }
 
+            // Lists
+            "make_list" => {
+                let length = Reflect::get(&obj, &"length".into())
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as u8;
+                let dest = get_register(&obj, "dest")?;
+                Instruction::MakeList { length, dest }
+            }
+
+            "cons" => {
+                let head = get_register(&obj, "head")?;
+                let tail = get_register(&obj, "tail")?;
+                let dest = get_register(&obj, "dest")?;
+                Instruction::Cons { head, tail, dest }
+            }
+
+            "list_head" => {
+                let list = get_register(&obj, "list")?;
+                let dest = get_register(&obj, "dest")?;
+                Instruction::ListHead { list, dest }
+            }
+
+            "list_tail" => {
+                let list = get_register(&obj, "list")?;
+                let dest = get_register(&obj, "dest")?;
+                Instruction::ListTail { list, dest }
+            }
+
+            "list_is_empty" => {
+                let list = get_register(&obj, "list")?;
+                let dest = get_register(&obj, "dest")?;
+                Instruction::ListIsEmpty { list, dest }
+            }
+
             other => return Err(JsError::new(&format!("unknown op: {}", other))),
         };
 
@@ -572,6 +607,16 @@ fn parse_pattern(val: JsValue) -> Result<Pattern, JsError> {
                 patterns.push(parse_pattern(elem)?);
             }
             Ok(Pattern::Tuple(patterns))
+        }
+        "list_empty" => Ok(Pattern::ListEmpty),
+        "list_cons" => {
+            let head_val = Reflect::get(&obj, &"head".into())
+                .map_err(|_| JsError::new("list_cons pattern missing 'head'"))?;
+            let tail_val = Reflect::get(&obj, &"tail".into())
+                .map_err(|_| JsError::new("list_cons pattern missing 'tail'"))?;
+            let head = Box::new(parse_pattern(head_val)?);
+            let tail = Box::new(parse_pattern(tail_val)?);
+            Ok(Pattern::ListCons { head, tail })
         }
         other => Err(JsError::new(&format!("unknown pattern type: {}", other))),
     }

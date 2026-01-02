@@ -15,6 +15,8 @@ pub enum Value {
     Atom(String),
     /// Tuple - fixed-size container of values
     Tuple(Vec<Value>),
+    /// List - variable-size linked list of values
+    List(Vec<Value>),
     /// No value / uninitialized
     None,
 }
@@ -45,6 +47,16 @@ impl std::fmt::Debug for Value {
                     write!(f, "{:?}", elem)?;
                 }
                 write!(f, "}}")
+            }
+            Value::List(elements) => {
+                write!(f, "[")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{:?}", elem)?;
+                }
+                write!(f, "]")
             }
             Value::None => write!(f, "None"),
         }

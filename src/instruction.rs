@@ -151,6 +151,26 @@ pub enum Instruction {
         /// Where to jump on timeout
         timeout_target: usize,
     },
+
+    // ========== Lists ==========
+    /// Create a list from the top `length` stack elements
+    /// Elements are popped in reverse order (first pushed = first element)
+    MakeList { length: u8, dest: Register },
+
+    /// Cons: prepend an element to a list [elem | list]
+    /// Crashes if tail is not a list
+    Cons { head: Register, tail: Register, dest: Register },
+
+    /// Get the head (first element) of a list
+    /// Crashes if not a list or empty
+    ListHead { list: Register, dest: Register },
+
+    /// Get the tail (rest) of a list
+    /// Crashes if not a list or empty
+    ListTail { list: Register, dest: Register },
+
+    /// Check if a list is empty, store 1 (true) or 0 (false)
+    ListIsEmpty { list: Register, dest: Register },
 }
 
 /// An operand for arithmetic/comparison operations
@@ -201,4 +221,13 @@ pub enum Pattern {
 
     /// Match a tuple with specific arity and element patterns
     Tuple(Vec<Pattern>),
+
+    /// Match an empty list []
+    ListEmpty,
+
+    /// Match a non-empty list [head | tail]
+    ListCons {
+        head: Box<Pattern>,
+        tail: Box<Pattern>,
+    },
 }
