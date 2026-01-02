@@ -3,8 +3,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::{
-    DownReason, Instruction, Message, Operand, Pid, Process, ProcessStatus, Source, SystemMsg,
-    Value,
+    DownReason, Instruction, Message, Operand, Pattern, Pid, Process, ProcessStatus, Register,
+    Source, SystemMsg, Value,
 };
 
 /// Result of stepping the scheduler
@@ -584,6 +584,32 @@ impl Scheduler {
                 process.registers[dest.0 as usize] = Value::Int(arity);
                 ExecResult::Continue(1)
             }
+
+            Instruction::Match {
+                source,
+                pattern,
+                fail_target,
+            } => {
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let value = process.registers[source.0 as usize].clone();
+
+                // Try to match and collect bindings
+                let mut bindings = Vec::new();
+                if Self::match_pattern(&value, &pattern, &mut bindings) {
+                    // Match succeeded - apply bindings
+                    if let Some(p) = self.processes.get_mut(&pid) {
+                        for (reg, val) in bindings {
+                            p.registers[reg.0 as usize] = val;
+                        }
+                    }
+                    ExecResult::Continue(1)
+                } else {
+                    // Match failed - jump to fail target
+                    ExecResult::Jump(fail_target, 1)
+                }
+            }
         }
     }
 
@@ -693,6 +719,42 @@ impl Scheduler {
                     Value::String(format!("DOWN<{},{}>", p.0, reason_str))
                 }
             },
+        }
+    }
+
+    /// Try to match a value against a pattern, collecting variable bindings
+    /// Returns true if match succeeds, false otherwise
+    fn match_pattern(
+        value: &Value,
+        pattern: &Pattern,
+        bindings: &mut Vec<(Register, Value)>,
+    ) -> bool {
+        match pattern {
+            Pattern::Wildcard => true,
+
+            Pattern::Variable(reg) => {
+                bindings.push((*reg, value.clone()));
+                true
+            }
+
+            Pattern::Int(n) => matches!(value, Value::Int(v) if v == n),
+
+            Pattern::Atom(name) => matches!(value, Value::Atom(a) if a == name),
+
+            Pattern::Tuple(patterns) => {
+                let Value::Tuple(elements) = value else {
+                    return false;
+                };
+                if elements.len() != patterns.len() {
+                    return false;
+                }
+                for (elem, pat) in elements.iter().zip(patterns.iter()) {
+                    if !Self::match_pattern(elem, pat, bindings) {
+                        return false;
+                    }
+                }
+                true
+            }
         }
     }
 
@@ -2272,5 +2334,397 @@ mod tests {
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         // R4 should have the integer 1 from the inner tuple
         assert_eq!(process.registers[4], Value::Int(1));
+    }
+
+    // ========== Pattern Matching Tests ==========
+
+    #[test]
+    fn test_match_wildcard() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(0),
+            },
+            // Match anything with wildcard - should succeed
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Wildcard,
+                fail_target: 4,
+            },
+            // Success path: set R1 = 1
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+            // Fail path: set R1 = 0
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // Success path taken
+    }
+
+    #[test]
+    fn test_match_variable() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(0),
+            },
+            // Match and bind to R1
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Variable(Register(1)),
+                fail_target: 3,
+            },
+            Instruction::End,
+            // Fail path
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(42)); // Bound value
+    }
+
+    #[test]
+    fn test_match_int_success() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(0),
+            },
+            // Match exact integer
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Int(42),
+                fail_target: 4,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // Success
+    }
+
+    #[test]
+    fn test_match_int_failure() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(0),
+            },
+            // Match wrong integer - should fail
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Int(99),
+                fail_target: 4,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+            // Fail path
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(0)); // Fail path taken
+    }
+
+    #[test]
+    fn test_match_atom() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadAtom {
+                name: "ok".to_string(),
+                dest: Register(0),
+            },
+            // Match :ok
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Atom("ok".to_string()),
+                fail_target: 4,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // Success
+    }
+
+    #[test]
+    fn test_match_tuple_with_bindings() {
+        let mut scheduler = Scheduler::new();
+
+        // Create {:ok, 42} and match with {:ok, x}
+        let program = vec![
+            // Build tuple {:ok, 42}
+            Instruction::LoadAtom {
+                name: "ok".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Push {
+                source: Operand::Reg(Register(0)),
+            },
+            Instruction::Push {
+                source: Operand::Int(42),
+            },
+            Instruction::MakeTuple {
+                arity: 2,
+                dest: Register(0),
+            },
+            // Match {:ok, x} binding x to R1
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Tuple(vec![
+                    Pattern::Atom("ok".to_string()),
+                    Pattern::Variable(Register(1)),
+                ]),
+                fail_target: 7,
+            },
+            // Success: R2 = 1
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(2),
+            },
+            Instruction::End,
+            // Fail: R2 = 0
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(42)); // Bound value
+        assert_eq!(process.registers[2], Value::Int(1)); // Success path
+    }
+
+    #[test]
+    fn test_match_tuple_wrong_atom() {
+        let mut scheduler = Scheduler::new();
+
+        // Create {:error, 42} and try to match {:ok, x} - should fail
+        let program = vec![
+            Instruction::LoadAtom {
+                name: "error".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Push {
+                source: Operand::Reg(Register(0)),
+            },
+            Instruction::Push {
+                source: Operand::Int(42),
+            },
+            Instruction::MakeTuple {
+                arity: 2,
+                dest: Register(0),
+            },
+            // Match {:ok, x} - should fail
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Tuple(vec![
+                    Pattern::Atom("ok".to_string()),
+                    Pattern::Variable(Register(1)),
+                ]),
+                fail_target: 7,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(2),
+            },
+            Instruction::End,
+            // Fail path
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[2], Value::Int(0)); // Fail path taken
+    }
+
+    #[test]
+    fn test_match_tuple_wrong_arity() {
+        let mut scheduler = Scheduler::new();
+
+        // Create {1, 2, 3} and try to match {a, b} - should fail
+        let program = vec![
+            Instruction::Push {
+                source: Operand::Int(1),
+            },
+            Instruction::Push {
+                source: Operand::Int(2),
+            },
+            Instruction::Push {
+                source: Operand::Int(3),
+            },
+            Instruction::MakeTuple {
+                arity: 3,
+                dest: Register(0),
+            },
+            // Match {a, b} - wrong arity
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Tuple(vec![
+                    Pattern::Variable(Register(1)),
+                    Pattern::Variable(Register(2)),
+                ]),
+                fail_target: 7,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(3),
+            },
+            Instruction::End,
+            // Fail path
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[3], Value::Int(0)); // Fail path taken
+    }
+
+    #[test]
+    fn test_match_nested_tuple() {
+        let mut scheduler = Scheduler::new();
+
+        // Create {:ok, {:data, 100}} and match {:ok, {:data, x}}
+        let program = vec![
+            // Build inner tuple {:data, 100}
+            Instruction::LoadAtom {
+                name: "data".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Push {
+                source: Operand::Reg(Register(0)),
+            },
+            Instruction::Push {
+                source: Operand::Int(100),
+            },
+            Instruction::MakeTuple {
+                arity: 2,
+                dest: Register(0),
+            },
+            // Build outer tuple {:ok, inner}
+            Instruction::LoadAtom {
+                name: "ok".to_string(),
+                dest: Register(1),
+            },
+            Instruction::Push {
+                source: Operand::Reg(Register(1)),
+            },
+            Instruction::Push {
+                source: Operand::Reg(Register(0)),
+            },
+            Instruction::MakeTuple {
+                arity: 2,
+                dest: Register(0),
+            },
+            // Match {:ok, {:data, x}}
+            Instruction::Match {
+                source: Register(0),
+                pattern: Pattern::Tuple(vec![
+                    Pattern::Atom("ok".to_string()),
+                    Pattern::Tuple(vec![
+                        Pattern::Atom("data".to_string()),
+                        Pattern::Variable(Register(1)),
+                    ]),
+                ]),
+                fail_target: 11,
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(2),
+            },
+            Instruction::End,
+            // Fail
+            Instruction::LoadInt {
+                value: 0,
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(100)); // Extracted value
+        assert_eq!(process.registers[2], Value::Int(1)); // Success
     }
 }

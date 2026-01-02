@@ -3,7 +3,7 @@
 use js_sys::{Array, Object, Reflect};
 use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
-use crate::{Instruction, Operand, Pid, Register, Scheduler, Source, StepResult};
+use crate::{Instruction, Operand, Pattern, Pid, Register, Scheduler, Source, StepResult};
 
 /// JS-friendly wrapper around the scheduler
 #[wasm_bindgen]
@@ -351,6 +351,23 @@ fn parse_program(program: JsValue) -> Result<Vec<Instruction>, JsError> {
                 Instruction::TupleArity { tuple, dest }
             }
 
+            // Pattern matching
+            "match" => {
+                let source = get_register(&obj, "source")?;
+                let pattern_val = Reflect::get(&obj, &"pattern".into())
+                    .map_err(|_| JsError::new("match: missing 'pattern'"))?;
+                let pattern = parse_pattern(pattern_val)?;
+                let fail_target = Reflect::get(&obj, &"fail_target".into())
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as usize;
+                Instruction::Match {
+                    source,
+                    pattern,
+                    fail_target,
+                }
+            }
+
             other => return Err(JsError::new(&format!("unknown op: {}", other))),
         };
 
@@ -452,4 +469,67 @@ fn get_operand(obj: &Object, field: &str) -> Result<Operand, JsError> {
 
     // Default to immediate 0
     Ok(Operand::Int(0))
+}
+
+/// Parse a pattern from a JS value.
+/// Patterns can be:
+/// - `"_"` - wildcard
+/// - `{ type: "var", reg: 0 }` - variable binding
+/// - `{ type: "int", value: 42 }` - integer literal
+/// - `{ type: "atom", name: "ok" }` - atom literal
+/// - `{ type: "tuple", elements: [...] }` - tuple pattern
+fn parse_pattern(val: JsValue) -> Result<Pattern, JsError> {
+    // Check for wildcard string
+    if let Some(s) = val.as_string() {
+        if s == "_" {
+            return Ok(Pattern::Wildcard);
+        }
+    }
+
+    // Must be an object
+    if !val.is_object() {
+        return Err(JsError::new("pattern must be '_' or an object"));
+    }
+
+    let obj = Object::from(val);
+    let type_val = Reflect::get(&obj, &"type".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .ok_or_else(|| JsError::new("pattern missing 'type' field"))?;
+
+    match type_val.as_str() {
+        "var" => {
+            let reg = Reflect::get(&obj, &"reg".into())
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0) as u8;
+            Ok(Pattern::Variable(Register(reg)))
+        }
+        "int" => {
+            let value = Reflect::get(&obj, &"value".into())
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0) as i64;
+            Ok(Pattern::Int(value))
+        }
+        "atom" => {
+            let name = Reflect::get(&obj, &"name".into())
+                .ok()
+                .and_then(|v| v.as_string())
+                .unwrap_or_default();
+            Ok(Pattern::Atom(name))
+        }
+        "tuple" => {
+            let elements_val = Reflect::get(&obj, &"elements".into())
+                .map_err(|_| JsError::new("tuple pattern missing 'elements'"))?;
+            let array = Array::from(&elements_val);
+            let mut patterns = Vec::with_capacity(array.length() as usize);
+            for i in 0..array.length() {
+                let elem = array.get(i);
+                patterns.push(parse_pattern(elem)?);
+            }
+            Ok(Pattern::Tuple(patterns))
+        }
+        other => Err(JsError::new(&format!("unknown pattern type: {}", other))),
+    }
 }

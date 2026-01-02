@@ -21,7 +21,7 @@ mod value;
 pub mod wasm;
 
 // Re-export public API
-pub use instruction::{Instruction, Operand, Register, Source};
+pub use instruction::{Instruction, Operand, Pattern, Register, Source};
 pub use message::{DownReason, Message, SystemMsg};
 pub use pid::Pid;
 pub use process::{Process, ProcessStatus};

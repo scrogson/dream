@@ -127,6 +127,16 @@ pub enum Instruction {
     /// Get the arity (size) of a tuple
     /// Crashes if not a tuple
     TupleArity { tuple: Register, dest: Register },
+
+    // ========== Pattern Matching ==========
+    /// Match a value against a pattern
+    /// On success: binds variables and continues to next instruction
+    /// On failure: jumps to fail_target
+    Match {
+        source: Register,
+        pattern: Pattern,
+        fail_target: usize,
+    },
 }
 
 /// An operand for arithmetic/comparison operations
@@ -156,3 +166,22 @@ pub enum Source {
 /// Register index (processes have a small set of registers)
 #[derive(Debug, Clone, Copy)]
 pub struct Register(pub u8);
+
+/// A pattern for matching values
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    /// Match any value, ignore it
+    Wildcard,
+
+    /// Match any value, bind it to a register
+    Variable(Register),
+
+    /// Match a specific integer
+    Int(i64),
+
+    /// Match a specific atom
+    Atom(String),
+
+    /// Match a tuple with specific arity and element patterns
+    Tuple(Vec<Pattern>),
+}
