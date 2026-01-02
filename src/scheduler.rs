@@ -713,56 +713,152 @@ impl Scheduler {
                 ExecResult::Continue(1)
             }
 
+            Instruction::MakeClosure {
+                module,
+                function,
+                arity,
+                captures,
+                dest,
+            } => {
+                // Verify function exists (arity for closure = explicit arity + captured count)
+                let total_arity = arity + captures.len() as u8;
+                let Some(mod_ref) = self.modules.get(&module) else {
+                    log(&format!("MakeClosure: module {} not found", module));
+                    return ExecResult::Crash;
+                };
+
+                if mod_ref.get_function(&function, total_arity).is_none() {
+                    log(&format!(
+                        "MakeClosure: function {}:{}/{} not found",
+                        module, function, total_arity
+                    ));
+                    return ExecResult::Crash;
+                }
+
+                // Capture values from registers
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+
+                let captured: Vec<Value> = captures
+                    .iter()
+                    .map(|r| process.registers[r.0 as usize].clone())
+                    .collect();
+
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    p.registers[dest.0 as usize] = Value::Closure {
+                        module: module.clone(),
+                        function: function.clone(),
+                        arity,
+                        captured,
+                    };
+                }
+                ExecResult::Continue(1)
+            }
+
             Instruction::Apply { fun, arity } => {
                 let Some(process) = self.processes.get(&pid) else {
                     return ExecResult::Crash;
                 };
 
-                // Get the function reference
-                let Value::Fun {
-                    module,
-                    function,
-                    arity: fun_arity,
-                } = &process.registers[fun.0 as usize]
-                else {
-                    log("Apply: not a function reference");
-                    return ExecResult::Crash;
-                };
+                // Handle both Fun and Closure
+                match &process.registers[fun.0 as usize] {
+                    Value::Fun {
+                        module,
+                        function,
+                        arity: fun_arity,
+                    } => {
+                        if *fun_arity != arity {
+                            log(&format!(
+                                "Apply: arity mismatch, expected {}, got {}",
+                                fun_arity, arity
+                            ));
+                            return ExecResult::Crash;
+                        }
 
-                if *fun_arity != arity {
-                    log(&format!(
-                        "Apply: arity mismatch, expected {}, got {}",
-                        fun_arity, arity
-                    ));
-                    return ExecResult::Crash;
+                        // Look up the function
+                        let Some(mod_ref) = self.modules.get(module) else {
+                            log(&format!("Apply: module {} not found", module));
+                            return ExecResult::Crash;
+                        };
+
+                        let Some(func) = mod_ref.get_function(function, arity) else {
+                            log(&format!(
+                                "Apply: function {}:{}/{} not found",
+                                module, function, arity
+                            ));
+                            return ExecResult::Crash;
+                        };
+
+                        let entry = func.entry;
+                        let module = module.clone();
+
+                        // Push call frame and switch module
+                        if let Some(p) = self.processes.get_mut(&pid) {
+                            p.call_stack.push(CallFrame {
+                                module: p.current_module.clone(),
+                                return_pc: p.pc + 1,
+                            });
+                            p.current_module = Some(module);
+                        }
+                        ExecResult::Jump(entry, 1)
+                    }
+
+                    Value::Closure {
+                        module,
+                        function,
+                        arity: closure_arity,
+                        captured,
+                    } => {
+                        if *closure_arity != arity {
+                            log(&format!(
+                                "Apply: closure arity mismatch, expected {}, got {}",
+                                closure_arity, arity
+                            ));
+                            return ExecResult::Crash;
+                        }
+
+                        // Total arity = explicit args + captured values
+                        let total_arity = arity + captured.len() as u8;
+
+                        // Look up the function
+                        let Some(mod_ref) = self.modules.get(module) else {
+                            log(&format!("Apply: module {} not found", module));
+                            return ExecResult::Crash;
+                        };
+
+                        let Some(func) = mod_ref.get_function(function, total_arity) else {
+                            log(&format!(
+                                "Apply: function {}:{}/{} not found",
+                                module, function, total_arity
+                            ));
+                            return ExecResult::Crash;
+                        };
+
+                        let entry = func.entry;
+                        let module = module.clone();
+                        let captured = captured.clone();
+
+                        // Copy captured values to registers after explicit args
+                        // and push call frame
+                        if let Some(p) = self.processes.get_mut(&pid) {
+                            for (i, val) in captured.into_iter().enumerate() {
+                                p.registers[arity as usize + i] = val;
+                            }
+                            p.call_stack.push(CallFrame {
+                                module: p.current_module.clone(),
+                                return_pc: p.pc + 1,
+                            });
+                            p.current_module = Some(module);
+                        }
+                        ExecResult::Jump(entry, 1)
+                    }
+
+                    _ => {
+                        log("Apply: not a function or closure");
+                        ExecResult::Crash
+                    }
                 }
-
-                // Look up the function
-                let Some(mod_ref) = self.modules.get(module) else {
-                    log(&format!("Apply: module {} not found", module));
-                    return ExecResult::Crash;
-                };
-
-                let Some(func) = mod_ref.get_function(function, arity) else {
-                    log(&format!(
-                        "Apply: function {}:{}/{} not found",
-                        module, function, arity
-                    ));
-                    return ExecResult::Crash;
-                };
-
-                let entry = func.entry;
-                let module = module.clone();
-
-                // Push call frame and switch module
-                if let Some(p) = self.processes.get_mut(&pid) {
-                    p.call_stack.push(CallFrame {
-                        module: p.current_module.clone(),
-                        return_pc: p.pc + 1,
-                    });
-                    p.current_module = Some(module);
-                }
-                ExecResult::Jump(entry, 1)
             }
 
             Instruction::SpawnMFA {
@@ -4255,5 +4351,232 @@ mod tests {
 
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         assert_eq!(process.registers[0], Value::Int(15));
+    }
+
+    #[test]
+    fn test_make_closure_and_apply() {
+        use crate::Module;
+
+        let mut scheduler = Scheduler::new();
+
+        // Create module with a function that multiplies explicit arg by captured value
+        // multiply_impl/2: R0 = explicit arg, R1 = captured multiplier
+        let mut math = Module::new("math".to_string());
+        math.add_function(
+            "multiply_impl".to_string(),
+            2, // total arity = 1 explicit + 1 captured
+            vec![
+                Instruction::Mul {
+                    a: Operand::Reg(Register(0)),
+                    b: Operand::Reg(Register(1)),
+                    dest: Register(0),
+                },
+                Instruction::Return,
+            ],
+        );
+        math.export("multiply_impl", 2);
+        scheduler.load_module(math).unwrap();
+
+        // Program: create closure capturing R1=5, apply it to R0=7
+        let program = vec![
+            // R1 = 5 (the multiplier to capture)
+            Instruction::LoadInt {
+                value: 5,
+                dest: Register(1),
+            },
+            // R2 = closure capturing R1
+            Instruction::MakeClosure {
+                module: "math".to_string(),
+                function: "multiply_impl".to_string(),
+                arity: 1, // explicit arity
+                captures: vec![Register(1)],
+                dest: Register(2),
+            },
+            // R0 = 7 (the value to multiply)
+            Instruction::LoadInt {
+                value: 7,
+                dest: Register(0),
+            },
+            // Apply closure in R2 with arity 1
+            Instruction::Apply {
+                fun: Register(2),
+                arity: 1,
+            },
+            // R0 should now be 35
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[0], Value::Int(35));
+    }
+
+    #[test]
+    fn test_closure_with_multiple_captures() {
+        use crate::Module;
+
+        let mut scheduler = Scheduler::new();
+
+        // add_three/3: R0 + R1 + R2
+        let mut math = Module::new("math".to_string());
+        math.add_function(
+            "add_three".to_string(),
+            3, // 1 explicit + 2 captured
+            vec![
+                Instruction::Add {
+                    a: Operand::Reg(Register(0)),
+                    b: Operand::Reg(Register(1)),
+                    dest: Register(0),
+                },
+                Instruction::Add {
+                    a: Operand::Reg(Register(0)),
+                    b: Operand::Reg(Register(2)),
+                    dest: Register(0),
+                },
+                Instruction::Return,
+            ],
+        );
+        math.export("add_three", 3);
+        scheduler.load_module(math).unwrap();
+
+        let program = vec![
+            // Capture values: R3=10, R4=20
+            Instruction::LoadInt {
+                value: 10,
+                dest: Register(3),
+            },
+            Instruction::LoadInt {
+                value: 20,
+                dest: Register(4),
+            },
+            // Create closure capturing R3 and R4
+            Instruction::MakeClosure {
+                module: "math".to_string(),
+                function: "add_three".to_string(),
+                arity: 1,
+                captures: vec![Register(3), Register(4)],
+                dest: Register(5),
+            },
+            // R0 = 5 (explicit arg)
+            Instruction::LoadInt {
+                value: 5,
+                dest: Register(0),
+            },
+            // Apply: 5 + 10 + 20 = 35
+            Instruction::Apply {
+                fun: Register(5),
+                arity: 1,
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[0], Value::Int(35));
+    }
+
+    #[test]
+    fn test_closure_values_are_copied() {
+        use crate::Module;
+
+        let mut scheduler = Scheduler::new();
+
+        // Simple function that returns its captured value
+        // get_captured/1: returns R0 (which is the captured value)
+        let mut mod_test = Module::new("test".to_string());
+        mod_test.add_function(
+            "get_captured".to_string(),
+            1, // 0 explicit + 1 captured
+            vec![Instruction::Return],
+        );
+        mod_test.export("get_captured", 1);
+        scheduler.load_module(mod_test).unwrap();
+
+        let program = vec![
+            // R1 = 42
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(1),
+            },
+            // Create closure capturing R1
+            Instruction::MakeClosure {
+                module: "test".to_string(),
+                function: "get_captured".to_string(),
+                arity: 0,
+                captures: vec![Register(1)],
+                dest: Register(2),
+            },
+            // Change R1 to 100 (should not affect captured value)
+            Instruction::LoadInt {
+                value: 100,
+                dest: Register(1),
+            },
+            // Apply closure (no explicit args)
+            Instruction::Apply {
+                fun: Register(2),
+                arity: 0,
+            },
+            // R0 should be 42 (the captured value), not 100
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[0], Value::Int(42));
+    }
+
+    #[test]
+    fn test_closure_arity_mismatch_crashes() {
+        use crate::Module;
+
+        let mut scheduler = Scheduler::new();
+
+        let mut math = Module::new("math".to_string());
+        math.add_function(
+            "add".to_string(),
+            2,
+            vec![
+                Instruction::Add {
+                    a: Operand::Reg(Register(0)),
+                    b: Operand::Reg(Register(1)),
+                    dest: Register(0),
+                },
+                Instruction::Return,
+            ],
+        );
+        math.export("add", 2);
+        scheduler.load_module(math).unwrap();
+
+        let program = vec![
+            Instruction::LoadInt {
+                value: 5,
+                dest: Register(1),
+            },
+            Instruction::MakeClosure {
+                module: "math".to_string(),
+                function: "add".to_string(),
+                arity: 1, // closure expects 1 explicit arg
+                captures: vec![Register(1)],
+                dest: Register(2),
+            },
+            // Apply with wrong arity (2 instead of 1)
+            Instruction::Apply {
+                fun: Register(2),
+                arity: 2, // Wrong!
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Crashed);
     }
 }

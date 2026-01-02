@@ -23,6 +23,13 @@ pub enum Value {
         function: String,
         arity: u8,
     },
+    /// Closure - function reference with captured environment
+    Closure {
+        module: String,
+        function: String,
+        arity: u8,
+        captured: Vec<Value>,
+    },
     /// No value / uninitialized
     None,
 }
@@ -69,6 +76,16 @@ impl std::fmt::Debug for Value {
                 function,
                 arity,
             } => write!(f, "fun {}:{}/{}", module, function, arity),
+            Value::Closure {
+                module,
+                function,
+                arity,
+                captured,
+            } => write!(
+                f,
+                "closure {}:{}/{} {:?}",
+                module, function, arity, captured
+            ),
             Value::None => write!(f, "None"),
         }
     }

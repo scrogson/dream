@@ -137,9 +137,20 @@ pub enum Instruction {
     },
 
     /// Apply a function reference (from register) to arguments
-    /// Fun must be a Value::Fun in the specified register
+    /// Fun must be a Value::Fun or Value::Closure in the specified register
     /// Arguments in R0..R(arity-1)
     Apply { fun: Register, arity: u8 },
+
+    /// Create a closure capturing values from registers
+    /// The closure references module:function but captures current register values
+    /// When applied, captured values are placed after explicit arguments
+    MakeClosure {
+        module: String,
+        function: String,
+        arity: u8,
+        captures: Vec<Register>,
+        dest: Register,
+    },
 
     /// Spawn a process running module:function/arity
     /// Arguments for the function must be in R0..R(arity-1)
