@@ -46,4 +46,25 @@ mod spawn_test {
         reply_to <- msg;
         :done
     }
+
+    // Receive with timeout - returns :timeout if no message within 100ms
+    pub fn wait_timeout() -> atom {
+        receive {
+            _ => :got_msg,
+            after 100 => {
+                :timeout
+            }
+        }
+    }
+
+    // Receive with longer timeout
+    pub fn wait_with_timeout(ms: int) -> atom {
+        receive {
+            :ping => :pong,
+            _ => :other,
+            after ms => {
+                :timed_out
+            }
+        }
+    }
 }
