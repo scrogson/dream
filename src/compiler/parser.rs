@@ -65,6 +65,10 @@ impl<'source> Parser<'source> {
     fn parse_function(&mut self, is_pub: bool) -> ParseResult<Function> {
         self.expect(&Token::Fn)?;
         let name = self.expect_ident()?;
+
+        // Parse optional type parameters: <T, U>
+        let type_params = self.parse_type_params()?;
+
         self.expect(&Token::LParen)?;
 
         let mut params = Vec::new();
@@ -90,6 +94,7 @@ impl<'source> Parser<'source> {
 
         Ok(Function {
             name,
+            type_params,
             params,
             return_type,
             body,
@@ -109,6 +114,10 @@ impl<'source> Parser<'source> {
     fn parse_struct(&mut self, is_pub: bool) -> ParseResult<StructDef> {
         self.expect(&Token::Struct)?;
         let name = self.expect_type_ident()?;
+
+        // Parse optional type parameters: <T, U>
+        let type_params = self.parse_type_params()?;
+
         self.expect(&Token::LBrace)?;
 
         let mut fields = Vec::new();
@@ -128,6 +137,7 @@ impl<'source> Parser<'source> {
         self.expect(&Token::RBrace)?;
         Ok(StructDef {
             name,
+            type_params,
             fields,
             is_pub,
         })
@@ -137,6 +147,10 @@ impl<'source> Parser<'source> {
     fn parse_enum(&mut self, is_pub: bool) -> ParseResult<EnumDef> {
         self.expect(&Token::Enum)?;
         let name = self.expect_type_ident()?;
+
+        // Parse optional type parameters: <T, E>
+        let type_params = self.parse_type_params()?;
+
         self.expect(&Token::LBrace)?;
 
         let mut variants = Vec::new();
@@ -176,6 +190,7 @@ impl<'source> Parser<'source> {
         self.expect(&Token::RBrace)?;
         Ok(EnumDef {
             name,
+            type_params,
             variants,
             is_pub,
         })
@@ -1007,6 +1022,51 @@ impl<'source> Parser<'source> {
         Err(ParseError::new("expected pattern", span))
     }
 
+    /// Parse optional type parameters: `<T, U>`.
+    /// Returns empty Vec if no type parameters present.
+    fn parse_type_params(&mut self) -> ParseResult<Vec<String>> {
+        if !self.check(&Token::Lt) {
+            return Ok(Vec::new());
+        }
+        self.advance(); // consume '<'
+
+        let mut params = Vec::new();
+        loop {
+            let name = self.expect_type_ident()?;
+            params.push(name);
+
+            if !self.check(&Token::Comma) {
+                break;
+            }
+            self.advance(); // consume ','
+        }
+
+        self.expect(&Token::Gt)?;
+        Ok(params)
+    }
+
+    /// Parse optional type arguments: `<int, String>`.
+    /// Returns empty Vec if no type arguments present.
+    fn parse_type_args(&mut self) -> ParseResult<Vec<Type>> {
+        if !self.check(&Token::Lt) {
+            return Ok(Vec::new());
+        }
+        self.advance(); // consume '<'
+
+        let mut args = Vec::new();
+        loop {
+            args.push(self.parse_type()?);
+
+            if !self.check(&Token::Comma) {
+                break;
+            }
+            self.advance(); // consume ','
+        }
+
+        self.expect(&Token::Gt)?;
+        Ok(args)
+    }
+
     /// Parse a type.
     fn parse_type(&mut self) -> ParseResult<Type> {
         // Primitive types (recognized as identifiers)
@@ -1036,10 +1096,11 @@ impl<'source> Parser<'source> {
             }
         }
 
-        // Named type (uppercase identifier)
+        // Named type (uppercase identifier) with optional type arguments
         if let Some(Token::TypeIdent(name)) = self.peek().cloned() {
             self.advance();
-            return Ok(Type::Named(name));
+            let type_args = self.parse_type_args()?;
+            return Ok(Type::Named { name, type_args });
         }
 
         // Tuple type: ()
@@ -1430,6 +1491,154 @@ mod tests {
 
         if let Item::Function(f) = &module.items[0] {
             assert_eq!(f.name, "loop");
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_generic_enum() {
+        let source = r#"
+            mod test {
+                enum Option<T> {
+                    Some(T),
+                    None,
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Enum(e) = &module.items[0] {
+            assert_eq!(e.name, "Option");
+            assert_eq!(e.type_params, vec!["T".to_string()]);
+            assert_eq!(e.variants.len(), 2);
+            assert_eq!(e.variants[0].name, "Some");
+            // The field type should be a TypeVar "T"
+            if let Type::Named { name, type_args } = &e.variants[0].fields[0] {
+                assert_eq!(name, "T");
+                assert!(type_args.is_empty());
+            } else {
+                panic!("expected Named type for T");
+            }
+        } else {
+            panic!("expected enum");
+        }
+    }
+
+    #[test]
+    fn test_parse_generic_result() {
+        let source = r#"
+            mod test {
+                enum Result<T, E> {
+                    Ok(T),
+                    Err(E),
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Enum(e) = &module.items[0] {
+            assert_eq!(e.name, "Result");
+            assert_eq!(e.type_params, vec!["T".to_string(), "E".to_string()]);
+            assert_eq!(e.variants.len(), 2);
+        } else {
+            panic!("expected enum");
+        }
+    }
+
+    #[test]
+    fn test_parse_generic_function() {
+        let source = r#"
+            mod test {
+                fn map<T, U>(opt: Option<T>, f: Fn) -> Option<U> {
+                    match opt {
+                        Some(x) => Some(f(x)),
+                        None => None,
+                    }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = &module.items[0] {
+            assert_eq!(f.name, "map");
+            assert_eq!(f.type_params, vec!["T".to_string(), "U".to_string()]);
+            assert_eq!(f.params.len(), 2);
+
+            // First param should have type Option<T>
+            if let Type::Named { name, type_args } = &f.params[0].ty {
+                assert_eq!(name, "Option");
+                assert_eq!(type_args.len(), 1);
+            } else {
+                panic!("expected Named type");
+            }
+
+            // Return type should be Option<U>
+            if let Some(Type::Named { name, type_args }) = &f.return_type {
+                assert_eq!(name, "Option");
+                assert_eq!(type_args.len(), 1);
+            } else {
+                panic!("expected return type");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_generic_struct() {
+        let source = r#"
+            mod test {
+                struct Pair<A, B> {
+                    first: A,
+                    second: B,
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Struct(s) = &module.items[0] {
+            assert_eq!(s.name, "Pair");
+            assert_eq!(s.type_params, vec!["A".to_string(), "B".to_string()]);
+            assert_eq!(s.fields.len(), 2);
+        } else {
+            panic!("expected struct");
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_generic_type() {
+        let source = r#"
+            mod test {
+                fn nested(x: Result<Option<int>, String>) -> int {
+                    0
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = &module.items[0] {
+            // Param type should be Result<Option<int>, String>
+            if let Type::Named { name, type_args } = &f.params[0].ty {
+                assert_eq!(name, "Result");
+                assert_eq!(type_args.len(), 2);
+
+                // First arg should be Option<int>
+                if let Type::Named { name, type_args } = &type_args[0] {
+                    assert_eq!(name, "Option");
+                    assert_eq!(type_args.len(), 1);
+                    assert_eq!(type_args[0], Type::Int);
+                } else {
+                    panic!("expected Option<int>");
+                }
+            } else {
+                panic!("expected Result type");
+            }
         } else {
             panic!("expected function");
         }

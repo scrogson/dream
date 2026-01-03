@@ -34,6 +34,8 @@ pub enum Item {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
+    /// Generic type parameters (e.g., `<T, U>`)
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub return_type: Option<Type>,
     pub body: Block,
@@ -263,8 +265,13 @@ pub enum Pattern {
 /// Type annotations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    /// Named type (e.g., `Foo`).
-    Named(String),
+    /// Named type with optional type arguments (e.g., `Foo` or `Option<T>`).
+    Named {
+        name: String,
+        type_args: Vec<Type>,
+    },
+    /// Type variable (e.g., `T` in a generic context).
+    TypeVar(String),
     /// Tuple type.
     Tuple(Vec<Type>),
     /// List type.
@@ -287,6 +294,8 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub name: String,
+    /// Generic type parameters (e.g., `<T>`)
+    pub type_params: Vec<String>,
     pub fields: Vec<(String, Type)>,
     pub is_pub: bool,
 }
@@ -295,6 +304,8 @@ pub struct StructDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
     pub name: String,
+    /// Generic type parameters (e.g., `<T, E>`)
+    pub type_params: Vec<String>,
     pub variants: Vec<EnumVariant>,
     pub is_pub: bool,
 }
