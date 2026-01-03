@@ -2,6 +2,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
+use num_bigint::BigInt;
+
 use crate::{
     CallFrame, Instruction, Message, Module, Operand, Pattern, Pid, Process, ProcessStatus,
     Register, Source, SystemMsg, TryFrame, Value,
@@ -635,32 +637,38 @@ impl Scheduler {
                 ExecResult::Continue(1)
             }
 
-            Instruction::Add { a, b, dest } => {
-                self.arith_op(pid, &a, &b, dest, |x, y| x.wrapping_add(y))
-            }
+            Instruction::Add { a, b, dest } => self.bigint_arith_op(pid, &a, &b, dest, |x, y| {
+                x.checked_add(y).map(Value::Int)
+            }, |x, y| x + y),
 
-            Instruction::Sub { a, b, dest } => {
-                self.arith_op(pid, &a, &b, dest, |x, y| x.wrapping_sub(y))
-            }
+            Instruction::Sub { a, b, dest } => self.bigint_arith_op(pid, &a, &b, dest, |x, y| {
+                x.checked_sub(y).map(Value::Int)
+            }, |x, y| x - y),
 
-            Instruction::Mul { a, b, dest } => {
-                self.arith_op(pid, &a, &b, dest, |x, y| x.wrapping_mul(y))
-            }
+            Instruction::Mul { a, b, dest } => self.bigint_arith_op(pid, &a, &b, dest, |x, y| {
+                x.checked_mul(y).map(Value::Int)
+            }, |x, y| x * y),
 
             Instruction::Div { a, b, dest } => {
                 let Some(process) = self.processes.get(&pid) else {
                     return ExecResult::Crash;
                 };
-                let av = self.resolve_operand(process, &a);
-                let bv = self.resolve_operand(process, &b);
+                let av = self.resolve_operand_value(process, &a);
+                let bv = self.resolve_operand_value(process, &b);
                 match (av, bv) {
-                    (Some(x), Some(y)) if y != 0 => {
+                    (Some(x), Some(y)) => {
+                        if y.is_zero() {
+                            return ExecResult::Crash; // Division by zero
+                        }
+                        let result = match (x.to_bigint(), y.to_bigint()) {
+                            (Some(a), Some(b)) => Value::from_bigint(a / b),
+                            _ => return ExecResult::Crash,
+                        };
                         if let Some(p) = self.processes.get_mut(&pid) {
-                            p.registers[dest.0 as usize] = Value::Int(x / y);
+                            p.registers[dest.0 as usize] = result;
                         }
                         ExecResult::Continue(1)
                     }
-                    (Some(_), Some(0)) => ExecResult::Crash, // Division by zero
                     _ => ExecResult::Crash,
                 }
             }
@@ -669,43 +677,49 @@ impl Scheduler {
                 let Some(process) = self.processes.get(&pid) else {
                     return ExecResult::Crash;
                 };
-                let av = self.resolve_operand(process, &a);
-                let bv = self.resolve_operand(process, &b);
+                let av = self.resolve_operand_value(process, &a);
+                let bv = self.resolve_operand_value(process, &b);
                 match (av, bv) {
-                    (Some(x), Some(y)) if y != 0 => {
+                    (Some(x), Some(y)) => {
+                        if y.is_zero() {
+                            return ExecResult::Crash; // Division by zero
+                        }
+                        let result = match (x.to_bigint(), y.to_bigint()) {
+                            (Some(a), Some(b)) => Value::from_bigint(a % b),
+                            _ => return ExecResult::Crash,
+                        };
                         if let Some(p) = self.processes.get_mut(&pid) {
-                            p.registers[dest.0 as usize] = Value::Int(x % y);
+                            p.registers[dest.0 as usize] = result;
                         }
                         ExecResult::Continue(1)
                     }
-                    (Some(_), Some(0)) => ExecResult::Crash, // Division by zero
                     _ => ExecResult::Crash,
                 }
             }
 
             // ========== Comparisons ==========
             Instruction::Eq { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x == y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x == y)
             }
 
             Instruction::Ne { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x != y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x != y)
             }
 
             Instruction::Lt { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x < y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x < y)
             }
 
             Instruction::Lte { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x <= y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x <= y)
             }
 
             Instruction::Gt { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x > y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x > y)
             }
 
             Instruction::Gte { a, b, dest } => {
-                self.cmp_op(pid, &a, &b, dest, |x, y| x >= y)
+                self.bigint_cmp_op(pid, &a, &b, dest, |x, y| x >= y)
             }
 
             // ========== Control Flow ==========
@@ -2453,58 +2467,102 @@ impl Scheduler {
         }
     }
 
-    /// Helper for arithmetic operations
-    fn arith_op(
+    /// Helper for arithmetic operations with BigInt support and overflow promotion
+    fn bigint_arith_op<F, G>(
         &mut self,
         pid: Pid,
         a: &Operand,
         b: &Operand,
         dest: crate::Register,
-        op: fn(i64, i64) -> i64,
-    ) -> ExecResult {
+        checked_op: F,
+        bigint_op: G,
+    ) -> ExecResult
+    where
+        F: Fn(i64, i64) -> Option<Value>,
+        G: Fn(BigInt, BigInt) -> BigInt,
+    {
         let Some(process) = self.processes.get(&pid) else {
             return ExecResult::Crash;
         };
-        let av = self.resolve_operand(process, a);
-        let bv = self.resolve_operand(process, b);
+        let av = self.resolve_operand_value(process, a);
+        let bv = self.resolve_operand_value(process, b);
         match (av, bv) {
-            (Some(x), Some(y)) => {
+            (Some(Value::Int(x)), Some(Value::Int(y))) => {
+                // Try checked operation first, promote to BigInt on overflow
+                let result = checked_op(x, y).unwrap_or_else(|| {
+                    Value::from_bigint(bigint_op(BigInt::from(x), BigInt::from(y)))
+                });
                 if let Some(p) = self.processes.get_mut(&pid) {
-                    p.registers[dest.0 as usize] = Value::Int(op(x, y));
+                    p.registers[dest.0 as usize] = result;
                 }
                 ExecResult::Continue(1)
+            }
+            (Some(a_val), Some(b_val)) => {
+                // At least one is BigInt, use BigInt arithmetic
+                match (a_val.to_bigint(), b_val.to_bigint()) {
+                    (Some(x), Some(y)) => {
+                        let result = Value::from_bigint(bigint_op(x, y));
+                        if let Some(p) = self.processes.get_mut(&pid) {
+                            p.registers[dest.0 as usize] = result;
+                        }
+                        ExecResult::Continue(1)
+                    }
+                    _ => ExecResult::Crash,
+                }
             }
             _ => ExecResult::Crash,
         }
     }
 
-    /// Helper for comparison operations
-    fn cmp_op(
+    /// Helper for comparison operations with BigInt support
+    fn bigint_cmp_op<F>(
         &mut self,
         pid: Pid,
         a: &Operand,
         b: &Operand,
         dest: crate::Register,
-        op: fn(i64, i64) -> bool,
-    ) -> ExecResult {
+        op: F,
+    ) -> ExecResult
+    where
+        F: Fn(&BigInt, &BigInt) -> bool,
+    {
         let Some(process) = self.processes.get(&pid) else {
             return ExecResult::Crash;
         };
-        let av = self.resolve_operand(process, a);
-        let bv = self.resolve_operand(process, b);
+        let av = self.resolve_operand_value(process, a);
+        let bv = self.resolve_operand_value(process, b);
         match (av, bv) {
-            (Some(x), Some(y)) => {
-                let result = if op(x, y) { 1 } else { 0 };
-                if let Some(p) = self.processes.get_mut(&pid) {
-                    p.registers[dest.0 as usize] = Value::Int(result);
+            (Some(a_val), Some(b_val)) => {
+                match (a_val.to_bigint(), b_val.to_bigint()) {
+                    (Some(x), Some(y)) => {
+                        let result = if op(&x, &y) { 1 } else { 0 };
+                        if let Some(p) = self.processes.get_mut(&pid) {
+                            p.registers[dest.0 as usize] = Value::Int(result);
+                        }
+                        ExecResult::Continue(1)
+                    }
+                    _ => ExecResult::Crash,
                 }
-                ExecResult::Continue(1)
             }
             _ => ExecResult::Crash,
         }
     }
 
-    /// Resolve an operand to an integer value
+    /// Resolve an operand to a Value (supports Int and BigInt)
+    fn resolve_operand_value(&self, process: &Process, operand: &Operand) -> Option<Value> {
+        match operand {
+            Operand::Int(n) => Some(Value::Int(*n)),
+            Operand::Reg(r) => {
+                let val = &process.registers[r.0 as usize];
+                match val {
+                    Value::Int(_) | Value::BigInt(_) => Some(val.clone()),
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    /// Resolve an operand to an integer value (legacy, for code that only needs i64)
     fn resolve_operand(&self, process: &Process, operand: &Operand) -> Option<i64> {
         match operand {
             Operand::Int(n) => Some(*n),
@@ -9161,5 +9219,273 @@ mod tests {
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         assert_eq!(process.registers[3], Value::Int(1)); // my_func/0 exists
         assert_eq!(process.registers[5], Value::Int(0)); // no_func/0 doesn't exist
+    }
+
+    // ========== BigInt Tests ==========
+
+    #[test]
+    fn test_add_overflow_promotes_to_bigint() {
+        let mut scheduler = Scheduler::new();
+
+        // i64::MAX + 1 should overflow and promote to BigInt
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(1),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Result should be a BigInt
+        let expected = BigInt::from(i64::MAX) + BigInt::from(1);
+        assert_eq!(process.registers[1], Value::BigInt(expected));
+    }
+
+    #[test]
+    fn test_sub_overflow_promotes_to_bigint() {
+        let mut scheduler = Scheduler::new();
+
+        // i64::MIN - 1 should underflow and promote to BigInt
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MIN,
+                dest: Register(0),
+            },
+            Instruction::Sub {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(1),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Result should be a BigInt
+        let expected = BigInt::from(i64::MIN) - BigInt::from(1);
+        assert_eq!(process.registers[1], Value::BigInt(expected));
+    }
+
+    #[test]
+    fn test_mul_overflow_promotes_to_bigint() {
+        let mut scheduler = Scheduler::new();
+
+        // Large multiplication that overflows
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX / 2 + 1,
+                dest: Register(0),
+            },
+            Instruction::Mul {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(3),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Result should be a BigInt
+        let val = i64::MAX / 2 + 1;
+        let expected = BigInt::from(val) * BigInt::from(3);
+        assert_eq!(process.registers[1], Value::BigInt(expected));
+    }
+
+    #[test]
+    fn test_bigint_to_int_normalization() {
+        let mut scheduler = Scheduler::new();
+
+        // i64::MAX + 1 - 1 should normalize back to Int
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(1),
+                dest: Register(1),
+            },
+            // Now subtract 1 to get back to i64 range
+            Instruction::Sub {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Int(1),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // After subtracting 1, should normalize back to Int
+        assert_eq!(process.registers[2], Value::Int(i64::MAX));
+    }
+
+    #[test]
+    fn test_bigint_comparison() {
+        let mut scheduler = Scheduler::new();
+
+        // Compare BigInt values
+        let program = vec![
+            // Create two BigInts: i64::MAX + 1 and i64::MAX + 2
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(1),
+                dest: Register(1), // i64::MAX + 1
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(2),
+                dest: Register(2), // i64::MAX + 2
+            },
+            // Compare: (i64::MAX + 1) < (i64::MAX + 2)
+            Instruction::Lt {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Reg(Register(2)),
+                dest: Register(3),
+            },
+            // Compare: (i64::MAX + 2) > (i64::MAX + 1)
+            Instruction::Gt {
+                a: Operand::Reg(Register(2)),
+                b: Operand::Reg(Register(1)),
+                dest: Register(4),
+            },
+            // Compare: (i64::MAX + 1) == (i64::MAX + 1)
+            Instruction::Eq {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Reg(Register(1)),
+                dest: Register(5),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[3], Value::Int(1)); // true: first < second
+        assert_eq!(process.registers[4], Value::Int(1)); // true: second > first
+        assert_eq!(process.registers[5], Value::Int(1)); // true: equal to itself
+    }
+
+    #[test]
+    fn test_bigint_div() {
+        let mut scheduler = Scheduler::new();
+
+        // Divide a BigInt by an Int
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Reg(Register(0)),
+                dest: Register(1), // 2 * i64::MAX (BigInt)
+            },
+            Instruction::Div {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Int(2),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // 2 * i64::MAX / 2 = i64::MAX, should normalize back to Int
+        assert_eq!(process.registers[2], Value::Int(i64::MAX));
+    }
+
+    #[test]
+    fn test_bigint_mod() {
+        let mut scheduler = Scheduler::new();
+
+        // Modulo with BigInt
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(5),
+                dest: Register(1), // i64::MAX + 5 (BigInt)
+            },
+            Instruction::Mod {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Int(10),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // (i64::MAX + 5) % 10 = (7 + 5) % 10 = 2 (since i64::MAX % 10 = 7)
+        let expected = (BigInt::from(i64::MAX) + BigInt::from(5)) % BigInt::from(10);
+        assert_eq!(process.registers[2], Value::from_bigint(expected));
+    }
+
+    #[test]
+    fn test_int_bigint_cross_comparison() {
+        let mut scheduler = Scheduler::new();
+
+        // Compare Int with BigInt
+        let program = vec![
+            Instruction::LoadInt {
+                value: i64::MAX,
+                dest: Register(0),
+            },
+            Instruction::Add {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Int(1),
+                dest: Register(1), // BigInt: i64::MAX + 1
+            },
+            // Compare Int < BigInt
+            Instruction::Lt {
+                a: Operand::Reg(Register(0)),
+                b: Operand::Reg(Register(1)),
+                dest: Register(2),
+            },
+            // Compare BigInt > Int
+            Instruction::Gt {
+                a: Operand::Reg(Register(1)),
+                b: Operand::Reg(Register(0)),
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[2], Value::Int(1)); // i64::MAX < i64::MAX + 1
+        assert_eq!(process.registers[3], Value::Int(1)); // i64::MAX + 1 > i64::MAX
     }
 }

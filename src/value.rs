@@ -3,13 +3,18 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+use num_bigint::BigInt;
+use num_traits::{ToPrimitive, Zero};
+
 use crate::Pid;
 
 /// Runtime value stored in registers
 #[derive(Clone)]
 pub enum Value {
-    /// Integer
+    /// Integer (fits in i64)
     Int(i64),
+    /// Big integer (arbitrary precision)
+    BigInt(BigInt),
     /// Floating-point number
     Float(f64),
     /// Process identifier
@@ -50,6 +55,7 @@ impl Value {
     pub fn as_int(&self) -> Option<i64> {
         match self {
             Value::Int(n) => Some(*n),
+            Value::BigInt(n) => n.to_i64(),
             _ => None,
         }
     }
@@ -61,12 +67,40 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Convert to BigInt if this is any integer type
+    pub fn to_bigint(&self) -> Option<BigInt> {
+        match self {
+            Value::Int(n) => Some(BigInt::from(*n)),
+            Value::BigInt(n) => Some(n.clone()),
+            _ => None,
+        }
+    }
+
+    /// Create a Value from a BigInt, normalizing to Int if it fits
+    pub fn from_bigint(n: BigInt) -> Value {
+        if let Some(i) = n.to_i64() {
+            Value::Int(i)
+        } else {
+            Value::BigInt(n)
+        }
+    }
+
+    /// Check if this value is zero (for Int or BigInt)
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Value::Int(0) => true,
+            Value::BigInt(n) => n.is_zero(),
+            _ => false,
+        }
+    }
 }
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Int(n) => write!(f, "{}", n),
+            Value::BigInt(n) => write!(f, "{}", n),
             Value::Float(x) => write!(f, "{}", x),
             Value::Pid(p) => write!(f, "Pid({})", p.0),
             Value::Ref(r) => write!(f, "#Ref<{}>", r),
@@ -137,6 +171,12 @@ impl Hash for Value {
         std::mem::discriminant(self).hash(state);
         match self {
             Value::Int(n) => n.hash(state),
+            Value::BigInt(n) => {
+                // Hash the bytes of the BigInt
+                let (sign, bytes) = n.to_bytes_le();
+                sign.hash(state);
+                bytes.hash(state);
+            }
             Value::Float(f) => f.to_bits().hash(state),
             Value::Pid(p) => p.0.hash(state),
             Value::Ref(r) => r.hash(state),
@@ -216,6 +256,10 @@ impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::BigInt(a), Value::BigInt(b)) => a == b,
+            // Cross-type Int/BigInt comparison
+            (Value::Int(a), Value::BigInt(b)) => BigInt::from(*a) == *b,
+            (Value::BigInt(a), Value::Int(b)) => *a == BigInt::from(*b),
             (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
             (Value::Pid(a), Value::Pid(b)) => a == b,
             (Value::Ref(a), Value::Ref(b)) => a == b,
