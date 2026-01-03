@@ -191,6 +191,28 @@ impl Codegen {
                         codegen.compile_function(&mangled_method)?;
                     }
                 }
+                Item::TraitImpl(trait_impl) => {
+                    // Compile trait impl methods with mangled names: TraitName_TypeName_methodname
+                    for method in &trait_impl.methods {
+                        let mangled_name = format!(
+                            "{}_{}_{}",
+                            trait_impl.trait_name, trait_impl.type_name, method.name
+                        );
+                        let mangled_method = Function {
+                            name: mangled_name,
+                            type_params: method.type_params.clone(),
+                            params: method.params.clone(),
+                            return_type: method.return_type.clone(),
+                            body: method.body.clone(),
+                            is_pub: method.is_pub,
+                        };
+                        codegen.compile_function(&mangled_method)?;
+                    }
+                }
+                Item::Trait(_) => {
+                    // Trait definitions don't generate code directly
+                    // They define the interface that implementations must provide
+                }
                 Item::Struct(_) | Item::Enum(_) => {
                     // Structs and enums don't generate code directly
                     // They're used for pattern matching at runtime

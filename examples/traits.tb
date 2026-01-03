@@ -1,0 +1,61 @@
+// Example: Trait definitions and implementations
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+struct Circle {
+    x: int,
+    y: int,
+    radius: int,
+}
+
+// Define a trait for display
+trait Display {
+    fn display(self) -> String;
+}
+
+// Define a trait for area calculation
+trait Area {
+    fn area(self) -> int;
+}
+
+// Implement Display for Point
+impl Display for Point {
+    pub fn display(self) -> String {
+        "Point"
+    }
+}
+
+// Implement Display for Circle
+impl Display for Circle {
+    pub fn display(self) -> String {
+        "Circle"
+    }
+}
+
+// Implement Area for Circle
+impl Area for Circle {
+    pub fn area(self) -> int {
+        // Approximate: 3 * r^2
+        3 * self.radius * self.radius
+    }
+}
+
+// Regular impl block for Point
+impl Point {
+    pub fn new(x: int, y: int) -> Point {
+        Point { x: x, y: y }
+    }
+}
+
+// Main function to test
+pub fn main() -> int {
+    let p = Point::new(10, 20);
+    let c = Circle { x: 0, y: 0, radius: 5 };
+
+    // For now, access fields directly
+    // (Full trait dispatch with proper syntax will come later)
+    c.radius * c.radius * 3
+}

@@ -34,11 +34,38 @@ pub enum Item {
     Use(UseDecl),
     /// Impl block: `impl Point { ... }`
     Impl(ImplBlock),
+    /// Trait definition: `trait Display { ... }`
+    Trait(TraitDef),
+    /// Trait implementation: `impl Display for Point { ... }`
+    TraitImpl(TraitImpl),
 }
 
 /// Impl block for associated functions and methods.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock {
+    pub type_name: String,
+    pub methods: Vec<Function>,
+}
+
+/// Trait definition.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitDef {
+    pub name: String,
+    pub methods: Vec<TraitMethod>,
+}
+
+/// Trait method signature (no body).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_type: Option<Type>,
+}
+
+/// Trait implementation for a type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitImpl {
+    pub trait_name: String,
     pub type_name: String,
     pub methods: Vec<Function>,
 }

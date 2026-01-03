@@ -230,6 +230,16 @@ impl CoreErlangEmitter {
                             .insert((impl_block.type_name.clone(), method.name.clone()));
                     }
                 }
+                Item::TraitImpl(trait_impl) => {
+                    // Register trait impl methods for dispatch
+                    for method in &trait_impl.methods {
+                        // Use full path: Trait_Type_method
+                        self.impl_methods.insert((
+                            format!("{}_{}", trait_impl.trait_name, trait_impl.type_name),
+                            method.name.clone(),
+                        ));
+                    }
+                }
                 _ => {}
             }
         }
@@ -250,6 +260,17 @@ impl CoreErlangEmitter {
                         if method.is_pub {
                             let mangled_name =
                                 format!("{}_{}", impl_block.type_name, method.name);
+                            exports.push(format!("'{}'/{}", mangled_name, method.params.len()));
+                        }
+                    }
+                }
+                Item::TraitImpl(trait_impl) => {
+                    for method in &trait_impl.methods {
+                        if method.is_pub {
+                            let mangled_name = format!(
+                                "{}_{}_{}",
+                                trait_impl.trait_name, trait_impl.type_name, method.name
+                            );
                             exports.push(format!("'{}'/{}", mangled_name, method.params.len()));
                         }
                     }
@@ -276,6 +297,24 @@ impl CoreErlangEmitter {
                 Item::Impl(impl_block) => {
                     for method in &impl_block.methods {
                         let mangled_name = format!("{}_{}", impl_block.type_name, method.name);
+                        let mangled_method = Function {
+                            name: mangled_name,
+                            type_params: method.type_params.clone(),
+                            params: method.params.clone(),
+                            return_type: method.return_type.clone(),
+                            body: method.body.clone(),
+                            is_pub: method.is_pub,
+                        };
+                        self.newline();
+                        self.emit_function(&mangled_method)?;
+                    }
+                }
+                Item::TraitImpl(trait_impl) => {
+                    for method in &trait_impl.methods {
+                        let mangled_name = format!(
+                            "{}_{}_{}",
+                            trait_impl.trait_name, trait_impl.type_name, method.name
+                        );
                         let mangled_method = Function {
                             name: mangled_name,
                             type_params: method.type_params.clone(),

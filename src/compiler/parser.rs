@@ -64,7 +64,12 @@ impl<'source> Parser<'source> {
 
         // Impl blocks don't have pub modifier (methods inside can be pub)
         if self.check(&Token::Impl) {
-            return self.parse_impl_block();
+            return self.parse_impl_or_trait_impl();
+        }
+
+        // Trait definitions don't have pub modifier
+        if self.check(&Token::Trait) {
+            return self.parse_trait_def();
         }
 
         let is_pub = self.check(&Token::Pub);
@@ -83,7 +88,7 @@ impl<'source> Parser<'source> {
         } else {
             let span = self.current_span();
             Err(ParseError::new(
-                "expected `fn`, `struct`, `enum`, `mod`, `impl`, or `use`",
+                "expected `fn`, `struct`, `enum`, `mod`, `impl`, `trait`, or `use`",
                 span,
             ))
         }
@@ -97,37 +102,123 @@ impl<'source> Parser<'source> {
         Ok(Item::ModDecl(ModDecl { name, is_pub }))
     }
 
-    /// Parse an impl block: `impl Point { fn new() -> Point { ... } }`
-    fn parse_impl_block(&mut self) -> ParseResult<Item> {
-        use crate::compiler::ast::ImplBlock;
-
+    /// Parse an impl block or trait implementation.
+    /// `impl Point { ... }` or `impl Display for Point { ... }`
+    fn parse_impl_or_trait_impl(&mut self) -> ParseResult<Item> {
         self.expect(&Token::Impl)?;
 
-        // Parse the type name (must be a TypeIdent like Point, not lowercase)
-        let type_name = self.expect_type_ident()?;
+        // Parse the first type name
+        let first_name = self.expect_type_ident()?;
 
+        // Check if this is a trait impl: `impl Trait for Type { ... }`
+        if self.check(&Token::For) {
+            self.advance();
+            let type_name = self.expect_type_ident()?;
+            self.expect(&Token::LBrace)?;
+
+            // Parse methods inside the trait impl
+            let mut methods = Vec::new();
+            while !self.check(&Token::RBrace) && !self.is_at_end() {
+                // Methods can have pub modifier
+                let is_pub = self.check(&Token::Pub);
+                if is_pub {
+                    self.advance();
+                }
+
+                if self.check(&Token::Fn) {
+                    methods.push(self.parse_function(is_pub)?);
+                } else {
+                    let span = self.current_span();
+                    return Err(ParseError::new("expected `fn` in impl block", span));
+                }
+            }
+
+            self.expect(&Token::RBrace)?;
+
+            Ok(Item::TraitImpl(TraitImpl {
+                trait_name: first_name,
+                type_name,
+                methods,
+            }))
+        } else {
+            // Regular impl block: `impl Type { ... }`
+            self.expect(&Token::LBrace)?;
+
+            // Parse methods inside the impl block
+            let mut methods = Vec::new();
+            while !self.check(&Token::RBrace) && !self.is_at_end() {
+                // Methods can have pub modifier
+                let is_pub = self.check(&Token::Pub);
+                if is_pub {
+                    self.advance();
+                }
+
+                if self.check(&Token::Fn) {
+                    methods.push(self.parse_function(is_pub)?);
+                } else {
+                    let span = self.current_span();
+                    return Err(ParseError::new("expected `fn` in impl block", span));
+                }
+            }
+
+            self.expect(&Token::RBrace)?;
+
+            Ok(Item::Impl(ImplBlock {
+                type_name: first_name,
+                methods,
+            }))
+        }
+    }
+
+    /// Parse a trait definition: `trait Display { fn display(self) -> String; }`
+    fn parse_trait_def(&mut self) -> ParseResult<Item> {
+        self.expect(&Token::Trait)?;
+        let name = self.expect_type_ident()?;
         self.expect(&Token::LBrace)?;
 
-        // Parse methods inside the impl block
         let mut methods = Vec::new();
         while !self.check(&Token::RBrace) && !self.is_at_end() {
-            // Methods can have pub modifier
-            let is_pub = self.check(&Token::Pub);
-            if is_pub {
-                self.advance();
-            }
-
-            if self.check(&Token::Fn) {
-                methods.push(self.parse_function(is_pub)?);
-            } else {
-                let span = self.current_span();
-                return Err(ParseError::new("expected `fn` in impl block", span));
-            }
+            methods.push(self.parse_trait_method()?);
         }
 
         self.expect(&Token::RBrace)?;
 
-        Ok(Item::Impl(ImplBlock { type_name, methods }))
+        Ok(Item::Trait(TraitDef { name, methods }))
+    }
+
+    /// Parse a trait method signature: `fn method(self, arg: Type) -> ReturnType;`
+    fn parse_trait_method(&mut self) -> ParseResult<TraitMethod> {
+        self.expect(&Token::Fn)?;
+        let name = self.expect_ident()?;
+
+        self.expect(&Token::LParen)?;
+
+        let mut params = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                params.push(self.parse_param()?);
+                if !self.check(&Token::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        self.expect(&Token::RParen)?;
+
+        let return_type = if self.check(&Token::Arrow) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(&Token::Semi)?;
+
+        Ok(TraitMethod {
+            name,
+            params,
+            return_type,
+        })
     }
 
     /// Parse a use declaration: `use foo::bar;` or `use foo::{a, b};` or `use foo::*;`
@@ -2329,6 +2420,70 @@ mod tests {
             assert!(!impl_block.methods[1].is_pub);
         } else {
             panic!("expected impl block");
+        }
+    }
+
+    #[test]
+    fn test_parse_trait_definition() {
+        let source = r#"
+            mod test {
+                trait Display {
+                    fn display(self) -> String;
+                    fn format(self, prefix: String) -> String;
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().expect("trait def should parse");
+
+        assert_eq!(module.items.len(), 1);
+
+        if let Item::Trait(trait_def) = &module.items[0] {
+            assert_eq!(trait_def.name, "Display");
+            assert_eq!(trait_def.methods.len(), 2);
+            assert_eq!(trait_def.methods[0].name, "display");
+            assert_eq!(trait_def.methods[0].params.len(), 1);
+            assert!(trait_def.methods[0].return_type.is_some());
+            assert_eq!(trait_def.methods[1].name, "format");
+            assert_eq!(trait_def.methods[1].params.len(), 2);
+        } else {
+            panic!("expected trait definition");
+        }
+    }
+
+    #[test]
+    fn test_parse_trait_impl() {
+        let source = r#"
+            mod test {
+                struct Point {
+                    x: int,
+                    y: int,
+                }
+
+                trait Display {
+                    fn display(self) -> String;
+                }
+
+                impl Display for Point {
+                    pub fn display(self) -> String {
+                        "Point"
+                    }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().expect("trait impl should parse");
+
+        assert_eq!(module.items.len(), 3);
+
+        if let Item::TraitImpl(trait_impl) = &module.items[2] {
+            assert_eq!(trait_impl.trait_name, "Display");
+            assert_eq!(trait_impl.type_name, "Point");
+            assert_eq!(trait_impl.methods.len(), 1);
+            assert_eq!(trait_impl.methods[0].name, "display");
+            assert!(trait_impl.methods[0].is_pub);
+        } else {
+            panic!("expected trait impl");
         }
     }
 }
