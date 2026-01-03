@@ -50,12 +50,17 @@ impl Point {
     }
 }
 
+// Test trait dispatch
+pub fn get_area(c: Circle) -> int {
+    Area::area(c)
+}
+
 // Main function to test
 pub fn main() -> int {
     let p = Point::new(10, 20);
     let c = Circle { x: 0, y: 0, radius: 5 };
 
-    // For now, access fields directly
-    // (Full trait dispatch with proper syntax will come later)
-    c.radius * c.radius * 3
+    // Use trait dispatch: Area::area(c)
+    let area = Area::area(c);
+    area
 }

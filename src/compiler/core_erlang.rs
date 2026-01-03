@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::compiler::ast::{
     BinOp, BitEndianness, BitSegmentType, BitSignedness, BitStringSegment, Block, Expr, Function,
-    Item, MatchArm, Module, Pattern, Stmt, UnaryOp, UseDecl, UseTree,
+    Item, MatchArm, Module, Pattern, Stmt, TraitDef, UnaryOp, UseDecl, UseTree,
 };
 
 /// Core Erlang emitter error.
@@ -39,7 +39,6 @@ pub struct CoreErlangEmitter {
     output: String,
     indent: usize,
     /// Counter for generating fresh variable names.
-    #[allow(dead_code)]
     var_counter: usize,
     /// Current module name (needed for local function calls)
     #[allow(dead_code)]
@@ -48,6 +47,11 @@ pub struct CoreErlangEmitter {
     imports: HashMap<String, (String, String)>,
     /// Impl block methods: (type_name, method_name) for resolving Type::method() calls
     impl_methods: HashSet<(String, String)>,
+    /// Trait definitions: trait_name → TraitDef
+    traits: HashMap<String, TraitDef>,
+    /// Trait implementations: (trait_name, method_name) → Vec<type_name>
+    /// Maps each trait method to the types that implement it
+    trait_impls: HashMap<(String, String), Vec<String>>,
 }
 
 impl CoreErlangEmitter {
@@ -59,6 +63,8 @@ impl CoreErlangEmitter {
             module_name: String::new(),
             imports: HashMap::new(),
             impl_methods: HashSet::new(),
+            traits: HashMap::new(),
+            trait_impls: HashMap::new(),
         }
     }
 
@@ -213,11 +219,95 @@ impl CoreErlangEmitter {
         }
     }
 
+    /// Emit trait method dispatch.
+    /// Generates a case expression that matches on __struct__ and calls the appropriate impl.
+    fn emit_trait_dispatch(
+        &mut self,
+        trait_name: &str,
+        method_name: &str,
+        args: &[Expr],
+    ) -> CoreErlangResult<()> {
+        // Get the types that implement this trait method
+        let key = (trait_name.to_string(), method_name.to_string());
+        let impl_types = self.trait_impls.get(&key).cloned().unwrap_or_default();
+
+        if impl_types.is_empty() {
+            return Err(CoreErlangError::new(format!(
+                "no implementations found for {}::{}",
+                trait_name, method_name
+            )));
+        }
+
+        if args.is_empty() {
+            return Err(CoreErlangError::new(format!(
+                "{}::{} requires at least one argument (the receiver)",
+                trait_name, method_name
+            )));
+        }
+
+        // Bind the first argument (receiver) to a variable for dispatch
+        let receiver_var = self.fresh_var();
+        self.emit(&format!("let <{}> = ", receiver_var));
+        self.emit_expr(&args[0])?;
+        self.newline();
+        self.emit("in ");
+
+        // Generate case on maps:get('__struct__', Receiver)
+        self.emit(&format!(
+            "case call 'maps':'get'('__struct__', {}) of",
+            receiver_var
+        ));
+        self.newline();
+        self.indent += 1;
+
+        // Generate a clause for each implementing type
+        for (i, type_name) in impl_types.iter().enumerate() {
+            let mangled_name = format!("{}_{}_{}", trait_name, type_name, method_name);
+
+            self.emit(&format!("<'{}'>", type_name));
+            self.emit(" when 'true' ->");
+            self.newline();
+            self.indent += 1;
+
+            // Call the implementation with the receiver and remaining args
+            self.emit(&format!("apply '{}'/{}", mangled_name, args.len()));
+            self.emit("(");
+            self.emit(&receiver_var);
+            for arg in args.iter().skip(1) {
+                self.emit(", ");
+                self.emit_expr(arg)?;
+            }
+            self.emit(")");
+
+            self.indent -= 1;
+            if i < impl_types.len() - 1 {
+                self.newline();
+            }
+        }
+
+        // Add a catch-all clause that raises an error
+        self.newline();
+        self.emit("<_Other> when 'true' ->");
+        self.newline();
+        self.indent += 1;
+        self.emit(&format!(
+            "call 'erlang':'error'({{'not_implemented', '{}', '{}', _Other}})",
+            trait_name, method_name
+        ));
+        self.indent -= 1;
+
+        self.newline();
+        self.indent -= 1;
+        self.emit("end");
+
+        Ok(())
+    }
+
     /// Emit a complete Core Erlang module.
     pub fn emit_module(&mut self, module: &Module) -> CoreErlangResult<String> {
         self.module_name = module.name.clone();
 
-        // First pass: collect imports and register impl methods
+        // First pass: collect imports, traits, and register impl methods
         for item in &module.items {
             match item {
                 Item::Use(use_decl) => {
@@ -230,6 +320,11 @@ impl CoreErlangEmitter {
                             .insert((impl_block.type_name.clone(), method.name.clone()));
                     }
                 }
+                Item::Trait(trait_def) => {
+                    // Register trait definition
+                    self.traits
+                        .insert(trait_def.name.clone(), trait_def.clone());
+                }
                 Item::TraitImpl(trait_impl) => {
                     // Register trait impl methods for dispatch
                     for method in &trait_impl.methods {
@@ -238,6 +333,13 @@ impl CoreErlangEmitter {
                             format!("{}_{}", trait_impl.trait_name, trait_impl.type_name),
                             method.name.clone(),
                         ));
+
+                        // Track which types implement each trait method
+                        let key = (trait_impl.trait_name.clone(), method.name.clone());
+                        self.trait_impls
+                            .entry(key)
+                            .or_insert_with(Vec::new)
+                            .push(trait_impl.type_name.clone());
                     }
                 }
                 _ => {}
@@ -616,15 +718,18 @@ impl CoreErlangEmitter {
                         }
                     }
                     Expr::Path { segments } if segments.len() == 2 => {
-                        // Check if this is an impl method call: Type::method()
-                        let type_name = &segments[0];
-                        let method_name = &segments[1];
-                        if self
+                        let first = &segments[0];
+                        let second = &segments[1];
+
+                        // Check if this is a trait dispatch: Trait::method(value, ...)
+                        if self.traits.contains_key(first) {
+                            self.emit_trait_dispatch(first, second, args)?;
+                        } else if self
                             .impl_methods
-                            .contains(&(type_name.clone(), method_name.clone()))
+                            .contains(&(first.clone(), second.clone()))
                         {
-                            // Call the mangled impl method
-                            let mangled_name = format!("{}_{}", type_name, method_name);
+                            // Call the mangled impl method: Type::method()
+                            let mangled_name = format!("{}_{}", first, second);
                             self.emit(&format!("apply '{}'/{}", mangled_name, args.len()));
                             self.emit("(");
                             self.emit_args(args)?;
