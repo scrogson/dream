@@ -55,6 +55,8 @@ pub struct Scheduler {
     pub modules: HashMap<String, Module>,
     /// Output buffer from print instructions
     pub output: Vec<String>,
+    /// Global reference counter for make_ref
+    pub next_ref: u64,
 }
 
 impl Scheduler {
@@ -66,6 +68,7 @@ impl Scheduler {
             registry: HashMap::new(),
             modules: HashMap::new(),
             output: Vec::new(),
+            next_ref: 0,
         }
     }
 
@@ -1538,6 +1541,26 @@ impl Scheduler {
                 };
                 let is_map = matches!(process.registers[source.0 as usize], Value::Map(_));
                 process.registers[dest.0 as usize] = Value::Int(if is_map { 1 } else { 0 });
+                ExecResult::Continue(1)
+            }
+
+            // ========== References ==========
+            Instruction::MakeRef { dest } => {
+                let ref_id = self.next_ref;
+                self.next_ref += 1;
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                process.registers[dest.0 as usize] = Value::Ref(ref_id);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::IsRef { source, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let is_ref = matches!(process.registers[source.0 as usize], Value::Ref(_));
+                process.registers[dest.0 as usize] = Value::Int(if is_ref { 1 } else { 0 });
                 ExecResult::Continue(1)
             }
         }
@@ -6208,5 +6231,157 @@ mod tests {
 
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         assert_eq!(process.registers[2], Value::Int(30));
+    }
+
+    // ========== Reference Tests ==========
+
+    #[test]
+    fn test_make_ref() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::MakeRef { dest: Register(0) },
+            Instruction::MakeRef { dest: Register(1) },
+            Instruction::MakeRef { dest: Register(2) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+
+        // Each ref should be unique
+        match (&process.registers[0], &process.registers[1], &process.registers[2]) {
+            (Value::Ref(r0), Value::Ref(r1), Value::Ref(r2)) => {
+                assert_ne!(r0, r1);
+                assert_ne!(r1, r2);
+                assert_ne!(r0, r2);
+            }
+            _ => panic!("Expected Ref values"),
+        }
+    }
+
+    #[test]
+    fn test_refs_unique_across_processes() {
+        let mut scheduler = Scheduler::new();
+
+        // First process creates a ref
+        let program1 = vec![
+            Instruction::MakeRef { dest: Register(0) },
+            Instruction::End,
+        ];
+
+        // Second process creates a ref
+        let program2 = vec![
+            Instruction::MakeRef { dest: Register(0) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program1);
+        scheduler.spawn(program2);
+        run_to_idle(&mut scheduler);
+
+        let p0 = scheduler.processes.get(&Pid(0)).unwrap();
+        let p1 = scheduler.processes.get(&Pid(1)).unwrap();
+
+        // Refs from different processes should be unique
+        match (&p0.registers[0], &p1.registers[0]) {
+            (Value::Ref(r0), Value::Ref(r1)) => {
+                assert_ne!(r0, r1);
+            }
+            _ => panic!("Expected Ref values"),
+        }
+    }
+
+    #[test]
+    fn test_is_ref() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create a ref
+            Instruction::MakeRef { dest: Register(0) },
+            // Check is_ref on ref
+            Instruction::IsRef {
+                source: Register(0),
+                dest: Register(1),
+            },
+            // Check is_ref on non-ref
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(2),
+            },
+            Instruction::IsRef {
+                source: Register(2),
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::Int(1)); // ref is a ref
+        assert_eq!(process.registers[3], Value::Int(0)); // int is not a ref
+    }
+
+    #[test]
+    fn test_ref_equality_via_copy() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create a ref
+            Instruction::MakeRef { dest: Register(0) },
+            // Copy it
+            Instruction::Move {
+                source: Register(0),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Copied ref should be equal to original (same underlying value)
+        assert_eq!(process.registers[0], process.registers[1]);
+    }
+
+    #[test]
+    fn test_ref_as_map_key() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Create a ref to use as key
+            Instruction::MakeRef { dest: Register(0) },
+            // Push ref and value onto stack
+            Instruction::Push {
+                source: Operand::Reg(Register(0)),
+            },
+            Instruction::Push {
+                source: Operand::Int(42),
+            },
+            // Create map with ref as key
+            Instruction::MakeMap {
+                count: 1,
+                dest: Register(1),
+            },
+            // Look up using the same ref
+            Instruction::MapGet {
+                map: Register(1),
+                key: Register(0),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Should retrieve the value using the ref key
+        assert_eq!(process.registers[2], Value::Int(42));
     }
 }

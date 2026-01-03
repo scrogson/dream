@@ -123,6 +123,7 @@ fn format_value(value: &Value) -> String {
         Value::Atom(a) => format!(":{}", a),
         Value::String(s) => format!("\"{}\"", s),
         Value::Pid(p) => format!("#PID<{}>", p.0),
+        Value::Ref(r) => format!("#Ref<{}>", r),
         Value::Tuple(elems) => {
             let inner: Vec<String> = elems.iter().map(format_value).collect();
             format!("{{{}}}", inner.join(", "))

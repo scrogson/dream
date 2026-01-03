@@ -12,6 +12,8 @@ pub enum Value {
     Int(i64),
     /// Process identifier
     Pid(Pid),
+    /// Unique reference (for request/response correlation)
+    Ref(u64),
     /// String (binary in Erlang terms)
     String(String),
     /// Atom - an interned symbol
@@ -54,6 +56,7 @@ impl std::fmt::Debug for Value {
         match self {
             Value::Int(n) => write!(f, "{}", n),
             Value::Pid(p) => write!(f, "Pid({})", p.0),
+            Value::Ref(r) => write!(f, "#Ref<{}>", r),
             Value::String(s) => write!(f, "{:?}", s),
             Value::Atom(a) => write!(f, ":{}", a),
             Value::Tuple(elements) => {
@@ -112,6 +115,7 @@ impl Hash for Value {
         match self {
             Value::Int(n) => n.hash(state),
             Value::Pid(p) => p.0.hash(state),
+            Value::Ref(r) => r.hash(state),
             Value::String(s) => s.hash(state),
             Value::Atom(a) => a.hash(state),
             Value::Tuple(elems) => {

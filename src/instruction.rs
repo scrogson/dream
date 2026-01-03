@@ -343,6 +343,14 @@ pub enum Instruction {
 
     /// Get all values from map as a list
     MapValues { map: Register, dest: Register },
+
+    // ========== References ==========
+    /// Create a new unique reference
+    MakeRef { dest: Register },
+
+    /// Check if value is a reference
+    /// Stores 1 (true) or 0 (false)
+    IsRef { source: Register, dest: Register },
 }
 
 /// An operand for arithmetic/comparison operations
