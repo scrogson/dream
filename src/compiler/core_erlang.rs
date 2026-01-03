@@ -62,6 +62,31 @@ impl CoreErlangEmitter {
         name
     }
 
+    /// Check if an expression contains a return statement.
+    fn contains_return(expr: &Expr) -> bool {
+        match expr {
+            Expr::Return(_) => true,
+            Expr::If { then_block, else_block, .. } => {
+                Self::block_contains_return(then_block)
+                    || else_block.as_ref().is_some_and(|b| Self::block_contains_return(b))
+            }
+            Expr::Match { arms, .. } => {
+                arms.iter().any(|arm| Self::contains_return(&arm.body))
+            }
+            Expr::Block(block) => Self::block_contains_return(block),
+            _ => false,
+        }
+    }
+
+    /// Check if a block contains a return statement.
+    fn block_contains_return(block: &Block) -> bool {
+        block.stmts.iter().any(|stmt| match stmt {
+            Stmt::Expr(e) => Self::contains_return(e),
+            Stmt::Let { value, .. } => Self::contains_return(value),
+        }) || block.expr.as_ref().is_some_and(|e| Self::contains_return(e))
+    }
+
+
     /// Convert an identifier to Core Erlang variable format (capitalize first letter).
     fn var_name(name: &str) -> String {
         let mut chars: Vec<char> = name.chars().collect();
@@ -248,6 +273,7 @@ impl CoreErlangEmitter {
     }
 
     /// Recursively emit statements as nested let expressions.
+    /// Handles early returns by transforming them to nested conditionals.
     fn emit_block_inner(
         &mut self,
         stmts: &[Stmt],
@@ -280,6 +306,36 @@ impl CoreErlangEmitter {
                 self.emit_block_inner(rest, final_expr)?;
             }
             Stmt::Expr(expr) => {
+                // Check for early return patterns
+                if let Expr::Return(ret_val) = expr {
+                    // Direct return - emit value and stop
+                    if let Some(val) = ret_val {
+                        self.emit_expr(val)?;
+                    } else {
+                        self.emit("'ok'");
+                    }
+                    // Ignore rest of block after return
+                    return Ok(());
+                }
+
+                // Check for if with early return
+                if let Expr::If { cond, then_block, else_block } = expr {
+                    let then_returns = Self::block_contains_return(then_block);
+                    let else_returns = else_block.as_ref().is_some_and(|b| Self::block_contains_return(b));
+
+                    if then_returns || else_returns {
+                        // Transform: if with return becomes case with continuation
+                        self.emit_if_with_early_return(
+                            cond,
+                            then_block,
+                            else_block.as_ref(),
+                            rest,
+                            final_expr,
+                        )?;
+                        return Ok(());
+                    }
+                }
+
                 if rest.is_empty() && final_expr.is_none() {
                     // Last expression statement is the result
                     self.emit_expr(expr)?;
@@ -297,6 +353,82 @@ impl CoreErlangEmitter {
             }
         }
 
+        Ok(())
+    }
+
+    /// Emit an if expression that contains early returns.
+    /// Transforms `if cond { return x; } rest` into `case cond of true -> x; false -> rest end`
+    fn emit_if_with_early_return(
+        &mut self,
+        cond: &Expr,
+        then_block: &Block,
+        else_block: Option<&Block>,
+        rest_stmts: &[Stmt],
+        final_expr: &Option<Box<Expr>>,
+    ) -> CoreErlangResult<()> {
+        self.emit("case ");
+        self.emit_expr(cond)?;
+        self.emit(" of");
+        self.indent += 1;
+        self.newline();
+
+        // True branch
+        self.emit("<'true'> when 'true' ->");
+        self.indent += 1;
+        self.newline();
+        self.emit_block_with_continuation(then_block, rest_stmts, final_expr)?;
+        self.indent -= 1;
+        self.newline();
+
+        // False branch
+        self.emit("<'false'> when 'true' ->");
+        self.indent += 1;
+        self.newline();
+        if let Some(else_blk) = else_block {
+            self.emit_block_with_continuation(else_blk, rest_stmts, final_expr)?;
+        } else {
+            // No else block - continue with rest of the code
+            self.emit_block_inner(rest_stmts, final_expr)?;
+        }
+        self.indent -= 1;
+
+        self.indent -= 1;
+        self.newline();
+        self.emit("end");
+
+        Ok(())
+    }
+
+    /// Emit a block, but if it doesn't contain a return, append the continuation.
+    fn emit_block_with_continuation(
+        &mut self,
+        block: &Block,
+        rest_stmts: &[Stmt],
+        final_expr: &Option<Box<Expr>>,
+    ) -> CoreErlangResult<()> {
+        // Combine block statements with continuation.
+        // emit_block_inner will handle early returns properly - paths that return
+        // will stop, paths that don't will continue with the rest.
+        let mut all_stmts = block.stmts.clone();
+
+        // If block.expr contains a return, treat it as a statement so emit_block_inner
+        // can handle it with the continuation. Otherwise it's the block's final value.
+        let combined_final = if let Some(expr) = &block.expr {
+            if Self::contains_return(expr) {
+                // Convert the expr to a statement so it gets processed with early return logic
+                all_stmts.push(Stmt::Expr((**expr).clone()));
+                final_expr
+            } else {
+                // No return in expr - it's the block's normal result
+                &block.expr
+            }
+        } else {
+            final_expr
+        };
+
+        all_stmts.extend(rest_stmts.iter().cloned());
+
+        self.emit_block_inner(&all_stmts, combined_final)?;
         Ok(())
     }
 
