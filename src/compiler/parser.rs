@@ -39,10 +39,20 @@ impl<'source> Parser<'source> {
         Ok(Module { name, items })
     }
 
-    /// Parse a source file as an implicit module.
-    /// Used for lib.dream, main.dream, or any file loaded via `mod foo;`.
-    /// The module name is derived from the filename.
+    /// Parse a source file as a module.
+    /// Handles both wrapped modules (`mod name { ... }`) and file-based modules (items directly).
+    /// For wrapped modules, the module name comes from the source.
+    /// For file-based modules, the name is derived from the filename.
     pub fn parse_file(&mut self, module_name: &str) -> ParseResult<Module> {
+        // Check if this is a wrapped module: `mod name { ... }`
+        if self.check(&Token::Mod) {
+            // Peek ahead to see if it's `mod name {` (wrapped) or `mod name;` (declaration)
+            if self.peek_is_wrapped_module() {
+                return self.parse_module();
+            }
+        }
+
+        // File-based module: parse items directly
         let mut items = Vec::new();
 
         while !self.is_at_end() {
@@ -53,6 +63,18 @@ impl<'source> Parser<'source> {
             name: module_name.to_string(),
             items,
         })
+    }
+
+    /// Check if the next tokens are `mod <ident> {` (wrapped module).
+    fn peek_is_wrapped_module(&self) -> bool {
+        // Check: mod <ident> {
+        if self.pos + 2 < self.tokens.len() {
+            let is_mod = matches!(self.tokens[self.pos].token, Token::Mod);
+            let is_ident = matches!(self.tokens[self.pos + 1].token, Token::Ident(_));
+            let is_lbrace = matches!(self.tokens[self.pos + 2].token, Token::LBrace);
+            return is_mod && is_ident && is_lbrace;
+        }
+        false
     }
 
     /// Parse a top-level item.

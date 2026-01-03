@@ -26,8 +26,10 @@ enum Commands {
         /// Name of the project
         name: String,
     },
-    /// Build the project
+    /// Build the project or a single file
     Build {
+        /// Source file to compile (optional, uses project if not specified)
+        file: Option<PathBuf>,
         /// Target: beam, core, or vm
         #[arg(long, short, default_value = "beam")]
         target: String,
@@ -35,8 +37,10 @@ enum Commands {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
-    /// Compile the project (alias for build)
+    /// Compile the project or a single file (alias for build)
     Compile {
+        /// Source file to compile (optional, uses project if not specified)
+        file: Option<PathBuf>,
         /// Target: beam, core, or vm
         #[arg(long, short, default_value = "beam")]
         target: String,
@@ -44,11 +48,10 @@ enum Commands {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
-    /// Build and run the project
+    /// Build and run the project or a single file
     Run {
-        /// Module to run (default: project name)
-        #[arg(short, long)]
-        module: Option<String>,
+        /// Source file to run (optional, uses project if not specified)
+        file: Option<PathBuf>,
         /// Function to call (default: main)
         #[arg(short, long, default_value = "main")]
         function: String,
@@ -64,14 +67,14 @@ fn main() -> ExitCode {
 
     match cli.command {
         Commands::New { name } => cmd_new(&name),
-        Commands::Build { target, output } | Commands::Compile { target, output } => {
-            cmd_build(&target, output.as_deref())
+        Commands::Build { file, target, output } | Commands::Compile { file, target, output } => {
+            cmd_build(file.as_deref(), &target, output.as_deref())
         }
         Commands::Run {
-            module,
+            file,
             function,
             args,
-        } => cmd_run(module.as_deref(), &function, &args),
+        } => cmd_run(file.as_deref(), &function, &args),
         Commands::Version => {
             println!("dream {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
@@ -118,9 +121,14 @@ fn cmd_new(name: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Build the project.
-fn cmd_build(target: &str, output: Option<&Path>) -> ExitCode {
-    // Find project root and load config
+/// Build the project or a standalone file.
+fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>) -> ExitCode {
+    // Determine if we're building a standalone file or a project
+    if let Some(source_file) = file {
+        return build_standalone_file(source_file, target, output);
+    }
+
+    // Project mode: find project root and load config
     let (project_root, config) = match ProjectConfig::from_project_root() {
         Ok(result) => result,
         Err(e) => {
@@ -152,9 +160,37 @@ fn cmd_build(target: &str, output: Option<&Path>) -> ExitCode {
         }
     };
 
+    compile_and_emit(&entry_file, &build_dir, target)
+}
+
+/// Build a standalone .dream file.
+fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>) -> ExitCode {
+    if !source_file.exists() {
+        eprintln!("Error: file not found: {}", source_file.display());
+        return ExitCode::from(1);
+    }
+
+    // Default output directory is current directory
+    let build_dir = output
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    // Create build directory if needed
+    if let Err(e) = fs::create_dir_all(&build_dir) {
+        eprintln!("Error creating build directory: {}", e);
+        return ExitCode::from(1);
+    }
+
+    println!("Compiling {}...", source_file.display());
+
+    compile_and_emit(source_file, &build_dir, target)
+}
+
+/// Compile source file(s) and emit to build directory.
+fn compile_and_emit(entry_file: &Path, build_dir: &Path, target: &str) -> ExitCode {
     // Load modules
     let mut loader = ModuleLoader::new();
-    if let Err(e) = loader.load_project(&entry_file) {
+    if let Err(e) = loader.load_project(entry_file) {
         eprintln!("Error loading project: {}", e);
         return ExitCode::from(1);
     }
@@ -205,7 +241,7 @@ fn cmd_build(target: &str, output: Option<&Path>) -> ExitCode {
             let status = Command::new("erlc")
                 .arg("+from_core")
                 .arg("-o")
-                .arg(&build_dir)
+                .arg(build_dir)
                 .arg(core_file)
                 .status();
 
@@ -232,27 +268,45 @@ fn cmd_build(target: &str, output: Option<&Path>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Build and run the project.
-fn cmd_run(module: Option<&str>, function: &str, _args: &[String]) -> ExitCode {
-    // First, build the project
-    let build_result = cmd_build("beam", None);
-    if build_result != ExitCode::SUCCESS {
-        return build_result;
-    }
+/// Build and run the project or a standalone file.
+fn cmd_run(file: Option<&Path>, function: &str, args: &[String]) -> ExitCode {
+    // Determine beam directory and module name based on mode
+    let (beam_dir, module_name) = if let Some(source_file) = file {
+        // Standalone file mode
+        let build_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-    // Find project root and load config
-    let (project_root, config) = match ProjectConfig::from_project_root() {
-        Ok(result) => result,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            return ExitCode::from(1);
+        // Build the standalone file
+        let build_result = cmd_build(Some(source_file), "beam", Some(&build_dir));
+        if build_result != ExitCode::SUCCESS {
+            return build_result;
         }
+
+        // Module name comes from the file name
+        let module_name = source_file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main")
+            .to_string();
+
+        (build_dir, module_name)
+    } else {
+        // Project mode
+        let build_result = cmd_build(None, "beam", None);
+        if build_result != ExitCode::SUCCESS {
+            return build_result;
+        }
+
+        // Find project root and load config
+        let (project_root, config) = match ProjectConfig::from_project_root() {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return ExitCode::from(1);
+            }
+        };
+
+        (config.beam_dir(&project_root), "main".to_string())
     };
-
-    let beam_dir = config.beam_dir(&project_root);
-
-    // Default module is "main" (from main.dream), not the package name
-    let module_name = module.unwrap_or("main");
 
     // Check if erl is available
     if !command_exists("erl") {
@@ -261,14 +315,21 @@ fn cmd_run(module: Option<&str>, function: &str, _args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
+    // Format arguments for Erlang
+    let args_str = if args.is_empty() {
+        String::new()
+    } else {
+        args.join(", ")
+    };
+
     println!();
-    println!("Running {}:{}()...", module_name, function);
+    println!("Running {}:{}({})...", module_name, function, args_str);
     println!();
 
     // Run with erl
     let eval_expr = format!(
-        "io:format(\"~p~n\", [{}:{}()]), halt().",
-        module_name, function
+        "io:format(\"~p~n\", [{}:{}({})]), halt().",
+        module_name, function, args_str
     );
 
     let status = Command::new("erl")
