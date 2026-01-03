@@ -56,6 +56,16 @@ pub enum Instruction {
     /// Crash the process (for testing links)
     Crash,
 
+    /// Exit the process with a reason (from register)
+    /// If reason is :normal, linked processes are not signaled (unless they trap_exit)
+    /// If reason is abnormal, linked processes receive exit signal
+    Exit { reason: Register },
+
+    /// Set the trap_exit flag for this process
+    /// When true, exit signals from linked processes become {:EXIT, Pid, Reason} messages
+    /// When false (default), abnormal exit signals kill this process
+    TrapExit { enable: bool },
+
     // ========== Arithmetic & Logic ==========
     /// Load an immediate integer into a register
     LoadInt { value: i64, dest: Register },

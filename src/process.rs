@@ -32,6 +32,10 @@ pub struct Process {
     /// Processes that are monitoring this one: (ref, monitoring_pid)
     pub monitored_by: Vec<(u64, Pid)>,
     pub status: ProcessStatus,
+    /// Exit reason when process terminates (default: :normal for Done, :crashed for Crashed)
+    pub exit_reason: Value,
+    /// When true, exit signals from linked processes become messages instead of killing this process
+    pub trap_exit: bool,
     /// Remaining timeout (in reductions) when waiting for a message
     pub timeout: Option<u32>,
     /// Call stack for function calls (stores return context)
@@ -70,6 +74,8 @@ impl Process {
             monitors: Vec::new(),
             monitored_by: Vec::new(),
             status: ProcessStatus::Ready,
+            exit_reason: Value::Atom("normal".to_string()),
+            trap_exit: false,
             timeout: None,
             call_stack: Vec::new(),
             stack: Vec::new(),
@@ -91,6 +97,8 @@ impl Process {
             monitors: Vec::new(),
             monitored_by: Vec::new(),
             status: ProcessStatus::Ready,
+            exit_reason: Value::Atom("normal".to_string()),
+            trap_exit: false,
             timeout: None,
             call_stack: Vec::new(),
             stack: Vec::new(),

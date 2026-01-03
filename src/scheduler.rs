@@ -3,8 +3,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::{
-    CallFrame, DownReason, Instruction, Message, Module, Operand, Pattern, Pid, Process,
-    ProcessStatus, Register, Source, SystemMsg, Value,
+    CallFrame, Instruction, Message, Module, Operand, Pattern, Pid, Process, ProcessStatus,
+    Register, Source, SystemMsg, Value,
 };
 
 /// Result of stepping the scheduler
@@ -28,10 +28,12 @@ enum ExecResult {
     Jump(usize, u32),
     /// Waiting for a message
     Wait,
-    /// Process finished normally
+    /// Process finished normally (exit reason: :normal)
     Done,
-    /// Process crashed
+    /// Process crashed (exit reason: :crashed)
     Crash,
+    /// Process exited with a specific reason
+    Exit(Value),
 }
 
 /// Platform-specific logging
@@ -203,13 +205,21 @@ impl Scheduler {
             let code_len = self.get_code_len(process);
             if process.pc >= code_len {
                 // Process finished
-                self.finish_process(pid, ProcessStatus::Done);
+                self.finish_process_with_reason(
+                    pid,
+                    ProcessStatus::Done,
+                    Value::Atom("normal".to_string()),
+                );
                 break;
             }
 
             // Get instruction (from module or inline code)
             let Some(instruction) = self.get_instruction(process) else {
-                self.finish_process(pid, ProcessStatus::Crashed);
+                self.finish_process_with_reason(
+                    pid,
+                    ProcessStatus::Crashed,
+                    Value::Atom("crashed".to_string()),
+                );
                 break;
             };
 
@@ -243,11 +253,31 @@ impl Scheduler {
                     break;
                 }
                 ExecResult::Done => {
-                    self.finish_process(pid, ProcessStatus::Done);
+                    // Normal exit with :normal reason
+                    self.finish_process_with_reason(
+                        pid,
+                        ProcessStatus::Done,
+                        Value::Atom("normal".to_string()),
+                    );
                     break;
                 }
                 ExecResult::Crash => {
-                    self.finish_process(pid, ProcessStatus::Crashed);
+                    // Abnormal exit with :crashed reason
+                    self.finish_process_with_reason(
+                        pid,
+                        ProcessStatus::Crashed,
+                        Value::Atom("crashed".to_string()),
+                    );
+                    break;
+                }
+                ExecResult::Exit(reason) => {
+                    // Exit with custom reason
+                    let status = if reason == Value::Atom("normal".to_string()) {
+                        ProcessStatus::Done
+                    } else {
+                        ProcessStatus::Crashed
+                    };
+                    self.finish_process_with_reason(pid, status, reason);
                     break;
                 }
             }
@@ -486,6 +516,22 @@ impl Scheduler {
             }
 
             Instruction::Crash => ExecResult::Crash,
+
+            Instruction::Exit { reason } => {
+                if let Some(p) = self.processes.get(&pid) {
+                    let exit_reason = p.registers[reason.0 as usize].clone();
+                    ExecResult::Exit(exit_reason)
+                } else {
+                    ExecResult::Crash
+                }
+            }
+
+            Instruction::TrapExit { enable } => {
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    p.trap_exit = enable;
+                }
+                ExecResult::Continue(1)
+            }
 
             // ========== Arithmetic ==========
             Instruction::LoadInt { value, dest } => {
@@ -1850,14 +1896,23 @@ impl Scheduler {
         match msg {
             Message::User(s) => Value::String(s),
             Message::System(sys) => match sys {
-                SystemMsg::Exit(p) => Value::String(format!("EXIT<{}>", p.0)),
-                SystemMsg::Crash(p) => Value::String(format!("CRASH<{}>", p.0)),
-                SystemMsg::Down(p, reason) => {
-                    let reason_str = match reason {
-                        DownReason::Normal => "normal",
-                        DownReason::Crashed => "crashed",
-                    };
-                    Value::String(format!("DOWN<{},{}>", p.0, reason_str))
+                SystemMsg::Exit(pid, reason) => {
+                    // {:EXIT, Pid, Reason}
+                    Value::Tuple(vec![
+                        Value::Atom("EXIT".to_string()),
+                        Value::Pid(pid),
+                        reason,
+                    ])
+                }
+                SystemMsg::Down(ref_id, pid, reason) => {
+                    // {:DOWN, Ref, :process, Pid, Reason}
+                    Value::Tuple(vec![
+                        Value::Atom("DOWN".to_string()),
+                        Value::Ref(ref_id),
+                        Value::Atom("process".to_string()),
+                        Value::Pid(pid),
+                        reason,
+                    ])
                 }
             },
         }
@@ -1950,9 +2005,10 @@ impl Scheduler {
         }
     }
 
-    fn finish_process(&mut self, pid: Pid, status: ProcessStatus) {
+    fn finish_process_with_reason(&mut self, pid: Pid, status: ProcessStatus, reason: Value) {
         let (links, monitors) = if let Some(p) = self.processes.get_mut(&pid) {
             p.status = status;
+            p.exit_reason = reason.clone();
             (p.links.clone(), p.monitored_by.clone())
         } else {
             return;
@@ -1961,34 +2017,55 @@ impl Scheduler {
         // Remove any registry entries for this process
         self.registry.retain(|_, v| *v != pid);
 
-        // Notify linked processes (bidirectional)
-        let link_msg = match status {
-            ProcessStatus::Done => Message::System(SystemMsg::Exit(pid)),
-            ProcessStatus::Crashed => Message::System(SystemMsg::Crash(pid)),
-            _ => return,
-        };
+        // Determine if this is a "normal" exit
+        let is_normal = reason == Value::Atom("normal".to_string());
 
+        // Handle linked processes
+        // - Normal exit: only notify if they trap_exit (send {:EXIT, Pid, :normal})
+        // - Abnormal exit: if they trap_exit, send message; otherwise crash them
+        let mut to_crash = Vec::new();
         for linked_pid in links {
             if let Some(linked) = self.processes.get_mut(&linked_pid) {
-                linked.mailbox.push_back(link_msg.clone());
-                if linked.status == ProcessStatus::Waiting {
-                    linked.status = ProcessStatus::Ready;
-                    self.ready_queue.push_back(linked_pid);
+                // Remove the link from the linked process
+                linked.links.retain(|p| *p != pid);
+
+                if linked.trap_exit {
+                    // Convert exit signal to message: {:EXIT, Pid, Reason}
+                    let exit_tuple = Value::Tuple(vec![
+                        Value::Atom("EXIT".to_string()),
+                        Value::Pid(pid),
+                        reason.clone(),
+                    ]);
+                    linked.mailbox.push_back(Message::System(SystemMsg::Exit(pid, reason.clone())));
+                    // Also add as user message for pattern matching in receive
+                    linked.mailbox.push_back(Message::User(format!("{:?}", exit_tuple)));
+                    if linked.status == ProcessStatus::Waiting {
+                        linked.status = ProcessStatus::Ready;
+                        self.ready_queue.push_back(linked_pid);
+                    }
+                } else if !is_normal {
+                    // Abnormal exit propagates to linked processes (crash them)
+                    to_crash.push(linked_pid);
                 }
+                // Normal exit with trap_exit=false: do nothing (no notification)
             }
         }
 
-        // Notify monitoring processes (one-way)
-        let down_reason = match status {
-            ProcessStatus::Done => DownReason::Normal,
-            ProcessStatus::Crashed => DownReason::Crashed,
-            _ => return,
-        };
-        let monitor_msg = Message::System(SystemMsg::Down(pid, down_reason));
+        // Crash linked processes that don't trap_exit (after releasing borrow)
+        for linked_pid in to_crash {
+            self.finish_process_with_reason(
+                linked_pid,
+                ProcessStatus::Crashed,
+                reason.clone(),
+            );
+        }
 
-        for (_ref_id, monitor_pid) in monitors {
+        // Notify monitoring processes (one-way, always send DOWN message)
+        for (ref_id, monitor_pid) in monitors {
             if let Some(monitor) = self.processes.get_mut(&monitor_pid) {
-                monitor.mailbox.push_back(monitor_msg.clone());
+                monitor
+                    .mailbox
+                    .push_back(Message::System(SystemMsg::Down(ref_id, pid, reason.clone())));
                 if monitor.status == ProcessStatus::Waiting {
                     monitor.status = ProcessStatus::Ready;
                     self.ready_queue.push_back(monitor_pid);
@@ -2143,8 +2220,9 @@ mod tests {
         // Child: crash immediately
         let child = vec![Instruction::Crash];
 
-        // Parent: spawn_link child, receive crash notification
+        // Parent: enable trap_exit, spawn_link child, receive exit notification
         let parent = vec![
+            Instruction::TrapExit { enable: true },
             Instruction::SpawnLink {
                 code: child,
                 dest: Register(0),
@@ -2156,11 +2234,16 @@ mod tests {
         scheduler.spawn(parent);
         run_to_idle(&mut scheduler);
 
-        // Parent should have received crash notification
+        // Parent should have received {:EXIT, ChildPid, :crashed} tuple
         let parent_process = scheduler.processes.get(&Pid(0)).unwrap();
         match &parent_process.registers[1] {
-            Value::String(s) => assert!(s.starts_with("CRASH<")),
-            _ => panic!("Expected crash notification string"),
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 3);
+                assert_eq!(elems[0], Value::Atom("EXIT".to_string()));
+                assert!(matches!(elems[1], Value::Pid(_)));
+                assert_eq!(elems[2], Value::Atom("crashed".to_string()));
+            }
+            _ => panic!("Expected EXIT tuple, got {:?}", parent_process.registers[1]),
         }
 
         let (_, _, done, crashed) = scheduler.process_count();
@@ -2192,11 +2275,18 @@ mod tests {
         scheduler.spawn(observer);
         run_to_idle(&mut scheduler);
 
-        // Observer should have received DOWN notification
+        // Observer should have received {:DOWN, Ref, :process, Pid, Reason} tuple
         let observer_process = scheduler.processes.get(&Pid(0)).unwrap();
         match &observer_process.registers[1] {
-            Value::String(s) => assert!(s.starts_with("DOWN<") && s.contains("crashed")),
-            _ => panic!("Expected DOWN notification string"),
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 5);
+                assert_eq!(elems[0], Value::Atom("DOWN".to_string()));
+                assert!(matches!(elems[1], Value::Ref(_)));
+                assert_eq!(elems[2], Value::Atom("process".to_string()));
+                assert!(matches!(elems[3], Value::Pid(_)));
+                assert_eq!(elems[4], Value::Atom("crashed".to_string()));
+            }
+            _ => panic!("Expected DOWN tuple, got {:?}", observer_process.registers[1]),
         }
     }
 
@@ -6979,6 +7069,229 @@ mod tests {
                 assert_ne!(r1, r2); // Different monitor refs
             }
             _ => panic!("Expected two Refs"),
+        }
+    }
+
+    #[test]
+    fn test_exit_with_normal_reason() {
+        // Normal exit doesn't propagate to linked processes (unless they trap_exit)
+        let mut scheduler = Scheduler::new();
+
+        // Child: exit normally
+        let child = vec![
+            Instruction::LoadAtom {
+                name: "normal".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Exit {
+                reason: Register(0),
+            },
+        ];
+
+        // Parent: link to child, wait for message (should not receive one)
+        let parent = vec![
+            Instruction::SpawnLink {
+                code: child,
+                dest: Register(0),
+            },
+            // Use timeout to avoid blocking forever
+            Instruction::ReceiveTimeout {
+                dest: Register(1),
+                timeout: 10,
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent);
+        run_to_idle(&mut scheduler);
+
+        // Parent should finish normally (child's normal exit doesn't propagate)
+        let parent_process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(parent_process.status, ProcessStatus::Done);
+        // Should have timed out, not received an exit message
+        assert_eq!(
+            parent_process.registers[1],
+            Value::String("TIMEOUT".to_string())
+        );
+    }
+
+    #[test]
+    fn test_exit_with_custom_reason() {
+        // Exit with a custom reason propagates through trap_exit
+        let mut scheduler = Scheduler::new();
+
+        // Child: exit with custom reason
+        let child = vec![
+            Instruction::LoadAtom {
+                name: "shutdown".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Exit {
+                reason: Register(0),
+            },
+        ];
+
+        // Parent: trap_exit, link to child, receive exit message
+        let parent = vec![
+            Instruction::TrapExit { enable: true },
+            Instruction::SpawnLink {
+                code: child,
+                dest: Register(0),
+            },
+            Instruction::Receive { dest: Register(1) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent);
+        run_to_idle(&mut scheduler);
+
+        // Parent should have received {:EXIT, Pid, :shutdown}
+        let parent_process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(parent_process.status, ProcessStatus::Done);
+        match &parent_process.registers[1] {
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 3);
+                assert_eq!(elems[0], Value::Atom("EXIT".to_string()));
+                assert!(matches!(elems[1], Value::Pid(_)));
+                assert_eq!(elems[2], Value::Atom("shutdown".to_string()));
+            }
+            _ => panic!("Expected EXIT tuple, got {:?}", parent_process.registers[1]),
+        }
+    }
+
+    #[test]
+    fn test_link_crash_without_trap_exit() {
+        // Without trap_exit, linked process crash propagates (crashes parent too)
+        let mut scheduler = Scheduler::new();
+
+        // Child: crash immediately
+        let child = vec![Instruction::Crash];
+
+        // Parent: link to child, try to receive (should crash before receiving)
+        let parent = vec![
+            Instruction::SpawnLink {
+                code: child,
+                dest: Register(0),
+            },
+            Instruction::Receive { dest: Register(1) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(parent);
+        run_to_idle(&mut scheduler);
+
+        // Parent should have crashed (exit signal propagated)
+        let parent_process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(parent_process.status, ProcessStatus::Crashed);
+        assert_eq!(
+            parent_process.exit_reason,
+            Value::Atom("crashed".to_string())
+        );
+    }
+
+    #[test]
+    fn test_trap_exit_toggle() {
+        // Test that TrapExit instruction works
+        let mut scheduler = Scheduler::new();
+
+        // Worker exits normally
+        let worker = vec![Instruction::End];
+
+        // Process: enable trap_exit, spawn_link worker, verify trap_exit is enabled
+        let program = vec![
+            Instruction::TrapExit { enable: true },
+            Instruction::SpawnLink {
+                code: worker,
+                dest: Register(0),
+            },
+            // Use timeout to not block forever
+            Instruction::ReceiveTimeout {
+                dest: Register(1),
+                timeout: 10,
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        // Process should have finished and have trap_exit enabled
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert!(process.trap_exit);
+        assert_eq!(process.status, ProcessStatus::Done);
+    }
+
+    #[test]
+    fn test_exit_reason_stored_in_process() {
+        // Test that exit reason is stored in the process
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadAtom {
+                name: "my_reason".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Exit {
+                reason: Register(0),
+            },
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Crashed); // not :normal
+        assert_eq!(
+            process.exit_reason,
+            Value::Atom("my_reason".to_string())
+        );
+    }
+
+    #[test]
+    fn test_monitor_receives_exit_reason() {
+        // Monitor DOWN message includes the exit reason
+        let mut scheduler = Scheduler::new();
+
+        // Worker: exit with custom reason
+        let worker = vec![
+            Instruction::LoadAtom {
+                name: "killed".to_string(),
+                dest: Register(0),
+            },
+            Instruction::Exit {
+                reason: Register(0),
+            },
+        ];
+
+        // Observer: spawn, monitor, wait for DOWN
+        let observer = vec![
+            Instruction::Spawn {
+                code: worker,
+                dest: Register(0),
+            },
+            Instruction::Monitor {
+                target: Source::Reg(Register(0)),
+                dest: Register(2),
+            },
+            Instruction::Receive { dest: Register(1) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(observer);
+        run_to_idle(&mut scheduler);
+
+        // Observer should have received {:DOWN, Ref, :process, Pid, :killed}
+        let observer_process = scheduler.processes.get(&Pid(0)).unwrap();
+        match &observer_process.registers[1] {
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 5);
+                assert_eq!(elems[0], Value::Atom("DOWN".to_string()));
+                assert!(matches!(elems[1], Value::Ref(_)));
+                assert_eq!(elems[2], Value::Atom("process".to_string()));
+                assert!(matches!(elems[3], Value::Pid(_)));
+                assert_eq!(elems[4], Value::Atom("killed".to_string()));
+            }
+            _ => panic!("Expected DOWN tuple, got {:?}", observer_process.registers[1]),
         }
     }
 }
