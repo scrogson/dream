@@ -27,6 +27,6 @@ pub use instruction::{Instruction, Operand, Pattern, Register, Source};
 pub use message::{Message, SystemMsg};
 pub use module::{FunctionDef, Module};
 pub use pid::Pid;
-pub use process::{CallFrame, Process, ProcessStatus};
+pub use process::{CallFrame, Process, ProcessStatus, TryFrame};
 pub use scheduler::{Scheduler, StepResult};
 pub use value::Value;

@@ -13,6 +13,19 @@ pub struct CallFrame {
     pub return_pc: usize,
 }
 
+/// A frame on the exception handler stack for try/catch/after.
+#[derive(Debug, Clone)]
+pub struct TryFrame {
+    /// Where to jump on exception (catch block)
+    pub catch_target: usize,
+    /// Where to jump for cleanup (after block, always runs)
+    pub after_target: Option<usize>,
+    /// Call stack depth when try was entered (for unwinding)
+    pub call_stack_depth: usize,
+    /// Data stack depth when try was entered (for unwinding)
+    pub stack_depth: usize,
+}
+
 /// Process state
 #[derive(Debug)]
 pub struct Process {
@@ -44,6 +57,10 @@ pub struct Process {
     pub stack: Vec<Value>,
     /// Process dictionary for per-process key-value storage
     pub dictionary: HashMap<Value, Value>,
+    /// Exception handler stack for try/catch/after
+    pub try_stack: Vec<TryFrame>,
+    /// Current exception being handled (class, reason, stacktrace)
+    pub current_exception: Option<(Value, Value, Vec<String>)>,
 }
 
 /// Process execution status
@@ -80,6 +97,8 @@ impl Process {
             call_stack: Vec::new(),
             stack: Vec::new(),
             dictionary: HashMap::new(),
+            try_stack: Vec::new(),
+            current_exception: None,
         }
     }
 
@@ -103,6 +122,8 @@ impl Process {
             call_stack: Vec::new(),
             stack: Vec::new(),
             dictionary: HashMap::new(),
+            try_stack: Vec::new(),
+            current_exception: None,
         }
     }
 }

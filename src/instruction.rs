@@ -424,6 +424,34 @@ pub enum Instruction {
 
     /// Read the remaining time on a timer (0 if already fired or cancelled)
     ReadTimer { timer_ref: Register, dest: Register },
+
+    // ========== Exception Handling ==========
+    /// Begin a try block. Pushes exception handler onto try stack.
+    /// catch_target: where to jump on exception
+    /// after_target: optional cleanup block (always runs)
+    Try {
+        catch_target: usize,
+        after_target: Option<usize>,
+    },
+
+    /// End a try block successfully. Pops handler from try stack.
+    /// If there's an after block, jumps to it.
+    EndTry,
+
+    /// Throw an exception. Unwinds to nearest catch handler.
+    /// class: :error, :exit, or :throw
+    /// reason: the exception reason (from register)
+    Throw { class: Register, reason: Register },
+
+    /// Get the current exception as {class, reason, stacktrace} tuple
+    /// Used in catch blocks to access exception details
+    GetException { dest: Register },
+
+    /// Clear the current exception (after handling)
+    ClearException,
+
+    /// Re-raise the current exception (in catch block)
+    Reraise,
 }
 
 /// An operand for arithmetic/comparison operations

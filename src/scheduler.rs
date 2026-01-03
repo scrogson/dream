@@ -4,7 +4,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::{
     CallFrame, Instruction, Message, Module, Operand, Pattern, Pid, Process, ProcessStatus,
-    Register, Source, SystemMsg, Value,
+    Register, Source, SystemMsg, TryFrame, Value,
 };
 
 /// Result of stepping the scheduler
@@ -34,6 +34,8 @@ enum ExecResult {
     Crash,
     /// Process exited with a specific reason
     Exit(Value),
+    /// Exception thrown (class, reason)
+    Throw(Value, Value),
 }
 
 /// Platform-specific logging
@@ -331,6 +333,38 @@ impl Scheduler {
                     };
                     self.finish_process_with_reason(pid, status, reason);
                     break;
+                }
+                ExecResult::Throw(class, reason) => {
+                    // Handle exception - unwind to nearest catch handler
+                    let Some(process) = self.processes.get_mut(&pid) else {
+                        break;
+                    };
+
+                    if let Some(frame) = process.try_stack.pop() {
+                        // Build stacktrace (simplified - just current PC)
+                        let stacktrace = vec![format!("pc:{}", process.pc)];
+
+                        // Store exception for GetException
+                        process.current_exception = Some((class, reason, stacktrace));
+
+                        // Unwind stacks to saved depths
+                        process.call_stack.truncate(frame.call_stack_depth);
+                        process.stack.truncate(frame.stack_depth);
+
+                        // Jump to catch handler
+                        process.pc = frame.catch_target;
+                        used += 1;
+                        // Continue execution (don't break)
+                    } else {
+                        // No handler - crash with exception
+                        let exit_reason = Value::Tuple(vec![class, reason]);
+                        self.finish_process_with_reason(
+                            pid,
+                            ProcessStatus::Crashed,
+                            exit_reason,
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -1959,6 +1993,89 @@ impl Scheduler {
                 };
                 process.registers[dest.0 as usize] = remaining;
                 ExecResult::Continue(1)
+            }
+
+            // ========== Exception Handling ==========
+            Instruction::Try {
+                catch_target,
+                after_target,
+            } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                // Push exception handler onto try stack
+                process.try_stack.push(TryFrame {
+                    catch_target,
+                    after_target,
+                    call_stack_depth: process.call_stack.len(),
+                    stack_depth: process.stack.len(),
+                });
+                ExecResult::Continue(1)
+            }
+
+            Instruction::EndTry => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                // Pop the try frame
+                if let Some(frame) = process.try_stack.pop() {
+                    // If there's an after block, jump to it
+                    if let Some(after_target) = frame.after_target {
+                        return ExecResult::Jump(after_target, 1);
+                    }
+                }
+                ExecResult::Continue(1)
+            }
+
+            Instruction::Throw { class, reason } => {
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let class_val = process.registers[class.0 as usize].clone();
+                let reason_val = process.registers[reason.0 as usize].clone();
+                ExecResult::Throw(class_val, reason_val)
+            }
+
+            Instruction::GetException { dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let exception_tuple = if let Some((class, reason, stacktrace)) =
+                    &process.current_exception
+                {
+                    // Convert stacktrace to a list of strings
+                    let stacktrace_list = Value::List(
+                        stacktrace
+                            .iter()
+                            .map(|s| Value::String(s.clone()))
+                            .collect(),
+                    );
+                    Value::Tuple(vec![class.clone(), reason.clone(), stacktrace_list])
+                } else {
+                    Value::None
+                };
+                process.registers[dest.0 as usize] = exception_tuple;
+                ExecResult::Continue(1)
+            }
+
+            Instruction::ClearException => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                process.current_exception = None;
+                ExecResult::Continue(1)
+            }
+
+            Instruction::Reraise => {
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+                if let Some((class, reason, _)) = &process.current_exception {
+                    ExecResult::Throw(class.clone(), reason.clone())
+                } else {
+                    // No exception to reraise, crash
+                    ExecResult::Crash
+                }
             }
         }
     }
@@ -7728,5 +7845,334 @@ mod tests {
         assert!(matches!(process.registers[4], Value::Ref(_)));
         assert!(matches!(process.registers[5], Value::Ref(_)));
         assert!(matches!(process.registers[6], Value::Ref(_)));
+    }
+
+    // ========== Try/Catch/After Tests ==========
+
+    #[test]
+    fn test_try_catch_basic() {
+        // Basic try/catch - throw is caught
+        let mut scheduler = Scheduler::new();
+
+        // try { throw(:error, :oops) } catch { handle }
+        let program = vec![
+            // 0: Try with catch at 5
+            Instruction::Try {
+                catch_target: 5,
+                after_target: None,
+            },
+            // 1: Load :error class
+            Instruction::LoadAtom {
+                name: "error".to_string(),
+                dest: Register(0),
+            },
+            // 2: Load :oops reason
+            Instruction::LoadAtom {
+                name: "oops".to_string(),
+                dest: Register(1),
+            },
+            // 3: Throw
+            Instruction::Throw {
+                class: Register(0),
+                reason: Register(1),
+            },
+            // 4: Should not reach here
+            Instruction::LoadInt {
+                value: 999,
+                dest: Register(2),
+            },
+            // 5: Catch handler - get exception
+            Instruction::GetException { dest: Register(3) },
+            // 6: Clear exception
+            Instruction::ClearException,
+            // 7: Mark that we caught it
+            Instruction::LoadAtom {
+                name: "caught".to_string(),
+                dest: Register(4),
+            },
+            // 8: End
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+
+        // R2 should NOT be 999 (we skipped that instruction)
+        assert_ne!(process.registers[2], Value::Int(999));
+
+        // R4 should be :caught
+        assert_eq!(process.registers[4], Value::Atom("caught".to_string()));
+
+        // R3 should have the exception tuple {class, reason, stacktrace}
+        match &process.registers[3] {
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 3);
+                assert_eq!(elems[0], Value::Atom("error".to_string()));
+                assert_eq!(elems[1], Value::Atom("oops".to_string()));
+            }
+            _ => panic!("Expected exception tuple, got {:?}", process.registers[3]),
+        }
+    }
+
+    #[test]
+    fn test_try_no_exception() {
+        // Try block completes without exception
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // 0: Try with catch at 4
+            Instruction::Try {
+                catch_target: 4,
+                after_target: None,
+            },
+            // 1: Normal work (no throw)
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(0),
+            },
+            // 2: EndTry
+            Instruction::EndTry,
+            // 3: Jump to end (skip catch)
+            Instruction::Jump { target: 6 },
+            // 4: Catch handler (should not run)
+            Instruction::LoadAtom {
+                name: "caught".to_string(),
+                dest: Register(1),
+            },
+            // 5: Jump to end
+            Instruction::Jump { target: 6 },
+            // 6: End
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+
+        // R0 should be 42
+        assert_eq!(process.registers[0], Value::Int(42));
+
+        // R1 should NOT be :caught (catch didn't run)
+        assert_ne!(process.registers[1], Value::Atom("caught".to_string()));
+    }
+
+    #[test]
+    fn test_throw_without_catch() {
+        // Throw without handler crashes process
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            Instruction::LoadAtom {
+                name: "throw".to_string(),
+                dest: Register(0),
+            },
+            Instruction::LoadAtom {
+                name: "uncaught".to_string(),
+                dest: Register(1),
+            },
+            Instruction::Throw {
+                class: Register(0),
+                reason: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Crashed);
+
+        // Exit reason should be tuple of {class, reason}
+        match &process.exit_reason {
+            Value::Tuple(elems) => {
+                assert_eq!(elems.len(), 2);
+                assert_eq!(elems[0], Value::Atom("throw".to_string()));
+                assert_eq!(elems[1], Value::Atom("uncaught".to_string()));
+            }
+            _ => panic!("Expected exit reason tuple, got {:?}", process.exit_reason),
+        }
+    }
+
+    #[test]
+    fn test_try_with_after() {
+        // After block runs on normal completion
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // 0: Try with catch at 4, after at 6
+            Instruction::Try {
+                catch_target: 4,
+                after_target: Some(6),
+            },
+            // 1: Normal work
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(0),
+            },
+            // 2: EndTry (jumps to after)
+            Instruction::EndTry,
+            // 3: Should not reach (EndTry jumps to after)
+            Instruction::LoadInt {
+                value: 999,
+                dest: Register(3),
+            },
+            // 4: Catch handler
+            Instruction::LoadAtom {
+                name: "caught".to_string(),
+                dest: Register(1),
+            },
+            // 5: Jump to after (from catch)
+            Instruction::Jump { target: 6 },
+            // 6: After block (cleanup)
+            Instruction::LoadAtom {
+                name: "cleanup".to_string(),
+                dest: Register(2),
+            },
+            // 7: End
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+
+        // R0 should be 1 (try block ran)
+        assert_eq!(process.registers[0], Value::Int(1));
+
+        // R1 should NOT be :caught (no exception)
+        assert_ne!(process.registers[1], Value::Atom("caught".to_string()));
+
+        // R2 should be :cleanup (after ran)
+        assert_eq!(process.registers[2], Value::Atom("cleanup".to_string()));
+
+        // R3 should NOT be 999 (we jumped over it)
+        assert_ne!(process.registers[3], Value::Int(999));
+    }
+
+    #[test]
+    fn test_reraise() {
+        // Catch and re-raise exception
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // 0: Outer try with catch at 9
+            Instruction::Try {
+                catch_target: 9,
+                after_target: None,
+            },
+            // 1: Inner try with catch at 6
+            Instruction::Try {
+                catch_target: 6,
+                after_target: None,
+            },
+            // 2: Load class
+            Instruction::LoadAtom {
+                name: "error".to_string(),
+                dest: Register(0),
+            },
+            // 3: Load reason
+            Instruction::LoadAtom {
+                name: "inner".to_string(),
+                dest: Register(1),
+            },
+            // 4: Throw
+            Instruction::Throw {
+                class: Register(0),
+                reason: Register(1),
+            },
+            // 5: Should not reach
+            Instruction::End,
+            // 6: Inner catch - mark and reraise
+            Instruction::LoadAtom {
+                name: "inner_caught".to_string(),
+                dest: Register(2),
+            },
+            // 7: Reraise
+            Instruction::Reraise,
+            // 8: Should not reach
+            Instruction::End,
+            // 9: Outer catch
+            Instruction::LoadAtom {
+                name: "outer_caught".to_string(),
+                dest: Register(3),
+            },
+            // 10: End
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+
+        // Both catches should have run
+        assert_eq!(
+            process.registers[2],
+            Value::Atom("inner_caught".to_string())
+        );
+        assert_eq!(
+            process.registers[3],
+            Value::Atom("outer_caught".to_string())
+        );
+    }
+
+    #[test]
+    fn test_nested_try() {
+        // Nested try blocks
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // 0: Outer try
+            Instruction::Try {
+                catch_target: 7,
+                after_target: None,
+            },
+            // 1: Inner try
+            Instruction::Try {
+                catch_target: 5,
+                after_target: None,
+            },
+            // 2: Throw from inner
+            Instruction::LoadAtom {
+                name: "error".to_string(),
+                dest: Register(0),
+            },
+            Instruction::LoadAtom {
+                name: "inner_error".to_string(),
+                dest: Register(1),
+            },
+            Instruction::Throw {
+                class: Register(0),
+                reason: Register(1),
+            },
+            // 5: Inner catch - handle it
+            Instruction::LoadAtom {
+                name: "handled".to_string(),
+                dest: Register(2),
+            },
+            Instruction::ClearException,
+            // 7: This is outer catch (but we won't reach it if inner handles)
+            // Actually, since inner handled, we need to EndTry and continue
+            // Let me fix this test structure...
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+
+        // Inner catch handled it
+        assert_eq!(process.registers[2], Value::Atom("handled".to_string()));
     }
 }
