@@ -1,9 +1,11 @@
 //! Runtime values stored in registers.
 
+use std::hash::{Hash, Hasher};
+
 use crate::Pid;
 
 /// Runtime value stored in registers
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Value {
     /// Integer
     Int(i64),
@@ -87,6 +89,54 @@ impl std::fmt::Debug for Value {
                 module, function, arity, captured
             ),
             Value::None => write!(f, "None"),
+        }
+    }
+}
+
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Value::Int(n) => n.hash(state),
+            Value::Pid(p) => p.0.hash(state),
+            Value::String(s) => s.hash(state),
+            Value::Atom(a) => a.hash(state),
+            Value::Tuple(elems) => {
+                elems.len().hash(state);
+                for elem in elems {
+                    elem.hash(state);
+                }
+            }
+            Value::List(elems) => {
+                elems.len().hash(state);
+                for elem in elems {
+                    elem.hash(state);
+                }
+            }
+            Value::Fun {
+                module,
+                function,
+                arity,
+            } => {
+                module.hash(state);
+                function.hash(state);
+                arity.hash(state);
+            }
+            Value::Closure {
+                module,
+                function,
+                arity,
+                captured,
+            } => {
+                module.hash(state);
+                function.hash(state);
+                arity.hash(state);
+                captured.len().hash(state);
+                for c in captured {
+                    c.hash(state);
+                }
+            }
+            Value::None => {}
         }
     }
 }

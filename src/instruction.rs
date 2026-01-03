@@ -287,6 +287,19 @@ pub enum Instruction {
     /// Check if value is a string/binary
     /// Stores 1 (true) or 0 (false)
     IsString { source: Register, dest: Register },
+
+    // ========== Process Dictionary ==========
+    /// Store value in process dictionary, returns old value (or None) in dest
+    PutDict { key: Register, value: Register, dest: Register },
+
+    /// Get value from process dictionary, stores None if key not found
+    GetDict { key: Register, dest: Register },
+
+    /// Remove key from process dictionary, returns old value (or None) in dest
+    EraseDict { key: Register, dest: Register },
+
+    /// Get all keys from process dictionary as a list
+    GetDictKeys { dest: Register },
 }
 
 /// An operand for arithmetic/comparison operations

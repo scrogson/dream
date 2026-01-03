@@ -1360,6 +1360,47 @@ impl Scheduler {
                 process.registers[dest.0 as usize] = Value::Int(if is_string { 1 } else { 0 });
                 ExecResult::Continue(1)
             }
+
+            // ========== Process Dictionary ==========
+            Instruction::PutDict { key, value, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let key_val = process.registers[key.0 as usize].clone();
+                let new_val = process.registers[value.0 as usize].clone();
+                let old_val = process.dictionary.insert(key_val, new_val);
+                process.registers[dest.0 as usize] = old_val.unwrap_or(Value::None);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::GetDict { key, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let key_val = process.registers[key.0 as usize].clone();
+                let value = process.dictionary.get(&key_val).cloned().unwrap_or(Value::None);
+                process.registers[dest.0 as usize] = value;
+                ExecResult::Continue(1)
+            }
+
+            Instruction::EraseDict { key, dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let key_val = process.registers[key.0 as usize].clone();
+                let old_val = process.dictionary.remove(&key_val);
+                process.registers[dest.0 as usize] = old_val.unwrap_or(Value::None);
+                ExecResult::Continue(1)
+            }
+
+            Instruction::GetDictKeys { dest } => {
+                let Some(process) = self.processes.get_mut(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let keys: Vec<Value> = process.dictionary.keys().cloned().collect();
+                process.registers[dest.0 as usize] = Value::List(keys);
+                ExecResult::Continue(1)
+            }
         }
     }
 
@@ -5380,5 +5421,204 @@ mod tests {
         assert_eq!(process.registers[4], Value::Int(0)); // is_tuple(42) = false
         assert_eq!(process.registers[5], Value::Int(0)); // is_list(42) = false
         assert_eq!(process.registers[6], Value::Int(0)); // is_pid(42) = false
+    }
+
+    #[test]
+    fn test_process_dictionary_put_get() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Put key=:foo, value=42 into dictionary
+            Instruction::LoadAtom {
+                name: "foo".into(),
+                dest: Register(0),
+            },
+            Instruction::LoadInt {
+                value: 42,
+                dest: Register(1),
+            },
+            Instruction::PutDict {
+                key: Register(0),
+                value: Register(1),
+                dest: Register(2), // old value (should be None)
+            },
+            // Get the value back
+            Instruction::GetDict {
+                key: Register(0),
+                dest: Register(3),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[2], Value::None); // no old value
+        assert_eq!(process.registers[3], Value::Int(42)); // retrieved value
+    }
+
+    #[test]
+    fn test_process_dictionary_overwrite() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Put key=:bar, value=100
+            Instruction::LoadAtom {
+                name: "bar".into(),
+                dest: Register(0),
+            },
+            Instruction::LoadInt {
+                value: 100,
+                dest: Register(1),
+            },
+            Instruction::PutDict {
+                key: Register(0),
+                value: Register(1),
+                dest: Register(2),
+            },
+            // Overwrite with value=200
+            Instruction::LoadInt {
+                value: 200,
+                dest: Register(1),
+            },
+            Instruction::PutDict {
+                key: Register(0),
+                value: Register(1),
+                dest: Register(3), // should get old value 100
+            },
+            // Get final value
+            Instruction::GetDict {
+                key: Register(0),
+                dest: Register(4),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[2], Value::None); // first put: no old value
+        assert_eq!(process.registers[3], Value::Int(100)); // second put: old value was 100
+        assert_eq!(process.registers[4], Value::Int(200)); // current value is 200
+    }
+
+    #[test]
+    fn test_process_dictionary_erase() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Put key=:temp, value=999
+            Instruction::LoadAtom {
+                name: "temp".into(),
+                dest: Register(0),
+            },
+            Instruction::LoadInt {
+                value: 999,
+                dest: Register(1),
+            },
+            Instruction::PutDict {
+                key: Register(0),
+                value: Register(1),
+                dest: Register(2),
+            },
+            // Erase the key
+            Instruction::EraseDict {
+                key: Register(0),
+                dest: Register(3), // should get 999
+            },
+            // Try to get erased key
+            Instruction::GetDict {
+                key: Register(0),
+                dest: Register(4), // should be None
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[3], Value::Int(999)); // erased value
+        assert_eq!(process.registers[4], Value::None); // key no longer exists
+    }
+
+    #[test]
+    fn test_process_dictionary_get_keys() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Put two keys
+            Instruction::LoadAtom {
+                name: "key1".into(),
+                dest: Register(0),
+            },
+            Instruction::LoadInt {
+                value: 1,
+                dest: Register(1),
+            },
+            Instruction::PutDict {
+                key: Register(0),
+                value: Register(1),
+                dest: Register(7),
+            },
+            Instruction::LoadAtom {
+                name: "key2".into(),
+                dest: Register(2),
+            },
+            Instruction::LoadInt {
+                value: 2,
+                dest: Register(3),
+            },
+            Instruction::PutDict {
+                key: Register(2),
+                value: Register(3),
+                dest: Register(7),
+            },
+            // Get all keys
+            Instruction::GetDictKeys { dest: Register(4) },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        match &process.registers[4] {
+            Value::List(keys) => {
+                assert_eq!(keys.len(), 2);
+                // Keys should contain :key1 and :key2 (order not guaranteed)
+                assert!(
+                    keys.contains(&Value::Atom("key1".into()))
+                        && keys.contains(&Value::Atom("key2".into()))
+                );
+            }
+            other => panic!("Expected List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_process_dictionary_get_missing() {
+        let mut scheduler = Scheduler::new();
+
+        let program = vec![
+            // Try to get a key that doesn't exist
+            Instruction::LoadAtom {
+                name: "nonexistent".into(),
+                dest: Register(0),
+            },
+            Instruction::GetDict {
+                key: Register(0),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(program);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.registers[1], Value::None);
     }
 }

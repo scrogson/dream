@@ -1,6 +1,6 @@
 //! Process state and status.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{Instruction, Message, Pid, Value};
 
@@ -36,6 +36,8 @@ pub struct Process {
     pub call_stack: Vec<CallFrame>,
     /// Data stack for saving/restoring values (Push/Pop)
     pub stack: Vec<Value>,
+    /// Process dictionary for per-process key-value storage
+    pub dictionary: HashMap<Value, Value>,
 }
 
 /// Process execution status
@@ -68,6 +70,7 @@ impl Process {
             timeout: None,
             call_stack: Vec::new(),
             stack: Vec::new(),
+            dictionary: HashMap::new(),
         }
     }
 
@@ -87,6 +90,7 @@ impl Process {
             timeout: None,
             call_stack: Vec::new(),
             stack: Vec::new(),
+            dictionary: HashMap::new(),
         }
     }
 }
