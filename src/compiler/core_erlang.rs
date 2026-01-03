@@ -749,10 +749,10 @@ impl CoreErlangEmitter {
                             self.emit_args(args)?;
                             self.emit(")");
                         } else {
-                            // Module:Function call
+                            // Module:Function call - add dream:: prefix for Dream modules
                             self.emit(&format!(
                                 "call '{}':'{}'",
-                                segments[0].to_lowercase(),
+                                Self::beam_module_name(&segments[0].to_lowercase()),
                                 segments[1]
                             ));
                             self.emit("(");

@@ -1,11 +1,15 @@
 // Test importing and using stdlib modules
 
-use io::println;
-use list::{reverse, range};
-
 pub fn main() -> atom {
-    let items = range(1, 5);
-    let reversed = reverse(items);
-    println("Hello from stdlib!");
+    let items = list::range(1, 5);
+    let reversed = list::reverse(items);
+
+    io::format("Items: ~p~n", [items]);
+    io::format("Reversed list: ~p~n", [reversed]);
+
+    io::println("Hello from dream!");
+
+    :io::format("Sum of 10 and 20 is ~p~n", [10 + 20]);
+
     :ok
 }

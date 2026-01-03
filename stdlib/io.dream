@@ -7,6 +7,11 @@ pub fn println(s: string) -> atom {
     :io::format("~s~n", [s])
 }
 
+/// Print with format string (like Erlang's io:format).
+pub fn format<T>(fmt: string, args: [T]) -> atom {
+    :io::format(fmt, args)
+}
+
 /// Print a string without a newline.
 pub fn print(s: string) -> atom {
     :io::format("~s", [s])
