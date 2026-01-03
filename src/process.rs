@@ -37,7 +37,7 @@ pub struct Process {
     pub pc: usize,
     /// Inline code for processes spawned with raw instructions (backwards compat).
     pub inline_code: Option<Vec<Instruction>>,
-    pub registers: [Value; 8],
+    pub registers: [Value; 1024],
     pub mailbox: VecDeque<Message>,
     pub links: Vec<Pid>,
     /// Monitors this process has set up: (ref, target_pid)

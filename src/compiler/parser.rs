@@ -1275,6 +1275,12 @@ impl<'source> Parser<'source> {
             }
         }
 
+        // Binary keyword as type (since "binary" is tokenized as BinaryKw, not Ident)
+        if self.check(&Token::BinaryKw) {
+            self.advance();
+            return Ok(Type::Binary);
+        }
+
         // Named type (uppercase identifier) with optional type arguments
         if let Some(Token::TypeIdent(name)) = self.peek().cloned() {
             self.advance();
@@ -2003,8 +2009,8 @@ mod tests {
         let mut parser = Parser::new(source);
         let module = parser.parse_module().expect("binary.tb should parse successfully");
 
-        // Should have 8 functions
-        assert_eq!(module.items.len(), 8);
+        // Should have 10 functions
+        assert_eq!(module.items.len(), 10);
         assert_eq!(module.name, "binaries");
     }
 }

@@ -3,43 +3,38 @@
 
 mod binaries {
     // Create a simple binary with byte values
-    pub fn make_bytes() -> int {
-        let bin = <<1, 2, 3, 4>>;
-        0
+    pub fn make_bytes() -> binary {
+        <<1, 2, 3, 4>>
     }
 
     // Create a binary with a 16-bit value (big endian by default)
-    pub fn make_word() -> int {
+    pub fn make_word() -> binary {
         let value: int = 4660;
-        let bin = <<value:16>>;
-        0
+        <<value:16>>
     }
 
     // Create a binary with explicit little endian
-    pub fn make_little_endian() -> int {
+    pub fn make_little_endian() -> binary {
         let value: int = 4660;
-        let bin = <<value:16/little>>;
-        0
+        <<value:16/little>>
     }
 
     // Create a binary with signed values
-    pub fn make_signed() -> int {
+    pub fn make_signed() -> binary {
         let neg: int = 0 - 128;
-        let bin = <<neg:8/signed>>;
-        0
+        <<neg:8/signed>>
     }
 
     // Combine multiple segment types
-    pub fn make_packet() -> int {
+    pub fn make_packet() -> binary {
         let header: int = 1;
         let length: int = 256;
         let payload: int = 42;
-        let bin = <<header:8, length:16/big, payload:32>>;
-        0
+        <<header:8, length:16/big, payload:32>>
     }
 
     // Pattern match on binary data
-    pub fn parse_header(data: int) -> int {
+    pub fn parse_header(data: binary) -> int {
         match data {
             <<version:8, flags:8, rest:16>> => version,
             _ => 0,
@@ -47,7 +42,7 @@ mod binaries {
     }
 
     // Match with specific byte pattern
-    pub fn check_magic(data: int) -> int {
+    pub fn check_magic(data: binary) -> int {
         match data {
             <<66, 77, size:32/little>> => size,
             _ => 0,
@@ -55,8 +50,20 @@ mod binaries {
     }
 
     // Empty binary
-    pub fn empty_binary() -> int {
-        let empty = <<>>;
-        0
+    pub fn empty_binary() -> binary {
+        <<>>
+    }
+
+    // Test: create a binary and parse it
+    pub fn test_parse_header() -> int {
+        let data = <<1, 2, 3, 4>>;
+        parse_header(data)
+    }
+
+    // Test: check magic bytes
+    pub fn test_check_magic() -> int {
+        // "BM" header (66, 77) followed by size 100 in little endian
+        let bmp = <<66, 77, 100, 0, 0, 0>>;
+        check_magic(bmp)
     }
 }

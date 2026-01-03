@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::compiler::ast::{
-    BinOp, BitEndianness, BitSegmentType, BitSignedness, Block, Expr, Function, Item,
-    Module as AstModule, Pattern as AstPattern, Stmt, UnaryOp,
+    BinOp, BitEndianness, BitSegmentType, BitSignedness, BitStringSegment, Block, Expr, Function,
+    Item, Module as AstModule, Pattern as AstPattern, Stmt, UnaryOp,
 };
 use crate::instruction::{Instruction, Operand, Pattern as VmPattern, Register, Source};
 use crate::Module;
@@ -526,14 +526,21 @@ impl Codegen {
                         0 // Placeholder, will be patched
                     };
 
-                    // Compile pattern
-                    let vm_pattern = self.compile_pattern(&arm.pattern)?;
-                    let match_idx = self.code.len();
-                    self.emit(Instruction::Match {
-                        source: expr_reg,
-                        pattern: vm_pattern,
-                        fail_target,
-                    });
+                    // Check if this is a binary pattern - needs special handling
+                    let patch_indices = if let AstPattern::BitString(segments) = &arm.pattern {
+                        // Binary pattern matching
+                        self.compile_binary_pattern(expr_reg, segments, fail_target)?
+                    } else {
+                        // Regular pattern matching
+                        let vm_pattern = self.compile_pattern(&arm.pattern)?;
+                        let match_idx = self.code.len();
+                        self.emit(Instruction::Match {
+                            source: expr_reg,
+                            pattern: vm_pattern,
+                            fail_target,
+                        });
+                        vec![match_idx]
+                    };
 
                     // Compile guard if present
                     if let Some(guard) = &arm.guard {
@@ -561,7 +568,13 @@ impl Codegen {
                     // Patch fail target for non-last arms
                     if !is_last {
                         let next_arm = self.code.len();
-                        self.patch_match_fail(match_idx, next_arm);
+                        // Patch all instructions that need the fail target
+                        for idx in patch_indices {
+                            // Try to patch as Match, BinaryMatchSegment, or JumpUnless
+                            self.patch_match_fail(idx, next_arm);
+                            self.patch_binary_match_fail(idx, next_arm);
+                            self.patch_jump(idx, next_arm);
+                        }
 
                         // Patch guard jump if present
                         if arm.guard.is_some() {
@@ -1223,6 +1236,124 @@ impl Codegen {
         if let Instruction::Match { fail_target, .. } = &mut self.code[idx] {
             *fail_target = target;
         }
+    }
+
+    /// Patch a BinaryMatchSegment instruction fail target.
+    fn patch_binary_match_fail(&mut self, idx: usize, target: usize) {
+        if let Instruction::BinaryMatchSegment { fail_target, .. } = &mut self.code[idx] {
+            *fail_target = target;
+        }
+    }
+
+    /// Convert AST bit segment specs to VM BitSegment.
+    fn ast_to_vm_bit_segment(
+        &self,
+        seg: &BitStringSegment<Box<AstPattern>>,
+    ) -> crate::BitSegment {
+        let bit_type = match seg.segment_type {
+            BitSegmentType::Integer => crate::BitType::Integer,
+            BitSegmentType::Float => crate::BitType::Float,
+            BitSegmentType::Binary => crate::BitType::Binary,
+            BitSegmentType::Utf8 => crate::BitType::Utf8,
+        };
+
+        let endianness = match seg.endianness {
+            BitEndianness::Big => crate::Endianness::Big,
+            BitEndianness::Little => crate::Endianness::Little,
+        };
+
+        let signedness = match seg.signedness {
+            BitSignedness::Unsigned => crate::Signedness::Unsigned,
+            BitSignedness::Signed => crate::Signedness::Signed,
+        };
+
+        // Get size (default 8 bits for integer)
+        let size = if let Some(size_expr) = &seg.size {
+            match size_expr.as_ref() {
+                Expr::Int(n) => Some(*n as u32),
+                _ => Some(8), // TODO: handle dynamic sizes
+            }
+        } else {
+            match bit_type {
+                crate::BitType::Integer => Some(8),
+                crate::BitType::Float => Some(64),
+                crate::BitType::Binary => None, // rest
+                crate::BitType::Utf8 => None,
+            }
+        };
+
+        crate::BitSegment {
+            bit_type,
+            size,
+            endianness,
+            signedness,
+        }
+    }
+
+    /// Compile binary pattern matching for a match arm.
+    /// Returns a list of instruction indices that need to be patched with the fail target.
+    fn compile_binary_pattern(
+        &mut self,
+        source_reg: Register,
+        segments: &[BitStringSegment<Box<AstPattern>>],
+        fail_target: usize,
+    ) -> CodegenResult<Vec<usize>> {
+        let mut patch_indices = Vec::new();
+
+        // Emit BinaryMatchStart
+        self.emit(Instruction::BinaryMatchStart { source: source_reg });
+
+        // For each segment, emit BinaryMatchSegment and handle the pattern
+        for seg in segments {
+            let bit_segment = self.ast_to_vm_bit_segment(seg);
+            let dest = self.regs.alloc();
+
+            // Emit BinaryMatchSegment - it will extract the value into dest
+            let match_idx = self.code.len();
+            self.emit(Instruction::BinaryMatchSegment {
+                segment: bit_segment,
+                dest,
+                fail_target,
+            });
+            patch_indices.push(match_idx);
+
+            // Now handle the pattern in the segment
+            match seg.value.as_ref() {
+                AstPattern::Ident(name) => {
+                    // Bind the variable to the extracted value
+                    self.regs.bind(name, dest.0);
+                }
+                AstPattern::Int(expected) => {
+                    // Check if the extracted value matches the literal
+                    let expected_reg = self.regs.alloc();
+                    self.emit(Instruction::LoadInt {
+                        value: *expected,
+                        dest: expected_reg,
+                    });
+                    let cmp_reg = self.regs.alloc();
+                    self.emit(Instruction::Eq {
+                        a: Operand::Reg(dest),
+                        b: Operand::Reg(expected_reg),
+                        dest: cmp_reg,
+                    });
+                    let jump_idx = self.code.len();
+                    self.emit(Instruction::JumpUnless {
+                        cond: Operand::Reg(cmp_reg),
+                        target: fail_target,
+                    });
+                    patch_indices.push(jump_idx);
+                }
+                AstPattern::Wildcard => {
+                    // Just ignore the value, don't bind
+                }
+                _ => {
+                    // For other patterns, just ignore for now
+                    // TODO: handle more complex patterns
+                }
+            }
+        }
+
+        Ok(patch_indices)
     }
 }
 

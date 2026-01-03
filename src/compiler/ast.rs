@@ -357,6 +357,8 @@ pub enum Type {
     Bool,
     /// Unit type.
     Unit,
+    /// Binary type.
+    Binary,
 }
 
 /// Struct definition.
