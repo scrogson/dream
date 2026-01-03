@@ -27,8 +27,10 @@ pub struct Process {
     pub registers: [Value; 8],
     pub mailbox: VecDeque<Message>,
     pub links: Vec<Pid>,
-    /// Processes that are monitoring this one (one-way)
-    pub monitored_by: Vec<Pid>,
+    /// Monitors this process has set up: (ref, target_pid)
+    pub monitors: Vec<(u64, Pid)>,
+    /// Processes that are monitoring this one: (ref, monitoring_pid)
+    pub monitored_by: Vec<(u64, Pid)>,
     pub status: ProcessStatus,
     /// Remaining timeout (in reductions) when waiting for a message
     pub timeout: Option<u32>,
@@ -65,6 +67,7 @@ impl Process {
             registers: std::array::from_fn(|_| Value::None),
             mailbox: VecDeque::new(),
             links: Vec::new(),
+            monitors: Vec::new(),
             monitored_by: Vec::new(),
             status: ProcessStatus::Ready,
             timeout: None,
@@ -85,6 +88,7 @@ impl Process {
             registers: std::array::from_fn(|_| Value::None),
             mailbox: VecDeque::new(),
             links: Vec::new(),
+            monitors: Vec::new(),
             monitored_by: Vec::new(),
             status: ProcessStatus::Ready,
             timeout: None,

@@ -375,15 +375,75 @@ impl Scheduler {
                 ExecResult::Continue(1)
             }
 
-            Instruction::Monitor { target } => {
+            Instruction::Unlink { target } => {
                 let Some(target_pid) = self.resolve_pid(pid, &target) else {
                     return ExecResult::Crash;
                 };
 
-                // Add one-way monitor: caller monitors target
+                // Remove bidirectional link
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    p.links.retain(|&linked| linked != target_pid);
+                }
                 if let Some(t) = self.processes.get_mut(&target_pid) {
-                    if !t.monitored_by.contains(&pid) {
-                        t.monitored_by.push(pid);
+                    t.links.retain(|&linked| linked != pid);
+                }
+
+                ExecResult::Continue(1)
+            }
+
+            Instruction::Monitor { target, dest } => {
+                let Some(target_pid) = self.resolve_pid(pid, &target) else {
+                    return ExecResult::Crash;
+                };
+
+                // Generate a unique monitor reference
+                let monitor_ref = self.next_ref;
+                self.next_ref += 1;
+
+                // Add monitor on caller side
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    p.monitors.push((monitor_ref, target_pid));
+                }
+
+                // Add to target's monitored_by list
+                if let Some(t) = self.processes.get_mut(&target_pid) {
+                    t.monitored_by.push((monitor_ref, pid));
+                }
+
+                // Store the ref in dest register
+                if let Some(p) = self.processes.get_mut(&pid) {
+                    p.registers[dest.0 as usize] = Value::Ref(monitor_ref);
+                }
+
+                ExecResult::Continue(1)
+            }
+
+            Instruction::Demonitor { monitor_ref } => {
+                let Some(process) = self.processes.get(&pid) else {
+                    return ExecResult::Crash;
+                };
+                let Value::Ref(ref_id) = process.registers[monitor_ref.0 as usize] else {
+                    return ExecResult::Crash;
+                };
+                let ref_id = ref_id;
+
+                // Find and remove the monitor from caller's list
+                let target_pid = if let Some(p) = self.processes.get_mut(&pid) {
+                    let pos = p.monitors.iter().position(|(r, _)| *r == ref_id);
+                    if let Some(idx) = pos {
+                        let (_, target) = p.monitors.remove(idx);
+                        Some(target)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                // Remove from target's monitored_by list
+                if let Some(target_pid) = target_pid {
+                    if let Some(t) = self.processes.get_mut(&target_pid) {
+                        t.monitored_by.retain(|(r, _)| *r != ref_id);
                     }
                 }
 
@@ -1926,13 +1986,15 @@ impl Scheduler {
         };
         let monitor_msg = Message::System(SystemMsg::Down(pid, down_reason));
 
-        for monitor_pid in monitors {
+        for (_ref_id, monitor_pid) in monitors {
             if let Some(monitor) = self.processes.get_mut(&monitor_pid) {
                 monitor.mailbox.push_back(monitor_msg.clone());
                 if monitor.status == ProcessStatus::Waiting {
                     monitor.status = ProcessStatus::Ready;
                     self.ready_queue.push_back(monitor_pid);
                 }
+                // Also remove the monitor from the monitoring process's list
+                monitor.monitors.retain(|(_, target)| *target != pid);
             }
         }
     }
@@ -2121,6 +2183,7 @@ mod tests {
             },
             Instruction::Monitor {
                 target: Source::Reg(Register(0)),
+                dest: Register(2),
             },
             Instruction::Receive { dest: Register(1) },
             Instruction::End,
@@ -6771,5 +6834,151 @@ mod tests {
         let process = scheduler.processes.get(&Pid(0)).unwrap();
         assert_eq!(process.registers[2], Value::Float(8.0));
         assert_eq!(process.registers[5], Value::Float(6.25));
+    }
+
+    // ========== Unlink/Demonitor Tests ==========
+
+    #[test]
+    fn test_unlink() {
+        let mut scheduler = Scheduler::new();
+
+        // Spawner creates a worker and links to it, then unlinks
+        let worker = vec![
+            Instruction::Work { amount: 100 },
+            Instruction::Crash, // Worker will crash
+        ];
+
+        let spawner = vec![
+            Instruction::SpawnLink {
+                code: worker,
+                dest: Register(0),
+            },
+            // Unlink from the worker before it crashes
+            Instruction::Unlink {
+                target: Source::Reg(Register(0)),
+            },
+            // Wait a bit for worker to crash
+            Instruction::Work { amount: 200 },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(spawner);
+        run_to_idle(&mut scheduler);
+
+        // Spawner should have completed normally (not crashed with worker)
+        let spawner_process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(spawner_process.status, ProcessStatus::Done);
+
+        // Worker should have crashed
+        let worker_process = scheduler.processes.get(&Pid(1)).unwrap();
+        assert_eq!(worker_process.status, ProcessStatus::Crashed);
+    }
+
+    #[test]
+    fn test_monitor_returns_ref() {
+        let mut scheduler = Scheduler::new();
+
+        let worker = vec![Instruction::End];
+
+        let observer = vec![
+            Instruction::Spawn {
+                code: worker,
+                dest: Register(0),
+            },
+            Instruction::Monitor {
+                target: Source::Reg(Register(0)),
+                dest: Register(1),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(observer);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        // Register 1 should contain a Ref
+        match &process.registers[1] {
+            Value::Ref(_) => {}
+            other => panic!("Expected Ref, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_demonitor() {
+        let mut scheduler = Scheduler::new();
+
+        // Worker will crash
+        let worker = vec![
+            Instruction::Work { amount: 100 },
+            Instruction::Crash,
+        ];
+
+        let observer = vec![
+            Instruction::Spawn {
+                code: worker,
+                dest: Register(0),
+            },
+            // Monitor the worker
+            Instruction::Monitor {
+                target: Source::Reg(Register(0)),
+                dest: Register(1),
+            },
+            // Immediately demonitor
+            Instruction::Demonitor {
+                monitor_ref: Register(1),
+            },
+            // Try to receive - should timeout since we demonitored
+            Instruction::ReceiveTimeout {
+                dest: Register(2),
+                timeout: 50,
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(observer);
+        run_to_idle(&mut scheduler);
+
+        // Observer should complete (not receive DOWN message since we demonitored)
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+        assert_eq!(process.status, ProcessStatus::Done);
+        // Should have received TIMEOUT, not DOWN
+        assert_eq!(process.registers[2], Value::String("TIMEOUT".to_string()));
+    }
+
+    #[test]
+    fn test_multiple_monitors_same_target() {
+        let mut scheduler = Scheduler::new();
+
+        let worker = vec![Instruction::End];
+
+        let observer = vec![
+            Instruction::Spawn {
+                code: worker,
+                dest: Register(0),
+            },
+            // Set up two monitors on the same target
+            Instruction::Monitor {
+                target: Source::Reg(Register(0)),
+                dest: Register(1),
+            },
+            Instruction::Monitor {
+                target: Source::Reg(Register(0)),
+                dest: Register(2),
+            },
+            Instruction::End,
+        ];
+
+        scheduler.spawn(observer);
+        run_to_idle(&mut scheduler);
+
+        let process = scheduler.processes.get(&Pid(0)).unwrap();
+
+        // Both should be Refs with different values
+        match (&process.registers[1], &process.registers[2]) {
+            (Value::Ref(r1), Value::Ref(r2)) => {
+                assert_ne!(r1, r2); // Different monitor refs
+            }
+            _ => panic!("Expected two Refs"),
+        }
     }
 }

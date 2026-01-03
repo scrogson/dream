@@ -31,8 +31,15 @@ pub enum Instruction {
     /// Link to another process (bidirectional crash notification)
     Link { target: Source },
 
+    /// Remove a bidirectional link to another process
+    Unlink { target: Source },
+
     /// Monitor another process (one-way crash notification)
-    Monitor { target: Source },
+    /// Returns a monitor reference in dest for later demonitoring
+    Monitor { target: Source, dest: Register },
+
+    /// Cancel a monitor by its reference
+    Demonitor { monitor_ref: Register },
 
     /// Register current process with a name
     Register { name: String },
