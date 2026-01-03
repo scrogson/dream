@@ -1,15 +1,21 @@
 # Dream
 
-A programming language with Rust-like syntax that compiles to Core Erlang and runs on the BEAM.
+A programming language with Rust-like syntax and Erlang-style concurrency.
 
 ## Goal
 
-Combine Rust's familiar syntax with Erlang's battle-tested concurrency model (processes, message passing, pattern matching), compiling to Core Erlang for execution on the BEAM VM.
+Combine Rust's familiar syntax with Erlang's battle-tested concurrency model (processes, message passing, pattern matching).
 
-## Architecture
+## Compilation Targets
 
+### BEAM (via Core Erlang)
 ```
-Source Code → Lexer → Parser → AST → Codegen → Core Erlang → BEAM
+Source → Lexer → Parser → AST → Core Erlang → BEAM
+```
+
+### WebAssembly (via Dream VM)
+```
+Source → Lexer → Parser → AST → Dream Bytecode → Dream VM (Rust/WASM)
 ```
 
 ## Language Features
@@ -32,6 +38,9 @@ cargo test
 
 # Build the compiler
 cargo build --release
+
+# Build WASM target
+wasm-pack build --target web
 ```
 
 ## Commands
@@ -39,6 +48,7 @@ cargo build --release
 - `cargo test` - run all tests
 - `cargo check` - type check
 - `cargo build --release` - build compiler
+- `wasm-pack build --target web` - build WASM package
 
 ---
 

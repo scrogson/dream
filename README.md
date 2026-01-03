@@ -1,13 +1,23 @@
 # Dream
 
-A programming language with Rust-like syntax that compiles to Core Erlang and runs on the BEAM.
+A programming language with Rust-like syntax and Erlang-style concurrency.
 
-Dream combines Rust's familiar syntax with Erlang's battle-tested concurrency model - processes, message passing, and pattern matching - all running on the BEAM virtual machine.
+Dream combines Rust's familiar syntax with Erlang's battle-tested concurrency model - processes, message passing, and pattern matching.
 
-## Architecture
+## Compilation Targets
+
+### BEAM (via Core Erlang)
+Compile to Core Erlang for full Erlang/OTP ecosystem integration.
 
 ```
-Source Code → Lexer → Parser → AST → Codegen → Core Erlang → BEAM
+Source → Lexer → Parser → AST → Core Erlang → BEAM
+```
+
+### WebAssembly (via Dream VM)
+Compile to Dream bytecode for a lightweight VM that runs natively or in the browser.
+
+```
+Source → Lexer → Parser → AST → Dream Bytecode → Dream VM (Rust/WASM)
 ```
 
 ## Features
@@ -72,9 +82,14 @@ cargo test
 
 # Build the compiler
 cargo build --release
+
+# Build WASM target
+wasm-pack build --target web
 ```
 
 ## Usage
+
+### BEAM Target
 
 ```bash
 # Compile Dream source to Core Erlang
@@ -84,17 +99,30 @@ dream compile source.dream -o source.core
 erlc +from_core source.core
 ```
 
+### WASM Target
+
+```bash
+# Build and run with the Dream VM
+dream run source.dream
+```
+
 ## Project Structure
 
 ```
 src/
 ├── lib.rs              # Public API
 ├── main.rs             # CLI entry point
-└── compiler/
-    ├── lexer.rs        # Tokenizer
-    ├── parser.rs       # Parser
-    ├── ast.rs          # Abstract syntax tree
-    └── core_erlang.rs  # Core Erlang code generator
+├── compiler/
+│   ├── lexer.rs        # Tokenizer
+│   ├── parser.rs       # Parser
+│   ├── ast.rs          # Abstract syntax tree
+│   ├── codegen.rs      # Dream bytecode generator
+│   └── core_erlang.rs  # Core Erlang generator
+├── instruction.rs      # VM bytecode instructions
+├── process.rs          # Process implementation
+├── scheduler.rs        # Cooperative scheduler
+├── value.rs            # Runtime values
+└── wasm.rs             # WebAssembly bindings
 ```
 
 ## Related Projects
