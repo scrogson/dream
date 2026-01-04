@@ -336,6 +336,14 @@ impl<'source> Parser<'source> {
         }
         self.expect(&Token::RParen)?;
 
+        // Parse optional guard clause: `when <expr>`
+        let guard = if self.check(&Token::When) {
+            self.advance();
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+
         let return_type = if self.check(&Token::Arrow) {
             self.advance();
             Some(self.parse_type()?)
@@ -352,6 +360,7 @@ impl<'source> Parser<'source> {
             name,
             type_params,
             params,
+            guard,
             return_type,
             body,
             is_pub,

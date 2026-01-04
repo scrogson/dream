@@ -49,6 +49,8 @@ pub enum Token {
     Trait,
     #[token("for")]
     For,
+    #[token("when")]
+    When,
     #[token("true")]
     True,
     #[token("false")]
@@ -200,6 +202,7 @@ impl std::fmt::Display for Token {
             Token::Impl => write!(f, "impl"),
             Token::Trait => write!(f, "trait"),
             Token::For => write!(f, "for"),
+            Token::When => write!(f, "when"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
             Token::Int(n) => write!(f, "{}", n),

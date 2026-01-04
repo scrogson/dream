@@ -17,6 +17,19 @@ mod multiclause {
     pub fn greet(:bye) -> string { "Goodbye!" }
     pub fn greet(_: atom) -> string { "Unknown greeting" }
 
+    // Guards: classify number as positive, negative, or zero
+    pub fn classify(n: int) when n > 0 -> atom { :positive }
+    pub fn classify(n: int) when n < 0 -> atom { :negative }
+    pub fn classify(0) -> atom { :zero }
+
+    // Guards: absolute value
+    pub fn abs(n: int) when n < 0 -> int { 0 - n }
+    pub fn abs(n: int) -> int { n }
+
+    // Guards: safe division (returns 0 if divisor is 0)
+    pub fn safe_div(a: int, b: int) when b == 0 -> int { 0 }
+    pub fn safe_div(a: int, b: int) -> int { a / b }
+
     pub fn main() -> atom {
         println("=== Multi-Clause Functions ===");
         println("");
@@ -34,6 +47,21 @@ mod multiclause {
         format("greet(:hello) = ~p~n", [greet(:hello)]);
         format("greet(:bye) = ~p~n", [greet(:bye)]);
         format("greet(:other) = ~p~n", [greet(:other)]);
+
+        println("");
+        println("=== Guards ===");
+        format("classify(5) = ~p~n", [classify(5)]);
+        format("classify(-3) = ~p~n", [classify(-3)]);
+        format("classify(0) = ~p~n", [classify(0)]);
+
+        println("");
+        format("abs(5) = ~p~n", [abs(5)]);
+        format("abs(-5) = ~p~n", [abs(-5)]);
+        format("abs(0) = ~p~n", [abs(0)]);
+
+        println("");
+        format("safe_div(10, 2) = ~p~n", [safe_div(10, 2)]);
+        format("safe_div(10, 0) = ~p~n", [safe_div(10, 0)]);
 
         :ok
     }

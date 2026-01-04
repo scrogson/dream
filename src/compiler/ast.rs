@@ -118,6 +118,8 @@ pub struct Function {
     /// Generic type parameters (e.g., `<T, U>`)
     pub type_params: Vec<String>,
     pub params: Vec<Param>,
+    /// Guard clause: `when <expr>`
+    pub guard: Option<Box<Expr>>,
     pub return_type: Option<Type>,
     pub body: Block,
     pub is_pub: bool,

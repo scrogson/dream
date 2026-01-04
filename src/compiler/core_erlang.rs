@@ -556,6 +556,7 @@ impl CoreErlangEmitter {
                         name: mangled_name,
                         type_params: method.type_params.clone(),
                         params: method.params.clone(),
+                        guard: method.guard.clone(),
                         return_type: method.return_type.clone(),
                         body: method.body.clone(),
                         is_pub: method.is_pub,
@@ -579,6 +580,7 @@ impl CoreErlangEmitter {
                         name: mangled_name,
                         type_params: method.type_params.clone(),
                         params: method.params.clone(),
+                        guard: method.guard.clone(),
                         return_type: method.return_type.clone(),
                         body: method.body.clone(),
                         is_pub: method.is_pub,
@@ -662,8 +664,8 @@ impl CoreErlangEmitter {
         arity: usize,
         clauses: &[&Function],
     ) -> CoreErlangResult<()> {
-        // For single-clause functions, use simpler direct emission
-        if clauses.len() == 1 {
+        // For single-clause functions without guards, use simpler direct emission
+        if clauses.len() == 1 && clauses[0].guard.is_none() {
             return self.emit_function(clauses[0]);
         }
 
@@ -721,7 +723,14 @@ impl CoreErlangEmitter {
                 }
                 self.emit("}");
             }
-            self.emit("> when 'true' ->");
+            // Emit guard clause
+            self.emit("> when ");
+            if let Some(guard) = &clause.guard {
+                self.emit_expr(guard)?;
+            } else {
+                self.emit("'true'");
+            }
+            self.emit(" ->");
             self.newline();
 
             self.indent += 1;

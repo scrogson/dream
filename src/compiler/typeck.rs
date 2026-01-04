@@ -663,6 +663,22 @@ impl TypeChecker {
 
         // Type check the body
         let old_env = std::mem::replace(&mut self.env, scope);
+
+        // Check guard expression (if any) has type bool
+        if let Some(ref guard) = func.guard {
+            let guard_ty = self.infer_expr(guard)?;
+            if !self.types_compatible(&guard_ty, &Ty::Bool) {
+                self.error_with_span(
+                    format!(
+                        "guard clause in function '{}' must be boolean, found {}",
+                        func.name, guard_ty
+                    ),
+                    format!("expected bool, found {}", guard_ty),
+                    func.span.clone(),
+                );
+            }
+        }
+
         let body_ty = self.check_block(&func.body)?;
         self.env = old_env;
 
