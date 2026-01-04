@@ -1,0 +1,111 @@
+// Dream Standard Library - Map Module
+//
+// Provides a key-value map backed by Erlang maps with Option/Result-based access.
+
+// Local Option type (until prelude is implemented)
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+// Local Result type (until prelude is implemented)
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+/// Error type for map operations
+pub enum KeyError {
+    NotFound,
+}
+
+/// A key-value map backed by Erlang maps.
+/// Note: Due to parser limitations, Map is not generic at the struct level,
+/// but functions use generic type parameters.
+pub struct Map {
+    data: map,
+}
+
+impl Map {
+    /// Create an empty map
+    pub fn new<K, V>() -> Map {
+        Map { data: :maps::new() }
+    }
+
+    /// Create a map from a list of key-value pairs
+    pub fn from_list<K, V>(pairs: [(K, V)]) -> Map {
+        Map { data: :maps::from_list(pairs) }
+    }
+
+    /// Get a value by key, returns None if not found
+    pub fn get<K, V>(self, key: K) -> Option<V> {
+        if :maps::is_key(key, self.data) {
+            Some(:maps::get(key, self.data))
+        } else {
+            None
+        }
+    }
+
+    /// Get a value by key, returns default if not found
+    pub fn get_or<K, V>(self, key: K, default: V) -> V {
+        :maps::get(key, self.data, default)
+    }
+
+    /// Fetch a value by key, returns Result
+    pub fn fetch<K, V>(self, key: K) -> Result<V, KeyError> {
+        if :maps::is_key(key, self.data) {
+            Ok(:maps::get(key, self.data))
+        } else {
+            Err(KeyError::NotFound)
+        }
+    }
+
+    /// Check if key exists
+    pub fn has_key<K>(self, key: K) -> bool {
+        :maps::is_key(key, self.data)
+    }
+
+    /// Insert or update a key-value pair
+    pub fn put<K, V>(self, key: K, value: V) -> Map {
+        Map { data: :maps::put(key, value, self.data) }
+    }
+
+    /// Remove a key (returns same map if key doesn't exist)
+    pub fn delete<K>(self, key: K) -> Map {
+        if :maps::is_key(key, self.data) {
+            Map { data: :maps::remove(key, self.data) }
+        } else {
+            self
+        }
+    }
+
+    /// Merge two maps (values from other win on conflict)
+    pub fn merge(self, other: Map) -> Map {
+        Map { data: :maps::merge(self.data, other.data) }
+    }
+
+    /// Get all keys as a list
+    pub fn keys<K>(self) -> [K] {
+        :maps::keys(self.data)
+    }
+
+    /// Get all values as a list
+    pub fn values<V>(self) -> [V] {
+        :maps::values(self.data)
+    }
+
+    /// Convert to list of key-value tuples
+    pub fn to_list<K, V>(self) -> [(K, V)] {
+        :maps::to_list(self.data)
+    }
+
+    /// Get number of entries
+    pub fn size(self) -> int {
+        :maps::size(self.data)
+    }
+
+    /// Check if map is empty
+    pub fn is_empty(self) -> bool {
+        :maps::size(self.data) == 0
+    }
+}

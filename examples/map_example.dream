@@ -1,0 +1,111 @@
+/// Map example - testing locally defined Map
+
+// Local types
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+pub enum KeyError {
+    NotFound,
+}
+
+// Map struct
+pub struct Map {
+    data: map,
+}
+
+impl Map {
+    pub fn new() -> Map {
+        Map { data: :maps::new() }
+    }
+
+    pub fn get<K, V>(self, key: K) -> Option<V> {
+        if :maps::is_key(key, self.data) {
+            Some(:maps::get(key, self.data))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_or<K, V>(self, key: K, default: V) -> V {
+        :maps::get(key, self.data, default)
+    }
+
+    pub fn has_key<K>(self, key: K) -> bool {
+        :maps::is_key(key, self.data)
+    }
+
+    pub fn put<K, V>(self, key: K, value: V) -> Map {
+        Map { data: :maps::put(key, value, self.data) }
+    }
+
+    pub fn size(self) -> int {
+        :maps::size(self.data)
+    }
+
+    pub fn keys<K>(self) -> [K] {
+        :maps::keys(self.data)
+    }
+
+    pub fn values<V>(self) -> [V] {
+        :maps::values(self.data)
+    }
+}
+
+pub fn main() -> atom {
+    io::println("=== Map Example ===");
+    io::println("");
+
+    // Create a new empty map using Type::method() syntax
+    let m = Map::new();
+    io::println("Created empty map");
+
+    // Add some key-value pairs using Type::method(self, args) syntax
+    let m = Map::put(m, "name", "Alice");
+    let m = Map::put(m, "city", "Portland");
+    let m = Map::put(m, "age", 30);
+    io::format("Added 3 entries, size: ~p~n", [Map::size(m)]);
+
+    // Get values with default
+    io::println("");
+    io::println("Getting values:");
+    let name = Map::get_or(m, "name", "Unknown");
+    io::format("  name: ~p~n", [name]);
+
+    let missing = Map::get_or(m, "missing", "default");
+    io::format("  missing (default): ~p~n", [missing]);
+
+    // Check keys
+    io::println("");
+    io::println("Checking keys:");
+    io::format("  has 'name': ~p~n", [Map::has_key(m, "name")]);
+    io::format("  has 'email': ~p~n", [Map::has_key(m, "email")]);
+
+    // All keys and values
+    io::println("");
+    io::format("Keys: ~p~n", [Map::keys(m)]);
+    io::format("Values: ~p~n", [Map::values(m)]);
+
+    // Option-based get
+    io::println("");
+    io::println("Option-based get:");
+    match Map::get(m, "name") {
+        Some(v) => io::format("  Found: ~p~n", [v]),
+        None => io::println("  Not found"),
+    };
+
+    match Map::get(m, "nonexistent") {
+        Some(v) => io::format("  Found: ~p~n", [v]),
+        None => io::println("  'nonexistent' not found (expected)"),
+    };
+
+    io::println("");
+    io::println("Done!");
+    :ok
+}

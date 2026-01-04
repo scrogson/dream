@@ -449,6 +449,8 @@ pub enum Type {
     Unit,
     /// Binary type.
     Binary,
+    /// Map type (raw Erlang map).
+    Map,
 }
 
 /// Struct definition.

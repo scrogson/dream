@@ -1618,6 +1618,10 @@ impl<'source> Parser<'source> {
                     self.advance();
                     return Ok(Type::Bool);
                 }
+                "map" => {
+                    self.advance();
+                    return Ok(Type::Map);
+                }
                 _ => {}
             }
         }
