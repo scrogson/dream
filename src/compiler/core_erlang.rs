@@ -99,6 +99,15 @@ impl CoreErlangEmitter {
         name
     }
 
+    /// Find all types that have a method with the given name in their impl block.
+    fn find_impl_types_for_method(&self, method_name: &str) -> Vec<String> {
+        self.impl_methods
+            .iter()
+            .filter(|(_, m)| m == method_name)
+            .map(|(t, _)| t.clone())
+            .collect()
+    }
+
     /// Check if an expression contains a return statement.
     fn contains_return(expr: &Expr) -> bool {
         match expr {
@@ -295,6 +304,77 @@ impl CoreErlangEmitter {
         self.emit(&format!(
             "call 'erlang':'error'({{'not_implemented', '{}', '{}', _Other}})",
             trait_name, method_name
+        ));
+        self.indent -= 1;
+
+        self.newline();
+        self.indent -= 1;
+        self.emit("end");
+
+        Ok(())
+    }
+
+    /// Emit UFCS method dispatch for impl methods.
+    /// Generates a case expression that matches on __struct__ and calls the appropriate impl.
+    fn emit_method_dispatch(
+        &mut self,
+        method_name: &str,
+        receiver: &Expr,
+        args: &[Expr],
+        impl_types: &[String],
+    ) -> CoreErlangResult<()> {
+        // Total arity includes receiver
+        let arity = args.len() + 1;
+
+        // Bind the receiver to a variable for dispatch
+        let receiver_var = self.fresh_var();
+        self.emit(&format!("let <{}> = ", receiver_var));
+        self.emit_expr(receiver)?;
+        self.newline();
+        self.emit("in ");
+
+        // Generate case on maps:get('__struct__', Receiver, undefined)
+        // Using 3-arg version with default to handle non-struct values gracefully
+        self.emit(&format!(
+            "case call 'maps':'get'('__struct__', {}, 'undefined') of",
+            receiver_var
+        ));
+        self.newline();
+        self.indent += 1;
+
+        // Generate a clause for each implementing type
+        for (i, type_name) in impl_types.iter().enumerate() {
+            let mangled_name = format!("{}_{}", type_name, method_name);
+
+            self.emit(&format!("<'{}'>", type_name));
+            self.emit(" when 'true' ->");
+            self.newline();
+            self.indent += 1;
+
+            // Call the implementation with the receiver and args
+            self.emit(&format!("apply '{}'/{}", mangled_name, arity));
+            self.emit("(");
+            self.emit(&receiver_var);
+            for arg in args {
+                self.emit(", ");
+                self.emit_expr(arg)?;
+            }
+            self.emit(")");
+
+            self.indent -= 1;
+            if i < impl_types.len() - 1 {
+                self.newline();
+            }
+        }
+
+        // Add a catch-all clause that raises an error for unknown types
+        self.newline();
+        self.emit("<_Other> when 'true' ->");
+        self.newline();
+        self.indent += 1;
+        self.emit(&format!(
+            "call 'erlang':'error'({{'undefined_method', '{}', _Other}})",
+            method_name
         ));
         self.indent -= 1;
 
@@ -927,7 +1007,6 @@ impl CoreErlangEmitter {
 
             Expr::MethodCall { receiver, method, args } => {
                 // UFCS: Transform expr.method(args) into method(expr, args)
-                // The method must be either imported or defined locally
                 let mut all_args = vec![receiver.as_ref().clone()];
                 all_args.extend(args.iter().cloned());
 
@@ -942,11 +1021,19 @@ impl CoreErlangEmitter {
                     self.emit_args(&all_args)?;
                     self.emit(")");
                 } else {
-                    // Local function call
-                    self.emit(&format!("apply '{}'/{}", method, all_args.len()));
-                    self.emit("(");
-                    self.emit_args(&all_args)?;
-                    self.emit(")");
+                    // Check if there are impl methods with this name
+                    let impl_types = self.find_impl_types_for_method(method);
+
+                    if impl_types.is_empty() {
+                        // No impl methods - just call as local function
+                        self.emit(&format!("apply '{}'/{}", method, all_args.len()));
+                        self.emit("(");
+                        self.emit_args(&all_args)?;
+                        self.emit(")");
+                    } else {
+                        // Runtime dispatch based on __struct__ tag
+                        self.emit_method_dispatch(method, receiver, args, &impl_types)?;
+                    }
                 }
             }
 

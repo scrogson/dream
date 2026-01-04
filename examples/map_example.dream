@@ -56,41 +56,41 @@ pub fn main() -> atom {
     let m = Map::new();
     io::println("Created empty map");
 
-    // Add some key-value pairs using Type::method(self, args) syntax
-    let m = Map::put(m, "name", "Alice");
-    let m = Map::put(m, "city", "Portland");
-    let m = Map::put(m, "age", 30);
-    io::format("Added 3 entries, size: ~p~n", [Map::size(m)]);
+    // Add some key-value pairs using UFCS syntax: m.put(key, value)
+    let m = m.put("name", "Alice");
+    let m = m.put("city", "Portland");
+    let m = m.put("age", 30);
+    io::format("Added 3 entries, size: ~p~n", [m.size()]);
 
-    // Get values with default
+    // Get values with default using UFCS
     io::println("");
     io::println("Getting values:");
-    let name = Map::get_or(m, "name", "Unknown");
+    let name = m.get_or("name", "Unknown");
     io::format("  name: ~p~n", [name]);
 
-    let missing = Map::get_or(m, "missing", "default");
+    let missing = m.get_or("missing", "default");
     io::format("  missing (default): ~p~n", [missing]);
 
-    // Check keys
+    // Check keys using UFCS
     io::println("");
     io::println("Checking keys:");
-    io::format("  has 'name': ~p~n", [Map::has_key(m, "name")]);
-    io::format("  has 'email': ~p~n", [Map::has_key(m, "email")]);
+    io::format("  has 'name': ~p~n", [m.has_key("name")]);
+    io::format("  has 'email': ~p~n", [m.has_key("email")]);
 
-    // All keys and values
+    // All keys and values using UFCS
     io::println("");
-    io::format("Keys: ~p~n", [Map::keys(m)]);
-    io::format("Values: ~p~n", [Map::values(m)]);
+    io::format("Keys: ~p~n", [m.keys()]);
+    io::format("Values: ~p~n", [m.values()]);
 
-    // Option-based get
+    // Option-based get using UFCS
     io::println("");
     io::println("Option-based get:");
-    match Map::get(m, "name") {
+    match m.get("name") {
         Some(v) => io::format("  Found: ~p~n", [v]),
         None => io::println("  Not found"),
     };
 
-    match Map::get(m, "nonexistent") {
+    match m.get("nonexistent") {
         Some(v) => io::format("  Found: ~p~n", [v]),
         None => io::println("  'nonexistent' not found (expected)"),
     };
