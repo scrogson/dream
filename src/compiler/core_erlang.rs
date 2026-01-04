@@ -52,6 +52,8 @@ pub struct CoreErlangEmitter {
     /// Trait implementations: (trait_name, method_name) → Vec<type_name>
     /// Maps each trait method to the types that implement it
     trait_impls: HashMap<(String, String), Vec<String>>,
+    /// Whether the current function has a `self` parameter
+    has_self_param: bool,
 }
 
 impl CoreErlangEmitter {
@@ -65,6 +67,7 @@ impl CoreErlangEmitter {
             impl_methods: HashSet::new(),
             traits: HashMap::new(),
             trait_impls: HashMap::new(),
+            has_self_param: false,
         }
     }
 
@@ -456,6 +459,11 @@ impl CoreErlangEmitter {
         self.newline();
         self.indent += 1;
 
+        // Check if this function has a `self` parameter
+        self.has_self_param = func.params.iter().any(|p| {
+            matches!(&p.pattern, Pattern::Ident(name) if name == "self")
+        });
+
         self.emit("fun (");
 
         // Emit parameters
@@ -480,6 +488,8 @@ impl CoreErlangEmitter {
         self.indent -= 1;
 
         self.indent -= 1;
+        // Reset after function
+        self.has_self_param = false;
         Ok(())
     }
 
@@ -673,8 +683,9 @@ impl CoreErlangEmitter {
             }
 
             Expr::Ident(name) => {
-                // Handle `self` as a BIF call to erlang:self()
-                if name == "self" {
+                // Handle `self` - if it's a function parameter, use as variable;
+                // otherwise it's the erlang:self() BIF
+                if name == "self" && !self.has_self_param {
                     self.emit("call 'erlang':'self'()");
                 } else {
                     self.emit(&Self::var_name(name));
