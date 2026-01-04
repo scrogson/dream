@@ -187,6 +187,7 @@ impl Codegen {
                             return_type: method.return_type.clone(),
                             body: method.body.clone(),
                             is_pub: method.is_pub,
+                            span: method.span.clone(),
                         };
                         codegen.compile_function(&mangled_method)?;
                     }
@@ -205,6 +206,7 @@ impl Codegen {
                             return_type: method.return_type.clone(),
                             body: method.body.clone(),
                             is_pub: method.is_pub,
+                            span: method.span.clone(),
                         };
                         codegen.compile_function(&mangled_method)?;
                     }

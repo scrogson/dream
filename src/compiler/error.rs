@@ -104,25 +104,21 @@ pub type TypeResult<T> = Result<T, TypeError>;
 
 /// A compiler error that can include source code context.
 #[derive(Error, Debug, Diagnostic)]
-#[error("{kind}")]
-#[diagnostic()]
+#[error("{message}")]
+#[diagnostic(code(dream::compiler_error))]
 pub struct CompilerError {
+    pub message: String,
+
     #[source_code]
     pub src: NamedSource<String>,
 
-    pub kind: CompilerErrorKind,
-}
+    #[label("{label}")]
+    pub span: Option<SourceSpan>,
 
-/// The kind of compiler error.
-#[derive(Error, Debug, Diagnostic)]
-pub enum CompilerErrorKind {
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Parse(#[from] ParseError),
+    pub label: String,
 
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Type(#[from] TypeError),
+    #[help]
+    pub help: Option<String>,
 }
 
 impl CompilerError {
@@ -130,8 +126,11 @@ impl CompilerError {
     pub fn parse(filename: impl Into<String>, source: impl Into<String>, err: ParseError) -> Self {
         let filename: String = filename.into();
         Self {
+            message: err.message.clone(),
             src: NamedSource::new(filename, source.into()),
-            kind: CompilerErrorKind::Parse(err),
+            span: Some(err.span),
+            label: "here".to_string(),
+            help: err.help,
         }
     }
 
@@ -143,8 +142,11 @@ impl CompilerError {
     ) -> Self {
         let filename: String = filename.into();
         Self {
+            message: err.message.clone(),
             src: NamedSource::new(filename, source.into()),
-            kind: CompilerErrorKind::Type(err),
+            span: err.span,
+            label: "type mismatch here".to_string(),
+            help: err.help,
         }
     }
 }

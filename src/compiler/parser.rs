@@ -43,7 +43,11 @@ impl<'source> Parser<'source> {
         let mut all_items = prelude;
         all_items.extend(items);
 
-        Ok(Module { name, items: all_items })
+        Ok(Module {
+            name,
+            items: all_items,
+            source: Some(self.source.to_string()),
+        })
     }
 
     /// Parse a source file as a module.
@@ -74,6 +78,7 @@ impl<'source> Parser<'source> {
         Ok(Module {
             name: module_name.to_string(),
             items: all_items,
+            source: Some(self.source.to_string()),
         })
     }
 
@@ -310,6 +315,7 @@ impl<'source> Parser<'source> {
 
     /// Parse a function definition.
     fn parse_function(&mut self, is_pub: bool) -> ParseResult<Function> {
+        let start = self.current_span().start;
         self.expect(&Token::Fn)?;
         let name = self.expect_ident()?;
 
@@ -338,6 +344,9 @@ impl<'source> Parser<'source> {
         };
 
         let body = self.parse_block()?;
+        let end = self.tokens.get(self.pos.saturating_sub(1))
+            .map(|t| t.span.end)
+            .unwrap_or(start);
 
         Ok(Function {
             name,
@@ -346,6 +355,7 @@ impl<'source> Parser<'source> {
             return_type,
             body,
             is_pub,
+            span: start..end,
         })
     }
 

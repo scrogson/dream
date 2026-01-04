@@ -417,6 +417,7 @@ impl CoreErlangEmitter {
                             return_type: method.return_type.clone(),
                             body: method.body.clone(),
                             is_pub: method.is_pub,
+                            span: method.span.clone(),
                         };
                         self.newline();
                         self.emit_function(&mangled_method)?;
@@ -435,6 +436,7 @@ impl CoreErlangEmitter {
                             return_type: method.return_type.clone(),
                             body: method.body.clone(),
                             is_pub: method.is_pub,
+                            span: method.span.clone(),
                         };
                         self.newline();
                         self.emit_function(&mangled_method)?;

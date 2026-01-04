@@ -20,6 +20,8 @@ impl<T> Spanned<T> {
 pub struct Module {
     pub name: String,
     pub items: Vec<Item>,
+    /// Source code for error reporting (optional)
+    pub source: Option<String>,
 }
 
 /// Top-level items in a module.
@@ -119,6 +121,8 @@ pub struct Function {
     pub return_type: Option<Type>,
     pub body: Block,
     pub is_pub: bool,
+    /// Source span for error reporting
+    pub span: Span,
 }
 
 /// A function parameter.

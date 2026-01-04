@@ -249,6 +249,8 @@ pub struct TypeChecker {
     errors: Vec<TypeError>,
     /// Current function's return type (for checking return statements)
     current_return_type: Option<Ty>,
+    /// Current function's span for error reporting
+    current_function_span: Option<crate::compiler::lexer::Span>,
     /// Type variable substitutions from unification (reserved for future use)
     #[allow(dead_code)]
     substitutions: HashMap<u32, Ty>,
@@ -261,6 +263,7 @@ impl TypeChecker {
             infer_counter: 0,
             errors: Vec::new(),
             current_return_type: None,
+            current_function_span: None,
             substitutions: HashMap::new(),
         }
     }
@@ -274,6 +277,18 @@ impl TypeChecker {
 
     /// Record an error and continue (for error recovery).
     fn error(&mut self, err: TypeError) {
+        self.errors.push(err);
+    }
+
+    /// Record an error with a source span.
+    fn error_with_span(
+        &mut self,
+        message: impl Into<String>,
+        help: impl Into<String>,
+        span: crate::compiler::lexer::Span,
+    ) {
+        let mut err = TypeError::with_span(message, span);
+        err.help = Some(help.into());
         self.errors.push(err);
     }
 
@@ -437,6 +452,9 @@ impl TypeChecker {
         // Create new scope for function
         let mut scope = self.env.child();
 
+        // Set current function span for error reporting
+        self.current_function_span = Some(func.span.clone());
+
         // Bind parameters
         for param in &func.params {
             if let Pattern::Ident(name) = &param.pattern {
@@ -460,16 +478,18 @@ impl TypeChecker {
 
         // Check return type matches
         if !self.types_compatible(&body_ty, &ret_ty) {
-            self.error(TypeError::with_help(
+            self.error_with_span(
                 format!(
                     "function '{}' returns {} but body has type {}",
                     func.name, ret_ty, body_ty
                 ),
                 format!("expected {}, found {}", ret_ty, body_ty),
-            ));
+                func.span.clone(),
+            );
         }
 
         self.current_return_type = None;
+        self.current_function_span = None;
         Ok(())
     }
 

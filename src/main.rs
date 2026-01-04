@@ -7,7 +7,7 @@ use std::process::{Command, ExitCode};
 use clap::{Parser, Subcommand};
 
 use dream::{
-    compiler::{check_module, CoreErlangEmitter, Module, ModuleLoader},
+    compiler::{check_module, CompilerError, CoreErlangEmitter, Module, ModuleLoader},
     config::{generate_dream_toml, generate_main_dream, ProjectConfig},
 };
 
@@ -212,7 +212,13 @@ fn compile_modules<'a>(
     // Type check each module (warnings only for now)
     for module in &modules {
         if let Err(e) = check_module(module) {
-            eprintln!("  Type warning in {}: {:?}", module.name, miette::Report::new(e));
+            // Wrap error with source context for nice display
+            if let Some(ref source) = module.source {
+                let err = CompilerError::type_error(&module.name, source, e);
+                eprintln!("  Type warning in {}:\n{:?}", module.name, miette::Report::new(err));
+            } else {
+                eprintln!("  Type warning in {}: {:?}", module.name, miette::Report::new(e));
+            }
         }
     }
 
