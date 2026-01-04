@@ -44,7 +44,7 @@ mod spawn_test {
         let msg = receive {
             m => m
         };
-        reply_to <- msg;
+        process::send(reply_to, msg);
         :done
     }
 

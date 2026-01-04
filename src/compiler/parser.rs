@@ -703,23 +703,7 @@ impl<'source> Parser<'source> {
             });
         }
 
-        self.parse_send_expr()
-    }
-
-    /// Parse send expressions (pid ! message).
-    fn parse_send_expr(&mut self) -> ParseResult<Expr> {
-        let left = self.parse_postfix_expr()?;
-
-        if self.check(&Token::Bang) {
-            self.advance();
-            let msg = self.parse_postfix_expr()?;
-            return Ok(Expr::Send {
-                to: Box::new(left),
-                msg: Box::new(msg),
-            });
-        }
-
-        Ok(left)
+        self.parse_postfix_expr()
     }
 
     /// Parse postfix expressions (calls, field access).
@@ -2089,29 +2073,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_send() {
-        let source = r#"
-            mod test {
-                fn send_msg(pid: pid) {
-                    pid ! :hello;
-                }
-            }
-        "#;
-        let mut parser = Parser::new(source);
-        let module = parser.parse_module().unwrap();
-
-        if let Item::Function(f) = first_user_item(&module) {
-            if let Stmt::Expr(Expr::Send { .. }) = &f.body.stmts[0] {
-                // ok
-            } else {
-                panic!("expected send expr");
-            }
-        } else {
-            panic!("expected function");
-        }
-    }
-
-    #[test]
     fn test_parse_list_cons_pattern() {
         let source = r#"
             mod test {
@@ -2569,13 +2530,13 @@ mod tests {
 
     #[test]
     fn test_parse_binary_example_file() {
-        let source = include_str!("../../examples/binary.dream");
+        let source = include_str!("../../examples/binary_example.dream");
         let mut parser = Parser::new(source);
-        let module = parser.parse_module().expect("binary.dream should parse successfully");
+        let module = parser.parse_module().expect("binary_example.dream should parse successfully");
 
         // Should have 10 functions + 2 prelude items
         assert_eq!(user_items(&module).len(), 10);
-        assert_eq!(module.name, "binaries");
+        assert_eq!(module.name, "binary_example");
     }
 
     #[test]
