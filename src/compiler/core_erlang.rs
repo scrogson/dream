@@ -924,13 +924,29 @@ impl CoreErlangEmitter {
                 self.emit("}#");
             }
 
-            Expr::MethodCall { receiver: _, method, args: _ } => {
-                // Method calls need to be translated - for now treat as function call
-                // In real usage, this might need more sophisticated handling
-                return Err(CoreErlangError::new(format!(
-                    "Method calls not yet supported: .{}()",
-                    method
-                )));
+            Expr::MethodCall { receiver, method, args } => {
+                // UFCS: Transform expr.method(args) into method(expr, args)
+                // The method must be either imported or defined locally
+                let mut all_args = vec![receiver.as_ref().clone()];
+                all_args.extend(args.iter().cloned());
+
+                // Check if it's an imported function
+                if let Some((module, original_name)) = self.imports.get(method) {
+                    // Imported function call - add dream:: prefix for Dream stdlib modules
+                    self.emit(&format!(
+                        "call '{}':'{}'(",
+                        Self::beam_module_name(&module.to_lowercase()),
+                        original_name
+                    ));
+                    self.emit_args(&all_args)?;
+                    self.emit(")");
+                } else {
+                    // Local function call
+                    self.emit(&format!("apply '{}'/{}", method, all_args.len()));
+                    self.emit("(");
+                    self.emit_args(&all_args)?;
+                    self.emit(")");
+                }
             }
 
             Expr::StructInit { name, fields } => {

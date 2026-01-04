@@ -1,0 +1,39 @@
+/// Method chaining with imported functions
+///
+/// This tests UFCS with functions imported from stdlib.
+
+use option::unwrap_or;
+use option::is_some;
+
+/// Option type (same as stdlib)
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+/// Safe division that returns Option<int>
+pub fn safe_div(a: int, b: int) -> Option<int> {
+    if b == 0 {
+        None
+    } else {
+        Some(a / b)
+    }
+}
+
+pub fn main() -> atom {
+    io::println("Method chaining with imports");
+    io::println("=============================");
+
+    // Using imported unwrap_or via method chaining
+    let result = safe_div(100, 4).unwrap_or(0);
+    io::format("100 / 4 = ~p~n", [result]);
+
+    let result_div0 = safe_div(100, 0).unwrap_or(-999);
+    io::format("100 / 0 = ~p (default: -999)~n", [result_div0]);
+
+    // Using imported is_some
+    let check = safe_div(50, 5).is_some();
+    io::format("50 / 5 is_some: ~p~n", [check]);
+
+    :ok
+}
