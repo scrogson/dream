@@ -57,6 +57,13 @@ pub enum Ty {
 
     /// Any type (for dynamic/untyped contexts)
     Any,
+
+    /// Associated type reference (e.g., Self::State)
+    /// Will be resolved to concrete type during trait impl checking
+    AssociatedType {
+        base: String,
+        name: String,
+    },
 }
 
 impl Ty {
@@ -166,6 +173,7 @@ impl std::fmt::Display for Ty {
             Ty::Infer(id) => write!(f, "?{}", id),
             Ty::Error => write!(f, "<error>"),
             Ty::Any => write!(f, "any"),
+            Ty::AssociatedType { base, name } => write!(f, "{}::{}", base, name),
         }
     }
 }
@@ -513,6 +521,10 @@ impl TypeChecker {
             ast::Type::Fn { params, ret } => Ty::Fn {
                 params: params.iter().map(|t| self.ast_type_to_ty(t)).collect(),
                 ret: Box::new(self.ast_type_to_ty(ret)),
+            },
+            ast::Type::AssociatedType { base, name } => Ty::AssociatedType {
+                base: base.clone(),
+                name: name.clone(),
             },
         }
     }
@@ -1827,6 +1839,10 @@ impl MethodResolver {
             ast::Type::Fn { params, ret } => Ty::Fn {
                 params: params.iter().map(|t| self.ast_type_to_ty(t)).collect(),
                 ret: Box::new(self.ast_type_to_ty(ret)),
+            },
+            ast::Type::AssociatedType { base, name } => Ty::AssociatedType {
+                base: base.clone(),
+                name: name.clone(),
             },
         }
     }

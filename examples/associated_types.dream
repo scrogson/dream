@@ -1,0 +1,70 @@
+// Associated types example
+
+mod associated_types {
+    use io::{println, format};
+
+    // A trait with an associated type
+    trait Container {
+        type Item;
+
+        fn get(self) -> Self::Item;
+        fn set(self, item: Self::Item) -> Self;
+    }
+
+    // A simple box that holds an integer
+    struct IntBox {
+        value: int,
+    }
+
+    impl Container for IntBox {
+        type Item = int;
+
+        pub fn get(self) -> int {
+            self.value
+        }
+
+        pub fn set(self, item: int) -> IntBox {
+            IntBox { value: item }
+        }
+    }
+
+    // A box that holds a string
+    struct StringBox {
+        value: string,
+    }
+
+    impl Container for StringBox {
+        type Item = string;
+
+        pub fn get(self) -> string {
+            self.value
+        }
+
+        pub fn set(self, item: string) -> StringBox {
+            StringBox { value: item }
+        }
+    }
+
+    pub fn main() -> atom {
+        println("=== Associated Types ===");
+        println("");
+
+        // IntBox
+        let box1 = IntBox { value: 42 };
+        format("IntBox value: ~p~n", [Container::get(box1)]);
+
+        let box2 = Container::set(box1, 100);
+        format("IntBox after set: ~p~n", [Container::get(box2)]);
+
+        println("");
+
+        // StringBox
+        let sbox1 = StringBox { value: "hello" };
+        format("StringBox value: ~p~n", [Container::get(sbox1)]);
+
+        let sbox2 = Container::set(sbox1, "world");
+        format("StringBox after set: ~p~n", [Container::get(sbox2)]);
+
+        :ok
+    }
+}

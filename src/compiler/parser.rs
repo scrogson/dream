@@ -155,9 +155,16 @@ impl<'source> Parser<'source> {
             let type_name = self.expect_type_ident()?;
             self.expect(&Token::LBrace)?;
 
-            // Parse methods inside the trait impl
+            // Parse type bindings and methods inside the trait impl
+            let mut type_bindings = Vec::new();
             let mut methods = Vec::new();
             while !self.check(&Token::RBrace) && !self.is_at_end() {
+                // Check for type binding: `type Name = ConcreteType;`
+                if self.check_ident("type") {
+                    type_bindings.push(self.parse_type_binding()?);
+                    continue;
+                }
+
                 // Methods can have pub modifier
                 let is_pub = self.check(&Token::Pub);
                 if is_pub {
@@ -168,7 +175,7 @@ impl<'source> Parser<'source> {
                     methods.push(self.parse_function(is_pub)?);
                 } else {
                     let span = self.current_span();
-                    return Err(ParseError::new("expected `fn` in impl block", span));
+                    return Err(ParseError::new("expected `fn` or `type` in trait impl", span));
                 }
             }
 
@@ -177,6 +184,7 @@ impl<'source> Parser<'source> {
             Ok(Item::TraitImpl(TraitImpl {
                 trait_name: first_name,
                 type_name,
+                type_bindings,
                 methods,
             }))
         } else {
@@ -215,14 +223,38 @@ impl<'source> Parser<'source> {
         let name = self.expect_type_ident()?;
         self.expect(&Token::LBrace)?;
 
+        let mut associated_types = Vec::new();
         let mut methods = Vec::new();
         while !self.check(&Token::RBrace) && !self.is_at_end() {
-            methods.push(self.parse_trait_method()?);
+            // Check for associated type declaration: `type Name;`
+            if self.check_ident("type") {
+                associated_types.push(self.parse_associated_type_decl()?);
+            } else {
+                methods.push(self.parse_trait_method()?);
+            }
         }
 
         self.expect(&Token::RBrace)?;
 
-        Ok(Item::Trait(TraitDef { name, methods }))
+        Ok(Item::Trait(TraitDef { name, associated_types, methods }))
+    }
+
+    /// Parse an associated type declaration in a trait: `type Name;`
+    fn parse_associated_type_decl(&mut self) -> ParseResult<String> {
+        self.expect_ident_value("type")?;
+        let name = self.expect_type_ident()?;
+        self.expect(&Token::Semi)?;
+        Ok(name)
+    }
+
+    /// Parse a type binding in a trait impl: `type State = int;`
+    fn parse_type_binding(&mut self) -> ParseResult<(String, Type)> {
+        self.expect_ident_value("type")?;
+        let name = self.expect_type_ident()?;
+        self.expect(&Token::Eq)?;
+        let ty = self.parse_type()?;
+        self.expect(&Token::Semi)?;
+        Ok((name, ty))
     }
 
     /// Parse a trait method signature: `fn method(self, arg: Type) -> ReturnType;`
@@ -1714,6 +1746,17 @@ impl<'source> Parser<'source> {
         // Named type (uppercase identifier) with optional type arguments
         if let Some(Token::TypeIdent(name)) = self.peek().cloned() {
             self.advance();
+
+            // Check for Self::AssociatedType syntax
+            if name == "Self" && self.check(&Token::ColonColon) {
+                self.advance();
+                let assoc_name = self.expect_type_ident()?;
+                return Ok(Type::AssociatedType {
+                    base: "Self".to_string(),
+                    name: assoc_name,
+                });
+            }
+
             let type_args = self.parse_type_args()?;
             return Ok(Type::Named { name, type_args });
         }
@@ -1800,6 +1843,22 @@ impl<'source> Parser<'source> {
 
     fn check(&self, expected: &Token) -> bool {
         self.peek() == Some(expected)
+    }
+
+    /// Check if current token is an identifier with specific value (for contextual keywords like `type`)
+    fn check_ident(&self, value: &str) -> bool {
+        matches!(self.peek(), Some(Token::Ident(s)) if s == value)
+    }
+
+    /// Expect a specific identifier value (for contextual keywords)
+    fn expect_ident_value(&mut self, value: &str) -> ParseResult<()> {
+        if self.check_ident(value) {
+            self.advance();
+            Ok(())
+        } else {
+            let span = self.current_span();
+            Err(ParseError::new(format!("expected `{}`", value), span))
+        }
     }
 
     fn is_at_end(&self) -> bool {

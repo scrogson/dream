@@ -53,6 +53,8 @@ pub struct ImplBlock {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraitDef {
     pub name: String,
+    /// Associated types declared in the trait (e.g., `type State;`)
+    pub associated_types: Vec<String>,
     pub methods: Vec<TraitMethod>,
 }
 
@@ -69,6 +71,8 @@ pub struct TraitMethod {
 pub struct TraitImpl {
     pub trait_name: String,
     pub type_name: String,
+    /// Associated type bindings (e.g., `type State = int;`)
+    pub type_bindings: Vec<(String, Type)>,
     pub methods: Vec<Function>,
 }
 
@@ -470,6 +474,13 @@ pub enum Type {
     Fn {
         params: Vec<Type>,
         ret: Box<Type>,
+    },
+    /// Associated type reference (e.g., `Self::State`).
+    AssociatedType {
+        /// The base type (usually "Self")
+        base: String,
+        /// The associated type name (e.g., "State")
+        name: String,
     },
 }
 
