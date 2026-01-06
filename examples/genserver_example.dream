@@ -20,42 +20,54 @@ mod counter {
         Reset,
     }
 
-    // GenServer callbacks - these are required by the GenServer trait
+    // GenServer callbacks
+    // Required: init, handle_call, handle_cast
+    // Optional: handle_info, terminate (have defaults)
+    //
+    // Dream supports multi-clause functions with enum pattern matching,
+    // similar to Erlang/Elixir. Each variant gets its own function clause.
+
+    // TODO: Once TraitDecl supports associated type bindings, we can use:
+    //   impl genserver::GenServer { type State = int; }
+    // and then use Self::State in signatures below.
 
     /// Initialize the counter state
     pub fn init(args: any) -> (atom, int) {
-        // Return {:ok, initial_state}
         (:ok, 0)
     }
 
-    /// Handle synchronous calls
-    /// `from` is a (pid, ref) tuple following OTP convention
-    pub fn handle_call(msg: Call, from: (pid, any), state: int) -> (atom, any, int) {
-        match msg {
-            Call::Get => (:reply, state, state),
-            Call::GetAndIncrement => (:reply, state, state + 1),
-        }
+    /// Handle synchronous calls - using multi-clause functions
+    /// `from` is a From struct containing the caller's pid and reference
+    pub fn handle_call(Call::Get, from: genserver::From, state: int) -> (atom, int, int) {
+        io::println("Received Get call");
+        (:reply, state, state)
     }
 
-    /// Handle asynchronous casts
-    pub fn handle_cast(msg: Cast, state: int) -> (atom, int) {
-        match msg {
-            Cast::Increment => (:noreply, state + 1),
-            Cast::IncrementBy(n) => (:noreply, state + n),
-            Cast::Reset => (:noreply, 0),
-        }
+    pub fn handle_call(Call::GetAndIncrement, from: genserver::From, state: int) -> (atom, int, int) {
+        io::println("Received GetAndIncrement call");
+        (:reply, state, state + 1)
     }
 
-    /// Handle other messages
-    pub fn handle_info(msg: any, state: int) -> (atom, int) {
-        // Ignore other messages
-        (:noreply, state)
+    /// Handle asynchronous casts - using multi-clause functions
+    pub fn handle_cast(Cast::Increment, state: int) -> (atom, int) {
+        io::println("Received Increment cast");
+        (:noreply, state + 1)
     }
 
-    /// Called when the server terminates
-    pub fn terminate(reason: atom, state: int) -> atom {
-        :ok
+    pub fn handle_cast(Cast::IncrementBy(n), state: int) -> (atom, int) {
+        io::println(io::format("Received IncrementBy(~p) cast", [n]));
+        (:noreply, state + n)
     }
+
+    pub fn handle_cast(Cast::Reset, state: int) -> (atom, int) {
+        io::println("Received Reset cast");
+        (:noreply, 0)
+    }
+
+    // NOTE: handle_info and terminate are optional!
+    // If not defined, the default implementations are used:
+    // - handle_info: ignores the message, keeps state unchanged
+    // - terminate: does nothing, returns :ok
 }
 
 mod genserver_example {

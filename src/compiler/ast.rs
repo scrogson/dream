@@ -487,6 +487,8 @@ pub enum Type {
     List(Box<Type>),
     /// Pid type.
     Pid,
+    /// Reference type.
+    Ref,
     /// Integer type.
     Int,
     /// String type.

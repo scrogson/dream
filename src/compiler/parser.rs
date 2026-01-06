@@ -522,6 +522,11 @@ impl<'source> Parser<'source> {
                     name: "any".to_string(),
                     type_args: vec![],
                 },
+                // Infer type from enum variant pattern (e.g., Msg::Get → Msg)
+                Pattern::Enum { name, .. } => Type::Named {
+                    name: name.clone(),
+                    type_args: vec![],
+                },
                 _ => {
                     let span = self.current_span();
                     return Err(ParseError::new(
@@ -1967,6 +1972,10 @@ impl<'source> Parser<'source> {
                 "pid" => {
                     self.advance();
                     return Ok(Type::Pid);
+                }
+                "ref" => {
+                    self.advance();
+                    return Ok(Type::Ref);
                 }
                 "bool" => {
                     self.advance();

@@ -24,6 +24,7 @@ pub enum Ty {
     Unit,
     Binary,
     Pid,
+    Ref,
 
     /// Raw Erlang map (untyped)
     RawMap,
@@ -134,6 +135,7 @@ impl std::fmt::Display for Ty {
             Ty::Unit => write!(f, "()"),
             Ty::Binary => write!(f, "binary"),
             Ty::Pid => write!(f, "pid"),
+            Ty::Ref => write!(f, "ref"),
             Ty::RawMap => write!(f, "map"),
             Ty::Tuple(tys) => {
                 write!(f, "(")?;
@@ -514,6 +516,7 @@ impl TypeChecker {
             Ty::Bool => Some("bool".to_string()),
             Ty::Atom => Some("atom".to_string()),
             Ty::Pid => Some("pid".to_string()),
+            Ty::Ref => Some("ref".to_string()),
             Ty::Binary => Some("binary".to_string()),
             Ty::Unit => Some("unit".to_string()),
             Ty::Infer(id) => {
@@ -620,6 +623,7 @@ impl TypeChecker {
             ast::Type::Unit => Ty::Unit,
             ast::Type::Binary => Ty::Binary,
             ast::Type::Pid => Ty::Pid,
+            ast::Type::Ref => Ty::Ref,
             ast::Type::Map => Ty::RawMap,
             ast::Type::Tuple(tys) => {
                 Ty::Tuple(tys.iter().map(|t| self.ast_type_to_ty(t)).collect())
@@ -634,6 +638,7 @@ impl TypeChecker {
                     "atom" => Ty::Atom,
                     "bool" => Ty::Bool,
                     "pid" => Ty::Pid,
+                    "ref" => Ty::Ref,
                     "binary" => Ty::Binary,
                     _ => Ty::Named {
                         name: name.clone(),
@@ -842,13 +847,13 @@ impl TypeChecker {
         // Set current function span for error reporting
         self.current_function_span = Some(func.span.clone());
 
-        // Bind parameters
+        // Bind parameters - use bind_pattern to handle all pattern types including enum variants
+        let old_env = std::mem::replace(&mut self.env, scope);
         for param in &func.params {
-            if let Pattern::Ident(name) = &param.pattern {
-                let ty = self.ast_type_to_ty(&param.ty);
-                scope.bind_var(name.clone(), ty);
-            }
+            let ty = self.ast_type_to_ty(&param.ty);
+            self.bind_pattern(&param.pattern, &ty)?;
         }
+        scope = std::mem::replace(&mut self.env, old_env);
 
         // Set expected return type
         let ret_ty = func
@@ -958,6 +963,12 @@ impl TypeChecker {
                     if pats.len() == tys.len() {
                         for (p, t) in pats.iter().zip(tys.iter()) {
                             self.bind_pattern(p, t)?;
+                        }
+                    } else {
+                        // Length mismatch - still bind variables as Any
+                        // This happens when matching different tuple sizes
+                        for p in pats {
+                            self.bind_pattern(p, &Ty::Any)?;
                         }
                     }
                 } else {
@@ -1643,6 +1654,7 @@ impl TypeChecker {
             (Ty::Unit, Ty::Unit) => true,
             (Ty::Binary, Ty::Binary) => true,
             (Ty::Pid, Ty::Pid) => true,
+            (Ty::Ref, Ty::Ref) => true,
             (Ty::RawMap, Ty::RawMap) => true,
 
             (Ty::Tuple(tys1), Ty::Tuple(tys2)) => {
@@ -2067,6 +2079,7 @@ impl MethodResolver {
             ast::Type::Unit => Ty::Unit,
             ast::Type::Binary => Ty::Binary,
             ast::Type::Pid => Ty::Pid,
+            ast::Type::Ref => Ty::Ref,
             ast::Type::Map => Ty::RawMap,
             ast::Type::Tuple(tys) => {
                 Ty::Tuple(tys.iter().map(|t| self.ast_type_to_ty(t)).collect())
@@ -2079,6 +2092,7 @@ impl MethodResolver {
                     "atom" => Ty::Atom,
                     "bool" => Ty::Bool,
                     "pid" => Ty::Pid,
+                    "ref" => Ty::Ref,
                     "binary" => Ty::Binary,
                     _ => Ty::Named {
                         name: name.clone(),
