@@ -1,0 +1,227 @@
+// Erlang standard library type stubs for Dream
+// These declarations enable type checking for FFI calls to Erlang
+
+extern mod erlang {
+    // Process management
+    fn spawn(fun: fn() -> any) -> pid;
+    fn spawn_link(fun: fn() -> any) -> pid;
+    fn self() -> pid;
+    fn exit(reason: any) -> any;
+    fn link(pid: pid) -> bool;
+    fn unlink(pid: pid) -> bool;
+    fn is_process_alive(pid: pid) -> bool;
+    fn monitor(process: atom, pid: pid) -> ref;
+    fn demonitor(ref: ref) -> bool;
+    fn process_flag(flag: atom, value: any) -> any;
+    fn register(name: atom, pid: pid) -> bool;
+    fn unregister(name: atom) -> bool;
+    fn whereis(name: atom) -> pid;
+    fn registered() -> [atom];
+
+    // Message passing
+    fn send(dest: pid, msg: any) -> any;
+
+    // Arithmetic
+    fn abs(x: int) -> int;
+    fn max(a: any, b: any) -> any;
+    fn min(a: any, b: any) -> any;
+    fn rem(a: int, b: int) -> int;
+
+    // Type conversions
+    fn atom_to_list(atom: atom) -> [int];
+    fn list_to_atom(list: [int]) -> atom;
+    fn integer_to_list(n: int) -> [int];
+    fn list_to_integer(list: [int]) -> int;
+    fn float_to_list(f: any) -> [int];
+    fn list_to_float(list: [int]) -> any;
+    fn binary_to_list(bin: binary) -> [int];
+    fn list_to_binary(list: [int]) -> binary;
+    fn atom_to_binary(atom: atom) -> binary;
+    fn binary_to_atom(bin: binary) -> atom;
+    fn term_to_binary(term: any) -> binary;
+    fn binary_to_term(bin: binary) -> any;
+
+    // Type checks
+    fn is_atom(term: any) -> bool;
+    fn is_binary(term: any) -> bool;
+    fn is_boolean(term: any) -> bool;
+    fn is_float(term: any) -> bool;
+    fn is_function(term: any) -> bool;
+    fn is_integer(term: any) -> bool;
+    fn is_list(term: any) -> bool;
+    fn is_map(term: any) -> bool;
+    fn is_number(term: any) -> bool;
+    fn is_pid(term: any) -> bool;
+    fn is_port(term: any) -> bool;
+    fn is_reference(term: any) -> bool;
+    fn is_tuple(term: any) -> bool;
+
+    // References
+    fn make_ref() -> ref;
+
+    // Tuples
+    fn tuple_size(tuple: any) -> int;
+    fn element(n: int, tuple: any) -> any;
+    fn setelement(n: int, tuple: any, value: any) -> any;
+
+    // Binary/Bit operations
+    fn byte_size(bin: binary) -> int;
+    fn bit_size(bin: binary) -> int;
+
+    // System
+    fn now() -> (int, int, int);
+    fn monotonic_time() -> int;
+    fn system_time() -> int;
+    fn unique_integer() -> int;
+    fn halt() -> any;
+    fn halt(status: int) -> any;
+
+    // Error handling
+    fn error(reason: any) -> any;
+    fn throw(reason: any) -> any;
+
+    // Apply
+    fn apply(module: atom, function: atom, args: [any]) -> any;
+}
+
+extern mod lists {
+    fn append(list1: [any], list2: [any]) -> [any];
+    fn concat(lists: [[any]]) -> [any];
+    fn delete(elem: any, list: [any]) -> [any];
+    fn duplicate(n: int, elem: any) -> [any];
+    fn filter(pred: fn(any) -> bool, list: [any]) -> [any];
+    fn flatten(list: [any]) -> [any];
+    fn foldl(fun: fn(any, any) -> any, acc: any, list: [any]) -> any;
+    fn foldr(fun: fn(any, any) -> any, acc: any, list: [any]) -> any;
+    fn foreach(fun: fn(any) -> any, list: [any]) -> atom;
+    fn keyfind(key: any, n: int, list: [any]) -> any;
+    fn keystore(key: any, n: int, list: [any], tuple: any) -> [any];
+    fn last(list: [any]) -> any;
+    fn map(fun: fn(any) -> any, list: [any]) -> [any];
+    fn member(elem: any, list: [any]) -> bool;
+    fn nth(n: int, list: [any]) -> any;
+    fn nthtail(n: int, list: [any]) -> [any];
+    fn reverse(list: [any]) -> [any];
+    fn sort(list: [any]) -> [any];
+    fn split(n: int, list: [any]) -> ([any], [any]);
+    fn sum(list: [int]) -> int;
+    fn usort(list: [any]) -> [any];
+    fn zip(list1: [any], list2: [any]) -> [any];
+    fn zipwith(fun: fn(any, any) -> any, list1: [any], list2: [any]) -> [any];
+}
+
+extern mod maps {
+    fn new() -> any;
+    fn get(key: any, map: any) -> any;
+    fn get(key: any, map: any, default: any) -> any;
+    fn put(key: any, value: any, map: any) -> any;
+    fn remove(key: any, map: any) -> any;
+    fn keys(map: any) -> [any];
+    fn values(map: any) -> [any];
+    fn to_list(map: any) -> [any];
+    fn from_list(list: [any]) -> any;
+    fn is_key(key: any, map: any) -> bool;
+    fn size(map: any) -> int;
+    fn merge(map1: any, map2: any) -> any;
+    fn fold(fun: fn(any, any, any) -> any, acc: any, map: any) -> any;
+    fn map(fun: fn(any, any) -> any, map: any) -> any;
+    fn filter(pred: fn(any, any) -> bool, map: any) -> any;
+}
+
+extern mod io {
+    fn format(format: string, args: [any]) -> atom;
+    fn format(device: any, format: string, args: [any]) -> atom;
+    fn fread(prompt: string, format: string) -> any;
+    fn get_line(prompt: string) -> string;
+    fn nl() -> atom;
+    fn put_chars(chars: string) -> atom;
+}
+
+extern mod file {
+    fn read_file(filename: string) -> any;
+    fn write_file(filename: string, data: binary) -> any;
+    fn delete(filename: string) -> any;
+    fn rename(source: string, dest: string) -> any;
+    fn make_dir(dir: string) -> any;
+    fn del_dir(dir: string) -> any;
+    fn list_dir(dir: string) -> any;
+    fn read_file_info(filename: string) -> any;
+}
+
+extern mod timer {
+    fn sleep(milliseconds: int) -> atom;
+    fn send_after(time: int, dest: pid, msg: any) -> any;
+    fn send_interval(time: int, dest: pid, msg: any) -> any;
+    fn cancel(ref: any) -> any;
+}
+
+extern mod string {
+    fn concat(str1: string, str2: string) -> string;
+    fn length(str: string) -> int;
+    fn substr(str: string, start: int, len: int) -> string;
+    fn to_upper(str: string) -> string;
+    fn to_lower(str: string) -> string;
+    fn trim(str: string) -> string;
+    fn split(str: string, sep: string) -> [string];
+    fn join(list: [string], sep: string) -> string;
+}
+
+// Note: Erlang's 'binary' module - renamed to avoid keyword conflict
+// Use :binary::copy etc. in actual FFI calls
+extern mod binary_mod {
+    fn copy(bin: binary) -> binary;
+    fn part(bin: binary, pos: int, len: int) -> binary;
+    fn split(bin: binary, pattern: binary) -> [binary];
+    fn match_pattern(bin: binary, pattern: binary) -> any;
+}
+
+extern mod gen_server {
+    fn start_link(module: atom, args: any, options: [any]) -> any;
+    fn call(server: pid, request: any) -> any;
+    fn call(server: pid, request: any, timeout: int) -> any;
+    fn cast(server: pid, request: any) -> atom;
+    fn reply(from: any, reply: any) -> atom;
+    fn stop(server: pid) -> atom;
+}
+
+extern mod gen_statem {
+    fn start_link(module: atom, args: any, options: [any]) -> any;
+    fn call(server: pid, request: any) -> any;
+    fn cast(server: pid, request: any) -> atom;
+    fn reply(from: any, reply: any) -> atom;
+    fn stop(server: pid) -> atom;
+}
+
+extern mod supervisor {
+    fn start_link(module: atom, args: any) -> any;
+    fn start_child(sup: pid, child_spec: any) -> any;
+    fn terminate_child(sup: pid, id: any) -> any;
+    fn restart_child(sup: pid, id: any) -> any;
+    fn delete_child(sup: pid, id: any) -> any;
+    fn which_children(sup: pid) -> [any];
+    fn count_children(sup: pid) -> [any];
+}
+
+extern mod ets {
+    fn new(name: atom, options: [any]) -> any;
+    fn insert(table: any, object: any) -> bool;
+    fn lookup(table: any, key: any) -> [any];
+    fn delete(table: any) -> bool;
+    fn delete(table: any, key: any) -> bool;
+    fn member(table: any, key: any) -> bool;
+    fn first(table: any) -> any;
+    fn next(table: any, key: any) -> any;
+    fn tab2list(table: any) -> [any];
+}
+
+extern mod crypto {
+    fn hash(hash_type: atom, data: binary) -> binary;
+    fn mac(mac_type: atom, subtype: atom, key: binary, data: binary) -> binary;
+    fn strong_rand_bytes(n: int) -> binary;
+}
+
+extern mod rand {
+    fn uniform() -> any;
+    fn uniform(n: int) -> int;
+    fn seed(algo: atom) -> any;
+}

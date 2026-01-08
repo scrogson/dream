@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use crate::compiler::ast::{
-    self, BinOp, Block, Expr, Function, ImplBlock, Item, MatchArm, Module, Pattern, Stmt,
-    TypeParam, UnaryOp,
+    self, BinOp, Block, Expr, ExternItem, ExternMod, Function, ImplBlock, Item, MatchArm, Module,
+    Pattern, Stmt, TypeParam, UnaryOp,
 };
 use crate::compiler::error::{TypeError, TypeResult};
 
@@ -263,6 +263,9 @@ pub struct TypeEnv {
     module_traits: Vec<String>,
     /// Associated type bindings from module-level trait declarations: "State" -> Ty::Int
     associated_types: HashMap<String, Ty>,
+    /// External function signatures: (module, function) -> FnInfo
+    /// Used for type-checking FFI calls to Erlang/Elixir/etc
+    extern_functions: HashMap<(String, String), FnInfo>,
 }
 
 impl TypeEnv {
@@ -283,6 +286,7 @@ impl TypeEnv {
             trait_impls: self.trait_impls.clone(),
             module_traits: self.module_traits.clone(),
             associated_types: self.associated_types.clone(),
+            extern_functions: self.extern_functions.clone(),
         }
     }
 
@@ -342,6 +346,12 @@ impl TypeEnv {
     pub fn type_implements_trait(&self, type_name: &str, trait_name: &str) -> bool {
         self.trait_impls
             .contains_key(&(trait_name.to_string(), type_name.to_string()))
+    }
+
+    /// Get external function info (from .dreamt stubs).
+    pub fn get_extern_function(&self, module: &str, function: &str) -> Option<&FnInfo> {
+        self.extern_functions
+            .get(&(module.to_string(), function.to_string()))
     }
 }
 
@@ -815,10 +825,49 @@ impl TypeChecker {
                         self.env.associated_types.insert(name.clone(), resolved_ty);
                     }
                 }
+                Item::ExternMod(extern_mod) => {
+                    // Collect external function signatures from .dreamt stubs
+                    self.collect_extern_mod(extern_mod, &extern_mod.name);
+                }
                 _ => {}
             }
         }
         Ok(())
+    }
+
+    /// Recursively collect external function signatures from an extern mod.
+    fn collect_extern_mod(&mut self, extern_mod: &ExternMod, module_path: &str) {
+        for item in &extern_mod.items {
+            match item {
+                ExternItem::Mod(nested) => {
+                    // Build nested module path: erlang.maps, etc.
+                    let nested_path = format!("{}.{}", module_path, nested.name);
+                    self.collect_extern_mod(nested, &nested_path);
+                }
+                ExternItem::Function(func) => {
+                    let params: Vec<(String, Ty)> = func
+                        .params
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), self.ast_type_to_ty(ty)))
+                        .collect();
+                    let ret = self.ast_type_to_ty(&func.return_type);
+                    let info = FnInfo {
+                        name: func.name.clone(),
+                        type_params: func.type_params.clone(),
+                        params,
+                        ret,
+                    };
+                    self.env.extern_functions.insert(
+                        (module_path.to_string(), func.name.clone()),
+                        info,
+                    );
+                }
+                ExternItem::Type(_) => {
+                    // TODO: Handle opaque type declarations
+                    // For now, we skip them - they're just markers
+                }
+            }
+        }
     }
 
     /// Second pass: collect function signatures.
@@ -1444,9 +1493,45 @@ impl TypeChecker {
             }
 
             // External call
-            Expr::ExternCall { module: _, function: _, args: _ } => {
-                // External calls are untyped
-                Ok(Ty::Any)
+            Expr::ExternCall { module, function, args } => {
+                // Look up extern function signature from .dreamt stubs
+                if let Some(info) = self.env.get_extern_function(module, function).cloned() {
+                    // Instantiate generic function
+                    let instantiated = self.instantiate_function(&info);
+
+                    // Check argument count
+                    if args.len() != instantiated.params.len() {
+                        self.error(TypeError::new(format!(
+                            "extern function '{}::{}' expects {} arguments, got {}",
+                            module,
+                            function,
+                            instantiated.params.len(),
+                            args.len()
+                        )));
+                    }
+
+                    // Check argument types
+                    for (arg, (_, param_ty)) in args.iter().zip(instantiated.params.iter()) {
+                        let arg_ty = self.infer_expr(arg)?;
+                        if self.unify(&arg_ty, param_ty).is_err()
+                            && !self.types_compatible(&arg_ty, param_ty)
+                        {
+                            self.error(TypeError::with_help(
+                                format!("type mismatch in call to '{}::{}'", module, function),
+                                format!("expected {}, found {}", param_ty, arg_ty),
+                            ));
+                        }
+                    }
+
+                    // Return the function's declared return type
+                    Ok(self.apply_substitutions(&instantiated.ret))
+                } else {
+                    // No stub found - still type check args but return Any
+                    for arg in args {
+                        self.infer_expr(arg)?;
+                    }
+                    Ok(Ty::Any)
+                }
             }
 
             // Bit strings
@@ -2355,5 +2440,93 @@ mod tests {
             }
         "#);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extern_function_type_checking() {
+        // Test that extern function stubs enable type checking of FFI calls
+        let result = parse_and_check(r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(x: int) -> int;
+                    fn self() -> pid;
+                }
+
+                fn test() -> int {
+                    :erlang::abs(-5)
+                }
+            }
+        "#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extern_function_wrong_arg_count() {
+        // Extern function with wrong argument count should error
+        let result = parse_and_check(r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(x: int) -> int;
+                }
+
+                fn test() -> int {
+                    :erlang::abs(1, 2)
+                }
+            }
+        "#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extern_function_wrong_arg_type() {
+        // Extern function with wrong argument type should error
+        let result = parse_and_check(r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(x: int) -> int;
+                }
+
+                fn test() -> int {
+                    :erlang::abs("hello")
+                }
+            }
+        "#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extern_function_return_type() {
+        // Extern function return type should be used in type checking
+        let result = parse_and_check(r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(x: int) -> int;
+                }
+
+                fn test() -> string {
+                    :erlang::abs(-5)
+                }
+            }
+        "#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extern_maps_module() {
+        // Test extern module for Erlang's maps module
+        let result = parse_and_check(r#"
+            mod test {
+                extern mod maps {
+                    fn new() -> any;
+                    fn get(key: any, map: any) -> any;
+                }
+
+                fn test() -> any {
+                    let m = :maps::new();
+                    :maps::get(:foo, m)
+                }
+            }
+        "#);
+        assert!(result.is_ok());
     }
 }

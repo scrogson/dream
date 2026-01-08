@@ -154,7 +154,9 @@ impl<'source> Parser<'source> {
             return self.parse_trait_def();
         }
 
-        if self.check(&Token::Fn) {
+        if self.check(&Token::Extern) {
+            self.parse_extern_mod()
+        } else if self.check(&Token::Fn) {
             Ok(Item::Function(self.parse_function(is_pub)?))
         } else if self.check(&Token::Struct) {
             Ok(Item::Struct(self.parse_struct(is_pub)?))
@@ -165,7 +167,7 @@ impl<'source> Parser<'source> {
         } else {
             let span = self.current_span();
             Err(ParseError::new(
-                "expected `fn`, `struct`, `enum`, `mod`, `impl`, `trait`, or `use`",
+                "expected `fn`, `struct`, `enum`, `mod`, `impl`, `trait`, `extern`, or `use`",
                 span,
             ))
         }
@@ -177,6 +179,98 @@ impl<'source> Parser<'source> {
         let name = self.expect_ident()?;
         self.expect(&Token::Semi)?;
         Ok(Item::ModDecl(ModDecl { name, is_pub }))
+    }
+
+    /// Parse an external module declaration: `extern mod erlang { ... }`
+    /// Used in .dreamt files to declare types for FFI modules.
+    fn parse_extern_mod(&mut self) -> ParseResult<Item> {
+        self.expect(&Token::Extern)?;
+        self.expect(&Token::Mod)?;
+        let name = self.expect_ident()?;
+        self.expect(&Token::LBrace)?;
+
+        let mut items = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            items.push(self.parse_extern_item()?);
+        }
+        self.expect(&Token::RBrace)?;
+
+        Ok(Item::ExternMod(ExternMod { name, items }))
+    }
+
+    /// Parse an item inside an extern mod block.
+    fn parse_extern_item(&mut self) -> ParseResult<ExternItem> {
+        if self.check(&Token::Mod) {
+            // Nested module: `mod socket { ... }`
+            self.expect(&Token::Mod)?;
+            let name = self.expect_ident()?;
+            self.expect(&Token::LBrace)?;
+
+            let mut items = Vec::new();
+            while !self.check(&Token::RBrace) && !self.is_at_end() {
+                items.push(self.parse_extern_item()?);
+            }
+            self.expect(&Token::RBrace)?;
+
+            Ok(ExternItem::Mod(ExternMod { name, items }))
+        } else if self.check(&Token::Type) {
+            // Opaque type: `type Socket;` or `type Map<K, V>;`
+            self.expect(&Token::Type)?;
+            let name = self.expect_type_ident()?;
+            let type_params = if self.check(&Token::Lt) {
+                self.parse_type_params()?
+            } else {
+                vec![]
+            };
+            self.expect(&Token::Semi)?;
+
+            Ok(ExternItem::Type(ExternType { name, type_params }))
+        } else if self.check(&Token::Fn) {
+            // Function declaration: `fn get<K, V>(key: K, map: Map<K, V>) -> V;`
+            self.expect(&Token::Fn)?;
+            let name = self.expect_ident_or_keyword()?;
+
+            let type_params = if self.check(&Token::Lt) {
+                self.parse_type_params()?
+            } else {
+                vec![]
+            };
+
+            self.expect(&Token::LParen)?;
+            let mut params = Vec::new();
+            while !self.check(&Token::RParen) {
+                let param_name = self.expect_ident()?;
+                self.expect(&Token::Colon)?;
+                let param_type = self.parse_type()?;
+                params.push((param_name, param_type));
+                if !self.check(&Token::RParen) {
+                    self.expect(&Token::Comma)?;
+                }
+            }
+            self.expect(&Token::RParen)?;
+
+            let return_type = if self.check(&Token::Arrow) {
+                self.advance();
+                self.parse_type()?
+            } else {
+                Type::Unit
+            };
+
+            self.expect(&Token::Semi)?;
+
+            Ok(ExternItem::Function(ExternFn {
+                name,
+                type_params,
+                params,
+                return_type,
+            }))
+        } else {
+            let span = self.current_span();
+            Err(ParseError::new(
+                "expected `fn`, `type`, or `mod` in extern block",
+                span,
+            ))
+        }
     }
 
     /// Parse an impl block, trait implementation, or module-level trait declaration.
@@ -2262,6 +2356,38 @@ impl<'source> Parser<'source> {
             ))
         }
     }
+
+    /// Expect an identifier or a keyword that can be used as a function name.
+    /// This is needed for extern blocks where Erlang/Elixir function names may
+    /// be Dream keywords (spawn, receive, self, etc.)
+    fn expect_ident_or_keyword(&mut self) -> ParseResult<String> {
+        let name = match self.peek().cloned() {
+            Some(Token::Ident(name)) => name,
+            Some(Token::Spawn) => "spawn".to_string(),
+            Some(Token::Receive) => "receive".to_string(),
+            Some(Token::SelfKw) => "self".to_string(),
+            Some(Token::After) => "after".to_string(),
+            Some(Token::Match) => "match".to_string(),
+            Some(Token::If) => "if".to_string(),
+            Some(Token::Else) => "else".to_string(),
+            Some(Token::For) => "for".to_string(),
+            Some(Token::When) => "when".to_string(),
+            Some(Token::Type) => "type".to_string(),
+            Some(Token::True) => "true".to_string(),
+            Some(Token::False) => "false".to_string(),
+            None => return Err(ParseError::unexpected_eof("identifier")),
+            _ => {
+                let span = self.current_span();
+                return Err(ParseError::unexpected_token(
+                    self.peek().unwrap(),
+                    "identifier",
+                    span,
+                ));
+            }
+        };
+        self.advance();
+        Ok(name)
+    }
 }
 
 #[cfg(test)]
@@ -3168,5 +3294,88 @@ mod tests {
         } else {
             panic!("expected trait impl");
         }
+    }
+
+    #[test]
+    fn test_parse_extern_mod() {
+        let source = r#"
+            mod test {
+                extern mod erlang {
+                    fn spawn(fun: fn() -> any) -> pid;
+                    fn self() -> pid;
+                    fn send(dest: pid, msg: any) -> any;
+
+                    type Ref;
+
+                    mod maps {
+                        fn get(key: any, map: any) -> any;
+                        fn put(key: any, value: any, map: any) -> any;
+                    }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().expect("extern mod should parse");
+
+        // Find the ExternMod item
+        let extern_mod = user_items(&module)
+            .iter()
+            .find_map(|item| {
+                if let Item::ExternMod(em) = item {
+                    Some(em)
+                } else {
+                    None
+                }
+            })
+            .expect("should have extern mod");
+
+        assert_eq!(extern_mod.name, "erlang");
+        assert_eq!(extern_mod.items.len(), 5); // 3 fns + 1 type + 1 nested mod
+
+        // Check nested mod
+        let nested_mod = extern_mod.items.iter().find_map(|item| {
+            if let ExternItem::Mod(m) = item {
+                Some(m)
+            } else {
+                None
+            }
+        });
+        assert!(nested_mod.is_some());
+        assert_eq!(nested_mod.unwrap().name, "maps");
+        assert_eq!(nested_mod.unwrap().items.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_erlang_stub_file() {
+        // Test parsing the actual erlang.dreamt stub file
+        let stub_source = include_str!("../../stubs/erlang.dreamt");
+        // Wrap in a module since parser expects that
+        let source = format!("mod stubs {{\n{}\n}}", stub_source);
+        let mut parser = Parser::new(&source);
+        let module = parser.parse_module().expect("erlang.dreamt should parse");
+
+        // Count extern mods
+        let extern_mods: Vec<_> = user_items(&module)
+            .iter()
+            .filter_map(|item| {
+                if let Item::ExternMod(em) = item {
+                    Some(em)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Should have multiple extern mods (erlang, lists, maps, io, etc.)
+        assert!(extern_mods.len() >= 10, "expected at least 10 extern mods, got {}", extern_mods.len());
+
+        // Verify erlang module exists and has expected functions
+        let erlang_mod = extern_mods.iter().find(|m| m.name == "erlang");
+        assert!(erlang_mod.is_some(), "should have erlang extern mod");
+        let erlang = erlang_mod.unwrap();
+
+        // Count functions in erlang mod
+        let fn_count = erlang.items.iter().filter(|item| matches!(item, ExternItem::Function(_))).count();
+        assert!(fn_count >= 30, "erlang mod should have at least 30 functions, got {}", fn_count);
     }
 }

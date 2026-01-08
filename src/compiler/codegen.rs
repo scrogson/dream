@@ -233,6 +233,10 @@ impl Codegen {
                 Item::Use(_) => {
                     // Already processed in first pass
                 }
+                Item::ExternMod(_) => {
+                    // External module declarations don't generate code
+                    // They're used for type checking FFI calls
+                }
             }
         }
 

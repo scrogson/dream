@@ -85,7 +85,10 @@ pub enum Token {
     True,
     #[token("false")]
     False,
-
+    #[token("extern")]
+    Extern,
+    #[token("type")]
+    Type,
 
     // Literals
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
@@ -237,6 +240,8 @@ impl std::fmt::Display for Token {
             Token::When => write!(f, "when"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
+            Token::Extern => write!(f, "extern"),
+            Token::Type => write!(f, "type"),
             Token::Int(n) => write!(f, "{}", n),
             Token::String(s) => write!(f, "\"{}\"", s),
             Token::Atom(a) => write!(f, ":{}", a),
@@ -376,12 +381,19 @@ mod tests {
     #[test]
     fn test_rust_keywords_are_valid_idents() {
         // This isn't Rust - we can use most Rust keywords as identifiers
-        // (except `use`, `as`, `impl`, `trait`, `for` which are now keywords in Dream)
-        let mut lex = Token::lexer("loop while type crate super");
+        // (except `use`, `as`, `impl`, `trait`, `for`, `type`, `extern` which are now keywords in Dream)
+        let mut lex = Token::lexer("loop while crate super");
         assert_eq!(lex.next(), Some(Ok(Token::Ident("loop".to_string()))));
         assert_eq!(lex.next(), Some(Ok(Token::Ident("while".to_string()))));
-        assert_eq!(lex.next(), Some(Ok(Token::Ident("type".to_string()))));
         assert_eq!(lex.next(), Some(Ok(Token::Ident("crate".to_string()))));
         assert_eq!(lex.next(), Some(Ok(Token::Ident("super".to_string()))));
+    }
+
+    #[test]
+    fn test_extern_and_type_keywords() {
+        // extern and type are now keywords for FFI type stubs
+        let mut lex = Token::lexer("extern type");
+        assert_eq!(lex.next(), Some(Ok(Token::Extern)));
+        assert_eq!(lex.next(), Some(Ok(Token::Type)));
     }
 }

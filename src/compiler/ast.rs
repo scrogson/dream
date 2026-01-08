@@ -43,6 +43,48 @@ pub enum Item {
     /// Module-level trait declaration: `impl GenServer;`
     /// Declares that this module implements a trait (functions are in the module itself)
     TraitDecl(TraitDecl),
+    /// External module type declarations for FFI: `extern mod erlang { ... }`
+    ExternMod(ExternMod),
+}
+
+// =============================================================================
+// External Module Declarations (for .dreamt type stub files)
+// =============================================================================
+
+/// External module declaration for FFI type stubs.
+/// Declares types for functions in external Erlang/Elixir/Gleam modules.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternMod {
+    pub name: String,
+    pub items: Vec<ExternItem>,
+}
+
+/// Items that can appear in an extern mod block.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExternItem {
+    /// Nested module: `mod socket { ... }`
+    Mod(ExternMod),
+    /// Function declaration: `fn get<K, V>(key: K, map: Map<K, V>) -> V;`
+    Function(ExternFn),
+    /// Opaque type declaration: `type Socket;`
+    Type(ExternType),
+}
+
+/// External function declaration (signature only, no body).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternFn {
+    pub name: String,
+    pub type_params: Vec<TypeParam>,
+    pub params: Vec<(String, Type)>,
+    pub return_type: Type,
+}
+
+/// External opaque type declaration.
+/// Represents a type from an external module that we can't inspect.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternType {
+    pub name: String,
+    pub type_params: Vec<TypeParam>,
 }
 
 /// Impl block for associated functions and methods.
