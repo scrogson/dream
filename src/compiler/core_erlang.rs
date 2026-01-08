@@ -351,6 +351,7 @@ impl CoreErlangEmitter {
     fn type_to_name(&self, ty: &Type) -> String {
         match ty {
             Type::Int => "int".to_string(),
+            Type::Float => "float".to_string(),
             Type::String => "string".to_string(),
             Type::Atom => "atom".to_string(),
             Type::Bool => "bool".to_string(),

@@ -62,9 +62,23 @@ enum Commands {
         /// Arguments to pass to the function
         args: Vec<String>,
     },
+    /// Generate .dreamt type stubs from Erlang source files
+    Bindgen {
+        /// Erlang source files (.erl) to parse
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Module name override (default: derived from filename)
+        #[arg(short, long)]
+        module: Option<String>,
+    },
     /// Show version information
     Version,
 }
+
+mod bindgen;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -79,6 +93,11 @@ fn main() -> ExitCode {
             function,
             args,
         } => cmd_run(file.as_deref(), &function, &args),
+        Commands::Bindgen {
+            files,
+            output,
+            module,
+        } => bindgen::cmd_bindgen(&files, output.as_deref(), module.as_deref()),
         Commands::Version => {
             println!("dream {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS

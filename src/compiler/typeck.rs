@@ -263,9 +263,9 @@ pub struct TypeEnv {
     module_traits: Vec<String>,
     /// Associated type bindings from module-level trait declarations: "State" -> Ty::Int
     associated_types: HashMap<String, Ty>,
-    /// External function signatures: (module, function) -> FnInfo
+    /// External function signatures: (module, function, arity) -> FnInfo
     /// Used for type-checking FFI calls to Erlang/Elixir/etc
-    extern_functions: HashMap<(String, String), FnInfo>,
+    extern_functions: HashMap<(String, String, usize), FnInfo>,
 }
 
 impl TypeEnv {
@@ -349,9 +349,9 @@ impl TypeEnv {
     }
 
     /// Get external function info (from .dreamt stubs).
-    pub fn get_extern_function(&self, module: &str, function: &str) -> Option<&FnInfo> {
+    pub fn get_extern_function(&self, module: &str, function: &str, arity: usize) -> Option<&FnInfo> {
         self.extern_functions
-            .get(&(module.to_string(), function.to_string()))
+            .get(&(module.to_string(), function.to_string(), arity))
     }
 }
 
@@ -646,6 +646,7 @@ impl TypeChecker {
     fn ast_type_to_ty(&self, ast_ty: &ast::Type) -> Ty {
         match ast_ty {
             ast::Type::Int => Ty::Int,
+            ast::Type::Float => Ty::Float,
             ast::Type::String => Ty::String,
             ast::Type::Atom => Ty::Atom,
             ast::Type::Bool => Ty::Bool,
@@ -663,6 +664,7 @@ impl TypeChecker {
                 // Check if it's a primitive type name
                 match name.as_str() {
                     "int" => Ty::Int,
+                    "float" => Ty::Float,
                     "string" => Ty::String,
                     "atom" => Ty::Atom,
                     "bool" => Ty::Bool,
@@ -857,8 +859,9 @@ impl TypeChecker {
                         params,
                         ret,
                     };
+                    let arity = info.params.len();
                     self.env.extern_functions.insert(
-                        (module_path.to_string(), func.name.clone()),
+                        (module_path.to_string(), func.name.clone(), arity),
                         info,
                     );
                 }
@@ -1494,21 +1497,11 @@ impl TypeChecker {
 
             // External call
             Expr::ExternCall { module, function, args } => {
-                // Look up extern function signature from .dreamt stubs
-                if let Some(info) = self.env.get_extern_function(module, function).cloned() {
+                // Look up extern function signature from .dreamt stubs (by arity)
+                let arity = args.len();
+                if let Some(info) = self.env.get_extern_function(module, function, arity).cloned() {
                     // Instantiate generic function
                     let instantiated = self.instantiate_function(&info);
-
-                    // Check argument count
-                    if args.len() != instantiated.params.len() {
-                        self.error(TypeError::new(format!(
-                            "extern function '{}::{}' expects {} arguments, got {}",
-                            module,
-                            function,
-                            instantiated.params.len(),
-                            args.len()
-                        )));
-                    }
 
                     // Check argument types
                     for (arg, (_, param_ty)) in args.iter().zip(instantiated.params.iter()) {
@@ -2285,6 +2278,7 @@ impl MethodResolver {
     fn ast_type_to_ty(&self, ast_ty: &ast::Type) -> Ty {
         match ast_ty {
             ast::Type::Int => Ty::Int,
+            ast::Type::Float => Ty::Float,
             ast::Type::String => Ty::String,
             ast::Type::Atom => Ty::Atom,
             ast::Type::Bool => Ty::Bool,
@@ -2300,6 +2294,7 @@ impl MethodResolver {
             ast::Type::Named { name, type_args } => {
                 match name.as_str() {
                     "int" => Ty::Int,
+                    "float" => Ty::Float,
                     "string" => Ty::String,
                     "atom" => Ty::Atom,
                     "bool" => Ty::Bool,
@@ -2461,8 +2456,10 @@ mod tests {
     }
 
     #[test]
-    fn test_extern_function_wrong_arg_count() {
-        // Extern function with wrong argument count should error
+    fn test_extern_function_arity_lookup() {
+        // With arity-based lookup, calling with wrong arity finds no stub
+        // and returns Any (no type checking). This test verifies that
+        // the correct arity IS found and type-checked.
         let result = parse_and_check(r#"
             mod test {
                 extern mod erlang {
@@ -2470,11 +2467,12 @@ mod tests {
                 }
 
                 fn test() -> int {
-                    :erlang::abs(1, 2)
+                    // Correct arity - should type check and return int
+                    :erlang::abs(1)
                 }
             }
         "#);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -544,6 +544,8 @@ pub enum Type {
     Atom,
     /// Boolean type.
     Bool,
+    /// Float type.
+    Float,
     /// Unit type.
     Unit,
     /// Binary type.
