@@ -7,9 +7,13 @@ use std::process::{Command, ExitCode};
 use clap::{Parser, Subcommand};
 
 use dream::{
-    compiler::{check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter, Module, ModuleLoader},
+    compiler::{
+        check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
+        GenericFunctionRegistry, Item, Module, ModuleLoader, SharedGenericRegistry,
+    },
     config::{generate_dream_toml, generate_main_dream, ProjectConfig},
 };
+use std::sync::{Arc, RwLock};
 
 #[derive(Parser)]
 #[command(name = "dream")]
@@ -202,6 +206,18 @@ fn compile_modules(
     build_dir: &Path,
     target: &str,
 ) -> ExitCode {
+    // Use stdlib generics registry if available
+    let stdlib_registry = load_stdlib_generics();
+    compile_modules_with_registry(modules, build_dir, target, stdlib_registry)
+}
+
+/// Compile modules to Core Erlang and optionally BEAM, with a pre-populated registry.
+fn compile_modules_with_registry(
+    modules: Vec<Module>,
+    build_dir: &Path,
+    target: &str,
+    external_registry: Option<SharedGenericRegistry>,
+) -> ExitCode {
     let mut modules = modules;
 
     if modules.is_empty() {
@@ -229,10 +245,15 @@ fn compile_modules(
         resolve_stdlib_methods(module);
     }
 
+    // Create a shared registry for cross-module generic functions
+    // Start with external (stdlib) generics if available
+    let generic_registry: SharedGenericRegistry = external_registry
+        .unwrap_or_else(|| Arc::new(RwLock::new(GenericFunctionRegistry::new())));
+
     // Compile each module to Core Erlang
     let mut core_files = Vec::new();
     for module in &modules {
-        let mut emitter = CoreErlangEmitter::new();
+        let mut emitter = CoreErlangEmitter::with_registry(generic_registry.clone());
         let core_erlang = match emitter.emit_module(module) {
             Ok(c) => c,
             Err(e) => {
@@ -240,6 +261,12 @@ fn compile_modules(
                 return ExitCode::from(1);
             }
         };
+
+        // Register this module's generic functions for cross-module use
+        {
+            let mut registry = generic_registry.write().unwrap();
+            emitter.register_generics(&mut registry);
+        }
 
         // Use prefixed module name for output files (e.g., dream::io.core)
         let beam_name = CoreErlangEmitter::beam_module_name(&module.name);
@@ -337,6 +364,43 @@ fn find_stdlib_dir() -> Option<PathBuf> {
 fn stdlib_beam_dir() -> PathBuf {
     // Use target/stdlib for compiled stdlib .beam files
     PathBuf::from("target/stdlib")
+}
+
+/// Load stdlib modules and extract their generic functions into a registry.
+/// This enables cross-module monomorphization of stdlib generic functions.
+fn load_stdlib_generics() -> Option<SharedGenericRegistry> {
+    let stdlib_dir = find_stdlib_dir()?;
+    let registry = Arc::new(RwLock::new(GenericFunctionRegistry::new()));
+
+    // Find all .dream files in stdlib
+    let entries = fs::read_dir(&stdlib_dir).ok()?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("dream") {
+            continue;
+        }
+
+        // Load and parse the module
+        let mut loader = ModuleLoader::new();
+        if loader.load(&path).is_err() {
+            continue;
+        }
+
+        // Extract generic functions from each loaded module
+        for module in loader.modules() {
+            let mut reg = registry.write().unwrap();
+            for item in &module.items {
+                if let Item::Function(func) = item {
+                    if !func.type_params.is_empty() {
+                        reg.register(&module.name, func);
+                    }
+                }
+            }
+        }
+    }
+
+    Some(registry)
 }
 
 /// Compile the stdlib to target/stdlib/ if needed.

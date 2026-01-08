@@ -4,6 +4,45 @@
 //! which can then be compiled to BEAM bytecode using `erlc +from_core`.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
+
+/// Registry for cross-module generic functions.
+/// Stores generic function ASTs keyed by (module_name, function_name).
+/// This allows monomorphization of generic functions from other modules.
+#[derive(Debug, Default, Clone)]
+pub struct GenericFunctionRegistry {
+    /// Generic functions: (module_name, func_name) → Function AST
+    functions: HashMap<(String, String), Function>,
+}
+
+impl GenericFunctionRegistry {
+    pub fn new() -> Self {
+        Self {
+            functions: HashMap::new(),
+        }
+    }
+
+    /// Register a generic function from a module.
+    pub fn register(&mut self, module_name: &str, func: &Function) {
+        if !func.type_params.is_empty() {
+            self.functions
+                .insert((module_name.to_string(), func.name.clone()), func.clone());
+        }
+    }
+
+    /// Look up a generic function by module and name.
+    pub fn get(&self, module_name: &str, func_name: &str) -> Option<&Function> {
+        self.functions.get(&(module_name.to_string(), func_name.to_string()))
+    }
+
+    /// Check if a function exists in the registry.
+    pub fn contains(&self, module_name: &str, func_name: &str) -> bool {
+        self.functions.contains_key(&(module_name.to_string(), func_name.to_string()))
+    }
+}
+
+/// Thread-safe wrapper for GenericFunctionRegistry.
+pub type SharedGenericRegistry = Arc<RwLock<GenericFunctionRegistry>>;
 
 use crate::compiler::ast::{
     BinOp, BitEndianness, BitSegmentType, BitSignedness, BitStringSegment, Block, Expr, Function,
@@ -70,6 +109,16 @@ pub struct CoreErlangEmitter {
     type_param_subst: HashMap<String, String>,
     /// Trait bounds for current type params: type_param_name → Vec<trait_name>
     type_param_bounds: HashMap<String, Vec<String>>,
+
+    // Cross-module generic function support
+    /// Registry of generic functions from other modules (shared across compilations)
+    external_generics: Option<SharedGenericRegistry>,
+    /// Cross-module monomorphizations: (source_module, func_name, Vec<type_name>)
+    /// Functions from other modules that need to be monomorphized in this module
+    cross_module_monomorphizations: HashSet<(String, String, Vec<String>)>,
+    /// When emitting a cross-module inlined function, this tracks the source module.
+    /// Used to rewrite same-module calls from the source to cross-module calls.
+    cross_module_inlining_source: Option<String>,
 }
 
 impl CoreErlangEmitter {
@@ -90,6 +139,30 @@ impl CoreErlangEmitter {
             pending_monomorphizations: HashSet::new(),
             type_param_subst: HashMap::new(),
             type_param_bounds: HashMap::new(),
+            external_generics: None,
+            cross_module_monomorphizations: HashSet::new(),
+            cross_module_inlining_source: None,
+        }
+    }
+
+    /// Create an emitter with a shared generic function registry.
+    pub fn with_registry(registry: SharedGenericRegistry) -> Self {
+        Self {
+            external_generics: Some(registry),
+            ..Self::new()
+        }
+    }
+
+    /// Register this module's generic functions in the shared registry.
+    /// Call this after emit_module to make generics available to other modules.
+    pub fn register_generics(&self, registry: &mut GenericFunctionRegistry) {
+        for (_name, func) in &self.generic_functions {
+            registry.register(&self.module_name, func);
+            // Also register without the dream:: prefix for easier lookup
+            let short_name = self.module_name
+                .strip_prefix(Self::MODULE_PREFIX)
+                .unwrap_or(&self.module_name);
+            registry.register(short_name, func);
         }
     }
 
@@ -1026,8 +1099,11 @@ impl CoreErlangEmitter {
             }
         }
 
-        // Emit monomorphized functions
+        // Emit monomorphized functions (local)
         self.emit_monomorphized_functions()?;
+
+        // Emit cross-module monomorphized functions
+        self.emit_cross_module_monomorphized_functions()?;
 
         self.newline();
         self.emit("end");
@@ -1081,6 +1157,92 @@ impl CoreErlangEmitter {
                 self.type_param_subst.clear();
                 self.type_param_bounds.clear();
             }
+        }
+
+        Ok(())
+    }
+
+    /// Emit monomorphized versions of cross-module generic functions.
+    /// These are generic functions from other modules called with concrete types.
+    /// Runs in a loop because inlined functions may call other generics from the same source module.
+    fn emit_cross_module_monomorphized_functions(&mut self) -> CoreErlangResult<()> {
+        // Get the external registry
+        let registry = match &self.external_generics {
+            Some(reg) => reg.clone(),
+            None => return Ok(()), // No registry, nothing to do
+        };
+
+        // Track which monomorphizations we've already emitted to avoid duplicates
+        let mut emitted: HashSet<(String, String, Vec<String>)> = HashSet::new();
+
+        // Keep running until no new monomorphizations are added
+        loop {
+            // Take the cross-module monomorphizations to avoid borrow issues
+            let monos: Vec<(String, String, Vec<String>)> =
+                self.cross_module_monomorphizations.drain().collect();
+
+            if monos.is_empty() {
+                break;
+            }
+
+            let guard = registry.read().unwrap();
+
+            for (source_module, func_name, type_names) in monos {
+                // Skip if already emitted
+                let key = (source_module.clone(), func_name.clone(), type_names.clone());
+                if emitted.contains(&key) {
+                    continue;
+                }
+                emitted.insert(key);
+
+                if let Some(generic_func) = guard.get(&source_module, &func_name) {
+                    // Set up type parameter substitution
+                    self.type_param_subst.clear();
+                    self.type_param_bounds.clear();
+
+                    for (type_param, type_name) in
+                        generic_func.type_params.iter().zip(type_names.iter())
+                    {
+                        self.type_param_subst
+                            .insert(type_param.name.clone(), type_name.clone());
+                        self.type_param_bounds
+                            .insert(type_param.name.clone(), type_param.bounds.clone());
+                    }
+
+                    // Create the monomorphized function name: module_func_Type
+                    let mono_name = format!(
+                        "{}_{}_{}",
+                        source_module,
+                        func_name,
+                        type_names.join("_")
+                    );
+
+                    // Create a modified function with the monomorphized name
+                    let mono_func = Function {
+                        name: mono_name,
+                        type_params: vec![], // No type params in monomorphized version
+                        params: generic_func.params.clone(),
+                        guard: generic_func.guard.clone(),
+                        return_type: generic_func.return_type.clone(),
+                        body: generic_func.body.clone(),
+                        is_pub: false, // Cross-module mono is local only
+                        span: generic_func.span.clone(),
+                    };
+
+                    // Set the source module so calls get rewritten correctly
+                    self.cross_module_inlining_source = Some(source_module.clone());
+
+                    self.newline();
+                    self.emit_function(&mono_func)?;
+
+                    // Clear source module and substitutions after emitting
+                    self.cross_module_inlining_source = None;
+                    self.type_param_subst.clear();
+                    self.type_param_bounds.clear();
+                }
+            }
+            // Drop guard before next iteration
+            drop(guard);
         }
 
         Ok(())
@@ -1508,6 +1670,56 @@ impl CoreErlangEmitter {
                             self.emit("(");
                             self.emit_args(args)?;
                             self.emit(")");
+                        } else if !type_args.is_empty() {
+                            // Check if we're inlining from another module and this is
+                            // a call to another generic from that same source module
+                            let type_names: Vec<String> = type_args
+                                .iter()
+                                .map(|t| self.type_to_name(t))
+                                .collect();
+
+                            let is_source_module_generic = self.cross_module_inlining_source
+                                .as_ref()
+                                .and_then(|source| {
+                                    self.external_generics.as_ref().map(|reg| {
+                                        let guard = reg.read().unwrap();
+                                        if guard.contains(source, name) {
+                                            Some(source.clone())
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                                .flatten();
+
+                            if let Some(source_module) = is_source_module_generic {
+                                // This is a call to another generic from the source module
+                                // Record for cross-module monomorphization
+                                self.cross_module_monomorphizations.insert((
+                                    source_module.clone(),
+                                    name.clone(),
+                                    type_names.clone(),
+                                ));
+
+                                // Call the locally monomorphized version
+                                let mono_name = format!(
+                                    "{}_{}_{}",
+                                    source_module,
+                                    name,
+                                    type_names.join("_")
+                                );
+                                self.emit(&format!("apply '{}'/{}", mono_name, args.len()));
+                                self.emit("(");
+                                self.emit_args(args)?;
+                                self.emit(")");
+                            } else {
+                                // Unknown generic call - emit as-is (will likely fail at runtime)
+                                let mono_name = format!("{}_{}", name, type_names.join("_"));
+                                self.emit(&format!("apply '{}'/{}", mono_name, args.len()));
+                                self.emit("(");
+                                self.emit_args(args)?;
+                                self.emit(")");
+                            }
                         } else if self.local_functions.contains(&(name.clone(), args.len())) {
                             // Local function call
                             self.emit(&format!("apply '{}'/{}", name, args.len()));
@@ -1533,6 +1745,15 @@ impl CoreErlangEmitter {
                             self.emit(&format!("call 'erlang':'{}'(", name));
                             self.emit_args(args)?;
                             self.emit(")");
+                        } else if let Some(source_module) = &self.cross_module_inlining_source {
+                            // We're inlining from another module - emit as cross-module call
+                            self.emit(&format!(
+                                "call '{}':'{}'(",
+                                Self::beam_module_name(&source_module.to_lowercase()),
+                                name
+                            ));
+                            self.emit_args(args)?;
+                            self.emit(")");
                         } else {
                             // Unknown function - assume local
                             self.emit(&format!("apply '{}'/{}", name, args.len()));
@@ -1548,6 +1769,28 @@ impl CoreErlangEmitter {
                         // Check if this is a trait dispatch: Trait::method(value, ...)
                         if self.traits.contains_key(first) {
                             self.emit_trait_dispatch(first, second, args)?;
+                        } else if self.cross_module_inlining_source.is_some()
+                            && !type_args.is_empty()
+                            && first.chars().next().map_or(false, |c| c.is_uppercase())
+                        {
+                            // When inlining from another module, trait dispatch calls like
+                            // GenServer::init::<T>(args) need to be emitted as local calls
+                            // to the concrete implementation in the current module
+                            let type_names: Vec<String> = type_args
+                                .iter()
+                                .map(|t| self.type_to_name(t))
+                                .collect();
+                            // Trait_Type_method format: GenServer_Counter_init
+                            let mangled_name = format!(
+                                "{}_{}_{}",
+                                first,
+                                type_names.first().unwrap_or(&"".to_string()),
+                                second
+                            );
+                            self.emit(&format!("apply '{}'/{}", mangled_name, args.len()));
+                            self.emit("(");
+                            self.emit_args(args)?;
+                            self.emit(")");
                         } else if self
                             .impl_methods
                             .contains(&(first.clone(), second.clone()))
@@ -1561,25 +1804,68 @@ impl CoreErlangEmitter {
                         } else {
                             // Module:Function call - add dream:: prefix for Dream modules
                             // Check if this is a call with type args (generic function)
-                            let func_name = if !type_args.is_empty() {
+                            if !type_args.is_empty() {
                                 // Cross-module generic call: genserver::start_typed::<Counter>()
-                                // becomes: call 'dream::genserver':'start_typed_Counter'()
+                                // Check if we have the generic function in the registry
                                 let type_names: Vec<String> = type_args
                                     .iter()
                                     .map(|t| self.type_to_name(t))
                                     .collect();
-                                format!("{}_{}", segments[1], type_names.join("_"))
+                                let source_module = segments[0].clone();
+                                let func_name = segments[1].clone();
+
+                                // Check if this generic exists in external registry
+                                let has_external_generic = self.external_generics
+                                    .as_ref()
+                                    .map(|reg| {
+                                        let guard = reg.read().unwrap();
+                                        guard.contains(&source_module, &func_name)
+                                    })
+                                    .unwrap_or(false);
+
+                                if has_external_generic {
+                                    // Record for cross-module monomorphization
+                                    self.cross_module_monomorphizations.insert((
+                                        source_module.clone(),
+                                        func_name.clone(),
+                                        type_names.clone(),
+                                    ));
+
+                                    // Call the locally monomorphized version
+                                    let mono_name = format!(
+                                        "{}_{}_{}",
+                                        source_module,
+                                        func_name,
+                                        type_names.join("_")
+                                    );
+                                    self.emit(&format!("apply '{}'/{}", mono_name, args.len()));
+                                    self.emit("(");
+                                    self.emit_args(args)?;
+                                    self.emit(")");
+                                } else {
+                                    // No registry or function not found - emit as cross-module call
+                                    // (this will fail at runtime if the function doesn't exist)
+                                    let mono_name = format!("{}_{}", func_name, type_names.join("_"));
+                                    self.emit(&format!(
+                                        "call '{}':'{}'",
+                                        Self::beam_module_name(&source_module.to_lowercase()),
+                                        mono_name
+                                    ));
+                                    self.emit("(");
+                                    self.emit_args(args)?;
+                                    self.emit(")");
+                                }
                             } else {
-                                segments[1].clone()
-                            };
-                            self.emit(&format!(
-                                "call '{}':'{}'",
-                                Self::beam_module_name(&segments[0].to_lowercase()),
-                                func_name
-                            ));
-                            self.emit("(");
-                            self.emit_args(args)?;
-                            self.emit(")");
+                                // Non-generic cross-module call
+                                self.emit(&format!(
+                                    "call '{}':'{}'",
+                                    Self::beam_module_name(&segments[0].to_lowercase()),
+                                    segments[1]
+                                ));
+                                self.emit("(");
+                                self.emit_args(args)?;
+                                self.emit(")");
+                            }
                         }
                     }
                     Expr::Path { segments } if segments.len() == 3 => {
