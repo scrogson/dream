@@ -1,0 +1,79 @@
+// Result Type Example
+//
+// Demonstrates how Result<T, E> compiles to Erlang conventions:
+// - Ok(()) → :ok
+// - Ok(value) → {:ok, value}
+// - Err(error) → {:error, error}
+
+mod result_types {
+    // Function returning Result<(), string>
+    // Ok(()) should compile to just :ok
+    pub fn do_something(succeed: bool) -> Result<(), string> {
+        if succeed {
+            Ok(())
+        } else {
+            Err("something went wrong")
+        }
+    }
+
+    // Function returning Result<int, string>
+    // Ok(value) should compile to {:ok, value}
+    pub fn parse_number(s: string) -> Result<int, string> {
+        if s == "42" {
+            Ok(42)
+        } else {
+            Err("not a valid number")
+        }
+    }
+
+    // Pattern matching on Result
+    pub fn handle_result(r: Result<int, string>) -> string {
+        match r {
+            Ok(n) => {
+                :io::format("Got value: ~p~n", [n]);
+                "success"
+            }
+            Err(e) => {
+                :io::format("Got error: ~p~n", [e]);
+                "failure"
+            }
+        }
+    }
+
+    // Pattern matching on Result<(), E>
+    pub fn handle_unit_result(r: Result<(), string>) -> string {
+        match r {
+            Ok(()) => "ok!",
+            Err(e) => e,
+        }
+    }
+
+    pub fn main() -> :ok {
+        // Test Ok(()) → :ok
+        let r1 = do_something(true);
+        :io::format("do_something(true) = ~p~n", [r1]);
+
+        let r2 = do_something(false);
+        :io::format("do_something(false) = ~p~n", [r2]);
+
+        // Test Ok(value) → {:ok, value}
+        let r3 = parse_number("42");
+        :io::format("parse_number(42) = ~p~n", [r3]);
+
+        let r4 = parse_number("abc");
+        :io::format("parse_number(abc) = ~p~n", [r4]);
+
+        // Test pattern matching
+        let _ = handle_result(Ok(100));
+        let _ = handle_result(Err("oops"));
+
+        // Test unit result pattern matching
+        let s1 = handle_unit_result(Ok(()));
+        :io::format("handle_unit_result(Ok(())) = ~p~n", [s1]);
+
+        let s2 = handle_unit_result(Err("bad"));
+        :io::format("handle_unit_result(Err(bad)) = ~p~n", [s2]);
+
+        :ok
+    }
+}

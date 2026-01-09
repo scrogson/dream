@@ -2143,18 +2143,74 @@ impl CoreErlangEmitter {
                 }
             }
 
-            Expr::EnumVariant { type_name: _, variant, args } => {
-                // Enum variants become tagged tuples: {variant, arg1, arg2, ...}
-                if args.is_empty() {
-                    self.emit(&format!("'{}'", variant.to_lowercase()));
-                } else {
-                    self.emit("{");
-                    self.emit(&format!("'{}'", variant.to_lowercase()));
-                    for arg in args {
-                        self.emit(", ");
-                        self.emit_expr(arg)?;
+            Expr::EnumVariant { type_name, variant, args } => {
+                // Special handling for Result type to match Erlang conventions:
+                // - Ok(()) → 'ok' (just the atom, for Result<(), E>)
+                // - Ok(value) → {'ok', value}
+                // - Err(value) → {'error', value} (note: 'error' not 'err')
+                // Note: type_name may be None when Result is inferred, so we also check variant names
+                let is_result = type_name.as_deref() == Some("Result")
+                    || (type_name.is_none() && (variant == "Ok" || variant == "Err"));
+                if is_result {
+                    match variant.as_str() {
+                        "Ok" => {
+                            if args.len() == 1 {
+                                if let Expr::Unit = &args[0] {
+                                    // Ok(()) becomes just 'ok'
+                                    self.emit("'ok'");
+                                } else {
+                                    // Ok(value) becomes {'ok', value}
+                                    self.emit("{'ok', ");
+                                    self.emit_expr(&args[0])?;
+                                    self.emit("}");
+                                }
+                            } else {
+                                // Multiple args (shouldn't happen for Result, but handle it)
+                                self.emit("{'ok'");
+                                for arg in args {
+                                    self.emit(", ");
+                                    self.emit_expr(arg)?;
+                                }
+                                self.emit("}");
+                            }
+                        }
+                        "Err" => {
+                            // Err(value) becomes {'error', value}
+                            self.emit("{'error'");
+                            for arg in args {
+                                self.emit(", ");
+                                self.emit_expr(arg)?;
+                            }
+                            self.emit("}");
+                        }
+                        _ => {
+                            // Unknown Result variant, use default behavior
+                            if args.is_empty() {
+                                self.emit(&format!("'{}'", variant.to_lowercase()));
+                            } else {
+                                self.emit("{");
+                                self.emit(&format!("'{}'", variant.to_lowercase()));
+                                for arg in args {
+                                    self.emit(", ");
+                                    self.emit_expr(arg)?;
+                                }
+                                self.emit("}");
+                            }
+                        }
                     }
-                    self.emit("}");
+                } else {
+                    // Default enum variant handling: tagged tuples
+                    if args.is_empty() {
+                        self.emit(&format!("'{}'", variant.to_lowercase()));
+                    } else {
+                        self.emit("{");
+                        self.emit(&format!("'{}'", variant.to_lowercase()));
+                        for arg in args {
+                            self.emit(", ");
+                            self.emit_expr(arg)?;
+                        }
+                        self.emit("}");
+                    }
                 }
             }
 
@@ -2578,18 +2634,69 @@ impl CoreErlangEmitter {
                 self.emit("}~");
             }
 
-            Pattern::Enum { name: _, variant, fields } => {
-                // Enum patterns become tuple patterns
-                if fields.is_empty() {
-                    self.emit(&format!("'{}'", variant.to_lowercase()));
-                } else {
-                    self.emit("{");
-                    self.emit(&format!("'{}'", variant.to_lowercase()));
-                    for field in fields {
-                        self.emit(", ");
-                        self.emit_pattern(field)?;
+            Pattern::Enum { name, variant, fields } => {
+                // Special handling for Result type patterns to match Erlang conventions:
+                // - Ok() or Ok(()) → 'ok'
+                // - Ok(x) → {'ok', x}
+                // - Err(e) → {'error', e}
+                let is_result = name == "Result" || name.is_empty() && (variant == "Ok" || variant == "Err");
+
+                if is_result {
+                    match variant.as_str() {
+                        "Ok" => {
+                            // Check if this is Ok() or Ok(()) - both should match 'ok'
+                            let is_unit_ok = fields.is_empty() ||
+                                (fields.len() == 1 && matches!(fields[0], Pattern::Tuple(ref t) if t.is_empty()));
+
+                            if is_unit_ok {
+                                self.emit("'ok'");
+                            } else {
+                                // Ok(value) matches {'ok', value}
+                                self.emit("{'ok'");
+                                for field in fields {
+                                    self.emit(", ");
+                                    self.emit_pattern(field)?;
+                                }
+                                self.emit("}");
+                            }
+                        }
+                        "Err" => {
+                            // Err(e) matches {'error', e}
+                            self.emit("{'error'");
+                            for field in fields {
+                                self.emit(", ");
+                                self.emit_pattern(field)?;
+                            }
+                            self.emit("}");
+                        }
+                        _ => {
+                            // Unknown Result variant, use default
+                            if fields.is_empty() {
+                                self.emit(&format!("'{}'", variant.to_lowercase()));
+                            } else {
+                                self.emit("{");
+                                self.emit(&format!("'{}'", variant.to_lowercase()));
+                                for field in fields {
+                                    self.emit(", ");
+                                    self.emit_pattern(field)?;
+                                }
+                                self.emit("}");
+                            }
+                        }
                     }
-                    self.emit("}");
+                } else {
+                    // Default enum pattern handling
+                    if fields.is_empty() {
+                        self.emit(&format!("'{}'", variant.to_lowercase()));
+                    } else {
+                        self.emit("{");
+                        self.emit(&format!("'{}'", variant.to_lowercase()));
+                        for field in fields {
+                            self.emit(", ");
+                            self.emit_pattern(field)?;
+                        }
+                        self.emit("}");
+                    }
                 }
             }
 
@@ -2848,5 +2955,52 @@ mod tests {
 
         let result = emit_core_erlang(source).unwrap();
         assert!(result.contains("call 'Elixir.Enum':'to_list'(Items)"));
+    }
+
+    #[test]
+    fn test_result_ok_unit_compiles_to_ok_atom() {
+        let source = r#"
+            mod test {
+                pub fn success() -> Result<(), string> {
+                    Ok(())
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang(source).unwrap();
+        // Ok(()) should compile to just 'ok', not {'ok', 'ok'}
+        assert!(result.contains("'ok'"));
+        assert!(!result.contains("{'ok'"));
+    }
+
+    #[test]
+    fn test_result_ok_value_compiles_to_tuple() {
+        let source = r#"
+            mod test {
+                pub fn get_value() -> Result<int, string> {
+                    Ok(42)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang(source).unwrap();
+        // Ok(42) should compile to {'ok', 42}
+        assert!(result.contains("{'ok', 42}"));
+    }
+
+    #[test]
+    fn test_result_err_compiles_to_error_tuple() {
+        let source = r#"
+            mod test {
+                pub fn fail() -> Result<int, string> {
+                    Err("oops")
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang(source).unwrap();
+        // Err("oops") should compile to {'error', "oops"}, not {'err', ...}
+        assert!(result.contains("{'error'"));
+        assert!(!result.contains("{'err'"));
     }
 }
