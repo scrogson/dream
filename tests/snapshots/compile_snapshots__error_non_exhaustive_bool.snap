@@ -1,0 +1,6 @@
+---
+source: tests/compile_snapshots.rs
+expression: result
+---
+error: non-exhaustive match
+  help: missing patterns: false

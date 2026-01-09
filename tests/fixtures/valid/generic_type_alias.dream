@@ -1,0 +1,14 @@
+// Valid: Generic type alias substitution
+
+mod test {
+    type MyResult<T> = (:ok, T) | :error;
+    type Either<L, R> = (:left, L) | (:right, R);
+    type Pair<T> = (T, T);
+
+    pub fn main() -> int {
+        let r: MyResult<int> = (:ok, 42);
+        let e: Either<string, int> = (:right, 100);
+        let p: Pair<int> = (1, 2);
+        0
+    }
+}

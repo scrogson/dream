@@ -1,0 +1,16 @@
+// Error: Missing required trait method
+
+mod test {
+    trait Greeter {
+        fn greet(self) -> string;
+        fn farewell(self) -> string { "Goodbye!" }
+    }
+
+    struct Person { name: string }
+
+    impl Greeter for Person {
+        // Missing greet() - should error
+    }
+
+    pub fn main() -> int { 0 }
+}

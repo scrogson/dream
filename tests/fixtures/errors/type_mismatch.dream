@@ -1,0 +1,12 @@
+// Error: Type mismatch
+
+mod test {
+    pub fn add(a: int, b: int) -> int {
+        a + b
+    }
+
+    pub fn main() -> int {
+        // Passing string where int expected
+        add("hello", 42)
+    }
+}

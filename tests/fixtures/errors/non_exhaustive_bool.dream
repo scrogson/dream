@@ -1,0 +1,12 @@
+// Error: Non-exhaustive bool match
+
+mod test {
+    pub fn main() -> int {
+        let b = true;
+
+        // Missing false case
+        match b {
+            true => 1,
+        }
+    }
+}

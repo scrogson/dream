@@ -1,0 +1,17 @@
+// Error: Non-exhaustive match
+
+mod test {
+    enum Option<T> {
+        Some(T),
+        None,
+    }
+
+    pub fn main() -> int {
+        let opt = Option::Some(42);
+
+        // Missing None case
+        match opt {
+            Option::Some(x) => x,
+        }
+    }
+}

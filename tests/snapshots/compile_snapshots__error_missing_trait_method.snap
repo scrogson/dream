@@ -1,0 +1,6 @@
+---
+source: tests/compile_snapshots.rs
+expression: result
+---
+error: incomplete implementation of trait 'Greeter' for 'Person'
+  help: missing required methods: greet

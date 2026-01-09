@@ -1,0 +1,6 @@
+---
+source: tests/compile_snapshots.rs
+expression: result
+---
+error: type mismatch in call to 'add'
+  help: expected int, found string

@@ -23,6 +23,7 @@ web-sys = { version = "0.3", features = ["console"] }
 
 [dev-dependencies]
 tempfile = "3"
+insta = { version = "1.41", features = ["glob"] }
 
 [profile.release]
 opt-level = "s"
