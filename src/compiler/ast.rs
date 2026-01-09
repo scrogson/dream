@@ -269,6 +269,8 @@ pub enum Expr {
         func: Box<Expr>,
         /// Explicit type arguments from turbofish syntax (e.g., `::<Counter>`)
         type_args: Vec<Type>,
+        /// Inferred type arguments (filled in by type checker for generic functions)
+        inferred_type_args: Vec<Type>,
         args: Vec<Expr>,
     },
     /// Method call: `expr.method(args)`.
@@ -280,6 +282,8 @@ pub enum Expr {
         /// When set, `x.foo(args)` becomes `module::foo(x, args)`.
         /// Currently used for stdlib primitives; extensible to UDTs.
         resolved_module: Option<String>,
+        /// Inferred type arguments for generic methods
+        inferred_type_args: Vec<Type>,
     },
     /// If expression.
     If {

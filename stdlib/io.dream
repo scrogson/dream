@@ -27,7 +27,7 @@ pub fn println_int(n: int) -> atom {
 ///
 /// Example:
 ///   let result = data |> transform() |> io::dbg() |> process();
-pub fn dbg(term: any) -> any {
+pub fn dbg<T>(term: T) -> T {
     println(display::display_any(term));
     term
 }

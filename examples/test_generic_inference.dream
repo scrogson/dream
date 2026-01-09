@@ -1,0 +1,12 @@
+// Test cross-module generic function call without turbofish
+// io::dbg(42) should infer T=int and monomorphize correctly
+
+pub fn main() -> int {
+    // This should work without turbofish - T is inferred as int
+    let x = io::dbg(42);
+
+    // This should also work - T is inferred as string
+    let s = io::dbg("hello");
+
+    x
+}

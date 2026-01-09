@@ -131,6 +131,42 @@ impl Ty {
             _ => self.clone(),
         }
     }
+
+    /// Convert internal Ty back to AST Type for storing inferred types.
+    pub fn to_ast_type(&self) -> ast::Type {
+        match self {
+            Ty::Int => ast::Type::Int,
+            Ty::Float => ast::Type::Float,
+            Ty::String => ast::Type::String,
+            Ty::Atom => ast::Type::Atom,
+            Ty::Bool => ast::Type::Bool,
+            Ty::Unit => ast::Type::Unit,
+            Ty::Binary => ast::Type::Binary,
+            Ty::Pid => ast::Type::Pid,
+            Ty::Ref => ast::Type::Ref,
+            Ty::RawMap => ast::Type::Map,
+            Ty::Tuple(tys) => ast::Type::Tuple(tys.iter().map(|t| t.to_ast_type()).collect()),
+            Ty::List(t) => ast::Type::List(Box::new(t.to_ast_type())),
+            Ty::Named { name, args, .. } => ast::Type::Named {
+                name: name.clone(),
+                type_args: args.iter().map(|t| t.to_ast_type()).collect(),
+            },
+            Ty::Fn { params, ret } => ast::Type::Fn {
+                params: params.iter().map(|t| t.to_ast_type()).collect(),
+                ret: Box::new(ret.to_ast_type()),
+            },
+            Ty::Var(name) => ast::Type::TypeVar(name.clone()),
+            Ty::Infer(_) => ast::Type::Any, // Unresolved inference var becomes any
+            Ty::Error => ast::Type::Any,
+            Ty::Any => ast::Type::Any,
+            Ty::AtomLiteral(name) => ast::Type::AtomLiteral(name.clone()),
+            Ty::Union(tys) => ast::Type::Union(tys.iter().map(|t| t.to_ast_type()).collect()),
+            Ty::AssociatedType { base, name } => ast::Type::AssociatedType {
+                base: base.clone(),
+                name: name.clone(),
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for Ty {
@@ -343,6 +379,12 @@ impl TypeEnv {
     /// Get function info.
     pub fn get_function(&self, name: &str) -> Option<&FnInfo> {
         self.functions.get(name)
+    }
+
+    /// Get cross-module function info (e.g., "io::dbg").
+    pub fn get_cross_module_function(&self, module: &str, func: &str) -> Option<&FnInfo> {
+        let key = format!("{}::{}", module, func);
+        self.functions.get(&key)
     }
 
     /// Get method info.
@@ -950,7 +992,10 @@ impl TypeChecker {
             match item {
                 Item::Function(func) => {
                     let info = self.function_to_info(func);
-                    self.env.functions.insert(func.name.clone(), info);
+                    // Store with both simple name and module-qualified name
+                    self.env.functions.insert(func.name.clone(), info.clone());
+                    let qualified_name = format!("{}::{}", module.name, func.name);
+                    self.env.functions.insert(qualified_name, info);
                 }
                 Item::Impl(impl_block) => {
                     for method in &impl_block.methods {
@@ -1227,7 +1272,7 @@ impl TypeChecker {
             }
 
             // Function calls
-            Expr::Call { func, type_args, args } => {
+            Expr::Call { func, type_args, args, .. } => {
                 self.infer_call(func, type_args, args)
             }
 
@@ -1790,9 +1835,53 @@ impl TypeChecker {
                     Ok(Ty::Any)
                 }
             }
-            Expr::Path { segments: _ } => {
-                // Module::function call
-                // For now, treat as untyped
+            Expr::Path { segments } => {
+                // Module::function call (e.g., io::dbg)
+                if segments.len() == 2 {
+                    let module = &segments[0];
+                    let func_name = &segments[1];
+                    let qualified_name = format!("{}::{}", module, func_name);
+
+                    if let Some(info) = self.env.get_function(&qualified_name).cloned() {
+                        // Instantiate generic function
+                        let instantiated = if !type_args.is_empty() {
+                            // Explicit type arguments (turbofish syntax)
+                            self.instantiate_function_with_args(&info, type_args, &qualified_name)?
+                        } else {
+                            // Type inference - use fresh variables
+                            self.instantiate_function(&info)
+                        };
+
+                        // Check argument count
+                        if args.len() != instantiated.params.len() {
+                            self.error(TypeError::new(format!(
+                                "function '{}' expects {} arguments, got {}",
+                                qualified_name,
+                                instantiated.params.len(),
+                                args.len()
+                            )));
+                        }
+
+                        // Check argument types and unify
+                        for (arg, (_, param_ty)) in args.iter().zip(instantiated.params.iter()) {
+                            let arg_ty = self.infer_expr(arg)?;
+                            // Try to unify, fall back to compatibility check
+                            if self.unify(&arg_ty, param_ty).is_err()
+                                && !self.types_compatible(&arg_ty, param_ty)
+                            {
+                                self.error(TypeError::with_help(
+                                    format!("type mismatch in call to '{}'", qualified_name),
+                                    format!("expected {}, found {}", param_ty, arg_ty),
+                                ));
+                            }
+                        }
+
+                        // Apply substitutions to return type
+                        return Ok(self.apply_substitutions(&instantiated.ret));
+                    }
+                }
+
+                // Unknown cross-module function - could be external
                 for arg in args {
                     self.infer_expr(arg)?;
                 }
@@ -2042,6 +2131,267 @@ impl Default for TypeChecker {
     }
 }
 
+// =============================================================================
+// AST Annotation (fill in inferred_type_args)
+// =============================================================================
+
+impl TypeChecker {
+    /// Annotate a module by filling in inferred_type_args on Call expressions.
+    pub fn annotate_module(&mut self, module: &Module) -> Module {
+        Module {
+            name: module.name.clone(),
+            items: module.items.iter().map(|item| self.annotate_item(item)).collect(),
+            source: module.source.clone(),
+        }
+    }
+
+    fn annotate_item(&mut self, item: &Item) -> Item {
+        match item {
+            Item::Function(func) => Item::Function(self.annotate_function(func)),
+            Item::Impl(impl_block) => Item::Impl(self.annotate_impl_block(impl_block)),
+            // Other items don't contain expressions
+            _ => item.clone(),
+        }
+    }
+
+    fn annotate_function(&mut self, func: &Function) -> Function {
+        Function {
+            name: func.name.clone(),
+            type_params: func.type_params.clone(),
+            params: func.params.clone(),
+            guard: func.guard.as_ref().map(|g| Box::new(self.annotate_expr(g))),
+            return_type: func.return_type.clone(),
+            body: self.annotate_block(&func.body),
+            is_pub: func.is_pub,
+            span: func.span.clone(),
+        }
+    }
+
+    fn annotate_impl_block(&mut self, impl_block: &ImplBlock) -> ImplBlock {
+        ImplBlock {
+            type_name: impl_block.type_name.clone(),
+            methods: impl_block.methods.iter().map(|m| self.annotate_function(m)).collect(),
+        }
+    }
+
+    fn annotate_block(&mut self, block: &Block) -> Block {
+        Block {
+            stmts: block.stmts.iter().map(|s| self.annotate_stmt(s)).collect(),
+            expr: block.expr.as_ref().map(|e| Box::new(self.annotate_expr(e))),
+        }
+    }
+
+    fn annotate_stmt(&mut self, stmt: &Stmt) -> Stmt {
+        match stmt {
+            Stmt::Let { pattern, ty, value } => Stmt::Let {
+                pattern: pattern.clone(),
+                ty: ty.clone(),
+                value: self.annotate_expr(value),
+            },
+            Stmt::Expr(e) => Stmt::Expr(self.annotate_expr(e)),
+        }
+    }
+
+    fn annotate_expr(&mut self, expr: &Expr) -> Expr {
+        match expr {
+            Expr::Call { func, type_args, args, .. } => {
+                let annotated_func = Box::new(self.annotate_expr(func));
+                let annotated_args: Vec<Expr> = args.iter().map(|a| self.annotate_expr(a)).collect();
+
+                // If explicit type_args provided, no need to infer
+                if !type_args.is_empty() {
+                    return Expr::Call {
+                        func: annotated_func,
+                        type_args: type_args.clone(),
+                        inferred_type_args: vec![],
+                        args: annotated_args,
+                    };
+                }
+
+                // Try to infer type args for generic functions
+                let inferred = self.infer_type_args_for_call(func, args);
+
+                Expr::Call {
+                    func: annotated_func,
+                    type_args: type_args.clone(),
+                    inferred_type_args: inferred,
+                    args: annotated_args,
+                }
+            }
+
+            Expr::MethodCall { receiver, method, args, resolved_module, .. } => {
+                Expr::MethodCall {
+                    receiver: Box::new(self.annotate_expr(receiver)),
+                    method: method.clone(),
+                    args: args.iter().map(|a| self.annotate_expr(a)).collect(),
+                    resolved_module: resolved_module.clone(),
+                    inferred_type_args: vec![], // TODO: implement method type inference
+                }
+            }
+
+            // Recursively annotate compound expressions
+            Expr::Binary { op, left, right } => Expr::Binary {
+                op: *op,
+                left: Box::new(self.annotate_expr(left)),
+                right: Box::new(self.annotate_expr(right)),
+            },
+
+            Expr::Unary { op, expr } => Expr::Unary {
+                op: *op,
+                expr: Box::new(self.annotate_expr(expr)),
+            },
+
+            Expr::If { cond, then_block, else_block } => Expr::If {
+                cond: Box::new(self.annotate_expr(cond)),
+                then_block: self.annotate_block(then_block),
+                else_block: else_block.as_ref().map(|b| self.annotate_block(b)),
+            },
+
+            Expr::Match { expr, arms } => Expr::Match {
+                expr: Box::new(self.annotate_expr(expr)),
+                arms: arms.iter().map(|arm| MatchArm {
+                    pattern: arm.pattern.clone(),
+                    guard: arm.guard.as_ref().map(|g| Box::new(self.annotate_expr(g))),
+                    body: self.annotate_expr(&arm.body),
+                }).collect(),
+            },
+
+            Expr::Block(block) => Expr::Block(self.annotate_block(block)),
+
+            Expr::Tuple(exprs) => Expr::Tuple(exprs.iter().map(|e| self.annotate_expr(e)).collect()),
+
+            Expr::List(exprs) => Expr::List(exprs.iter().map(|e| self.annotate_expr(e)).collect()),
+
+            Expr::FieldAccess { expr, field } => Expr::FieldAccess {
+                expr: Box::new(self.annotate_expr(expr)),
+                field: field.clone(),
+            },
+
+            Expr::StructInit { name, fields, base } => Expr::StructInit {
+                name: name.clone(),
+                fields: fields.iter().map(|(n, e)| (n.clone(), self.annotate_expr(e))).collect(),
+                base: base.as_ref().map(|b| Box::new(self.annotate_expr(b))),
+            },
+
+            Expr::EnumVariant { type_name, variant, args } => Expr::EnumVariant {
+                type_name: type_name.clone(),
+                variant: variant.clone(),
+                args: args.iter().map(|a| self.annotate_expr(a)).collect(),
+            },
+
+            Expr::Closure { params, body } => Expr::Closure {
+                params: params.clone(),
+                body: self.annotate_block(body),
+            },
+
+            Expr::Spawn(e) => Expr::Spawn(Box::new(self.annotate_expr(e))),
+            Expr::SpawnClosure(block) => Expr::SpawnClosure(self.annotate_block(block)),
+
+            Expr::Send { to, msg } => Expr::Send {
+                to: Box::new(self.annotate_expr(to)),
+                msg: Box::new(self.annotate_expr(msg)),
+            },
+
+            Expr::Receive { arms, timeout } => Expr::Receive {
+                arms: arms.iter().map(|arm| MatchArm {
+                    pattern: arm.pattern.clone(),
+                    guard: arm.guard.as_ref().map(|g| Box::new(self.annotate_expr(g))),
+                    body: self.annotate_expr(&arm.body),
+                }).collect(),
+                timeout: timeout.as_ref().map(|(t, b)| (Box::new(self.annotate_expr(t)), self.annotate_block(b))),
+            },
+
+            Expr::Pipe { left, right } => Expr::Pipe {
+                left: Box::new(self.annotate_expr(left)),
+                right: Box::new(self.annotate_expr(right)),
+            },
+
+            Expr::Try { expr } => Expr::Try {
+                expr: Box::new(self.annotate_expr(expr)),
+            },
+
+            Expr::ExternCall { module, function, args } => Expr::ExternCall {
+                module: module.clone(),
+                function: function.clone(),
+                args: args.iter().map(|a| self.annotate_expr(a)).collect(),
+            },
+
+            Expr::BitString(segments) => Expr::BitString(
+                segments.iter().map(|seg| ast::BitStringSegment {
+                    value: Box::new(self.annotate_expr(&seg.value)),
+                    size: seg.size.as_ref().map(|s| Box::new(self.annotate_expr(s))),
+                    segment_type: seg.segment_type.clone(),
+                    endianness: seg.endianness.clone(),
+                    signedness: seg.signedness.clone(),
+                }).collect()
+            ),
+
+            Expr::Return(e) => Expr::Return(e.as_ref().map(|e| Box::new(self.annotate_expr(e)))),
+
+            // Simple expressions that don't need annotation
+            Expr::Int(_) | Expr::String(_) | Expr::Atom(_)
+            | Expr::Bool(_) | Expr::Unit | Expr::Ident(_) | Expr::Path { .. } => expr.clone(),
+        }
+    }
+
+    /// Infer type arguments for a generic function call.
+    fn infer_type_args_for_call(&mut self, func: &Expr, args: &[Expr]) -> Vec<ast::Type> {
+        // Get function info
+        let fn_info = match func {
+            Expr::Ident(name) => self.env.get_function(name).cloned(),
+            Expr::Path { segments } if segments.len() == 2 => {
+                let qualified_name = format!("{}::{}", segments[0], segments[1]);
+                self.env.get_function(&qualified_name).cloned()
+            }
+            _ => None,
+        };
+
+        let fn_info = match fn_info {
+            Some(info) if !info.type_params.is_empty() => info,
+            _ => return vec![], // Not a generic function
+        };
+
+        // Clear substitutions for a fresh inference
+        self.substitutions.clear();
+
+        // Create fresh inference variables for type params
+        let mut type_var_map: HashMap<String, u32> = HashMap::new();
+        for type_param in &fn_info.type_params {
+            let var_id = self.infer_counter;
+            self.infer_counter += 1;
+            type_var_map.insert(type_param.name.clone(), var_id);
+        }
+
+        // Substitute type params in function signature with inference vars
+        let subst: HashMap<String, Ty> = type_var_map.iter()
+            .map(|(name, id)| (name.clone(), Ty::Infer(*id)))
+            .collect();
+
+        let instantiated_params: Vec<Ty> = fn_info.params.iter()
+            .map(|(_, ty)| ty.substitute(&subst))
+            .collect();
+
+        // Unify each argument type with parameter type
+        for (arg, param_ty) in args.iter().zip(instantiated_params.iter()) {
+            if let Ok(arg_ty) = self.infer_expr(arg) {
+                let _ = self.unify(&arg_ty, param_ty);
+            }
+        }
+
+        // Extract resolved types for each type param
+        fn_info.type_params.iter()
+            .map(|tp| {
+                if let Some(&var_id) = type_var_map.get(&tp.name) {
+                    let resolved = self.apply_substitutions(&Ty::Infer(var_id));
+                    resolved.to_ast_type()
+                } else {
+                    ast::Type::Any
+                }
+            })
+            .collect()
+    }
+}
+
 /// Type check a module and return any errors.
 pub fn check_module(module: &Module) -> TypeResult<()> {
     let mut checker = TypeChecker::new();
@@ -2050,7 +2400,8 @@ pub fn check_module(module: &Module) -> TypeResult<()> {
 
 /// Type check multiple modules with shared type information.
 /// This allows cross-module type references (e.g., using enums from another module).
-pub fn check_modules(modules: &[Module]) -> Vec<(String, TypeResult<()>)> {
+/// Returns annotated modules with inferred type arguments filled in.
+pub fn check_modules(modules: &[Module]) -> Vec<(String, TypeResult<Module>)> {
     let mut checker = TypeChecker::new();
 
     // First pass: collect all type definitions from ALL modules
@@ -2082,7 +2433,9 @@ pub fn check_modules(modules: &[Module]) -> Vec<(String, TypeResult<()>)> {
         let result = if let Some(err) = checker.errors.first() {
             Err(err.clone())
         } else {
-            Ok(())
+            // Fourth pass: annotate the AST with inferred type args
+            let annotated = checker.annotate_module(module);
+            Ok(annotated)
         };
         results.push((module.name.clone(), result));
     }
@@ -2240,6 +2593,7 @@ impl MethodResolver {
                 method: _,
                 args,
                 resolved_module,
+                ..
             } => {
                 // Resolve receiver first
                 self.resolve_expr(receiver);

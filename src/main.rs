@@ -237,8 +237,6 @@ fn compile_modules_with_registry(
     target: &str,
     external_registry: Option<SharedGenericRegistry>,
 ) -> ExitCode {
-    let mut modules = modules;
-
     if modules.is_empty() {
         eprintln!("No modules to compile");
         return ExitCode::from(1);
@@ -247,27 +245,74 @@ fn compile_modules_with_registry(
     // Load stub modules for FFI type checking
     let stub_modules = load_stub_modules();
 
-    // Combine user modules with stub modules for type checking
-    // Stub modules provide extern declarations but won't generate code
+    // Check if we're compiling stdlib itself (by checking if any module shares a name with stdlib)
+    let stdlib_module_names_raw: std::collections::HashSet<_> = load_stdlib_modules()
+        .iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    let user_module_names: std::collections::HashSet<_> = modules.iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    let is_compiling_stdlib = user_module_names.iter().any(|n| stdlib_module_names_raw.contains(n));
+
+    // Only load stdlib for type checking when compiling user code (not stdlib itself)
+    let stdlib_modules = if is_compiling_stdlib {
+        Vec::new()
+    } else {
+        load_stdlib_modules()
+    };
+
+    // Combine user modules with stub modules and stdlib for type checking
     let mut all_modules_for_typeck: Vec<Module> = stub_modules;
+    all_modules_for_typeck.extend(stdlib_modules.iter().cloned());
     all_modules_for_typeck.extend(modules.iter().cloned());
 
     // Type check all modules together (allows cross-module type references)
+    // This also annotates the AST with inferred type arguments
     let mut has_errors = false;
-    for (module_name, result) in check_modules(&all_modules_for_typeck) {
-        // Skip errors from stub modules (they don't have function bodies)
+
+    let mut annotated_modules: Vec<Module> = Vec::new();
+    let type_results = check_modules(&all_modules_for_typeck);
+
+    // List of stdlib module names for filtering
+    let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    for (module_name, result) in type_results {
+        // Skip stub modules (they don't have function bodies)
         if module_name.ends_with("_stubs") || module_name == "erlang" {
             continue;
         }
-        if let Err(e) = result {
-            has_errors = true;
-            // Find the module to get source for error display
-            if let Some(module) = modules.iter().find(|m| m.name == module_name) {
-                if let Some(ref source) = module.source {
-                    let err = CompilerError::type_error(&module_name, source, e);
-                    eprintln!("  Type error in {}:\n{:?}", module_name, miette::Report::new(err));
-                } else {
-                    eprintln!("  Type error in {}: {:?}", module_name, miette::Report::new(e));
+
+        // Skip stdlib modules for error reporting (but still process them for annotation)
+        let is_stdlib = stdlib_module_names.contains(&module_name);
+
+        match result {
+            Ok(annotated) => {
+                // Only keep user modules, not stdlib modules that were added for type checking
+                if modules.iter().any(|m| m.name == module_name) {
+                    annotated_modules.push(annotated);
+                }
+            }
+            Err(e) => {
+                // Only report errors for user modules, not stdlib
+                if !is_stdlib {
+                    has_errors = true;
+                    // Find the module to get source for error display
+                    if let Some(module) = modules.iter().find(|m| m.name == module_name) {
+                        if let Some(ref source) = module.source {
+                            let err = CompilerError::type_error(&module_name, source, e);
+                            eprintln!("  Type error in {}:\n{:?}", module_name, miette::Report::new(err));
+                        } else {
+                            eprintln!("  Type error in {}: {:?}", module_name, miette::Report::new(e));
+                        }
+                    } else {
+                        // Module not found in user modules - this shouldn't happen
+                        eprintln!("  Type error in {}: {:?}", module_name, e);
+                    }
                 }
             }
         }
@@ -277,6 +322,9 @@ fn compile_modules_with_registry(
         eprintln!("\nCompilation failed due to type errors.");
         return ExitCode::from(1);
     }
+
+    // Use annotated modules for code generation
+    let mut modules = annotated_modules;
 
     // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
     for module in &mut modules {
@@ -453,8 +501,11 @@ fn load_stub_modules() -> Vec<Module> {
         };
 
         // Wrap in a module since parser expects that
+        // Add _stubs suffix to avoid name conflicts with Dream stdlib modules
+        // (stubs are for FFI to external BEAM modules, stdlib compiles to dream::*)
         let stub_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("stubs");
-        let wrapped = format!("mod {} {{\n{}\n}}", stub_name, source);
+        let stub_module_name = format!("{}_stubs", stub_name);
+        let wrapped = format!("mod {} {{\n{}\n}}", stub_module_name, source);
 
         let mut parser = dream::compiler::Parser::new(&wrapped);
         match parser.parse_module() {
@@ -466,6 +517,37 @@ fn load_stub_modules() -> Vec<Module> {
     }
 
     stub_modules
+}
+
+/// Load stdlib modules for type checking.
+/// This allows the type checker to see function signatures from stdlib.
+fn load_stdlib_modules() -> Vec<Module> {
+    let stdlib_dir = match find_stdlib_dir() {
+        Some(dir) => dir,
+        None => return Vec::new(),
+    };
+
+    let entries = match fs::read_dir(&stdlib_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut stdlib_modules = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("dream") {
+            continue;
+        }
+
+        // Load and parse the module
+        let mut loader = ModuleLoader::new();
+        if loader.load(&path).is_ok() {
+            stdlib_modules.extend(loader.modules().cloned());
+        }
+    }
+
+    stdlib_modules
 }
 
 /// Get the stdlib output directory.

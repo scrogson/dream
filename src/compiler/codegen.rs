@@ -1274,6 +1274,7 @@ impl Codegen {
                     Expr::Call {
                         func,
                         type_args,
+                        inferred_type_args,
                         args,
                     } => {
                         // Prepend left as first argument
@@ -1282,6 +1283,7 @@ impl Codegen {
                         let new_call = Expr::Call {
                             func: func.clone(),
                             type_args: type_args.clone(),
+                            inferred_type_args: inferred_type_args.clone(),
                             args: new_args,
                         };
                         self.compile_expr(&new_call)
@@ -1291,6 +1293,7 @@ impl Codegen {
                         let new_call = Expr::Call {
                             func: Box::new(Expr::Ident(name.clone())),
                             type_args: vec![],
+                            inferred_type_args: vec![],
                             args: vec![left.as_ref().clone()],
                         };
                         self.compile_expr(&new_call)
@@ -1302,6 +1305,7 @@ impl Codegen {
                                 segments: segments.clone(),
                             }),
                             type_args: vec![],
+                            inferred_type_args: vec![],
                             args: vec![left.as_ref().clone()],
                         };
                         self.compile_expr(&new_call)

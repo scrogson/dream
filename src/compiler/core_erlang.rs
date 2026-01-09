@@ -1653,17 +1653,25 @@ impl CoreErlangEmitter {
             Expr::Call {
                 func,
                 type_args,
+                inferred_type_args,
                 args,
             } => {
+                // Use explicit type_args if provided, otherwise use inferred
+                let effective_type_args = if !type_args.is_empty() {
+                    type_args
+                } else {
+                    inferred_type_args
+                };
+
                 // Check if it's a local function call or external
                 match func.as_ref() {
                     Expr::Ident(name) => {
                         // Check if this is a call to a generic function with type args
-                        if !type_args.is_empty()
+                        if !effective_type_args.is_empty()
                             && self.generic_functions.contains_key(name)
                         {
                             // Record the monomorphization and call the specialized version
-                            let type_names: Vec<String> = type_args
+                            let type_names: Vec<String> = effective_type_args
                                 .iter()
                                 .map(|t| self.type_to_name(t))
                                 .collect();
@@ -1676,10 +1684,10 @@ impl CoreErlangEmitter {
                             self.emit("(");
                             self.emit_args(args)?;
                             self.emit(")");
-                        } else if !type_args.is_empty() {
+                        } else if !effective_type_args.is_empty() {
                             // Check if we're inlining from another module and this is
                             // a call to another generic from that same source module
-                            let type_names: Vec<String> = type_args
+                            let type_names: Vec<String> = effective_type_args
                                 .iter()
                                 .map(|t| self.type_to_name(t))
                                 .collect();
@@ -1809,11 +1817,11 @@ impl CoreErlangEmitter {
                             self.emit(")");
                         } else {
                             // Module:Function call - add dream:: prefix for Dream modules
-                            // Check if this is a call with type args (generic function)
-                            if !type_args.is_empty() {
+                            // Check if this is a call with type args (explicit or inferred)
+                            if !effective_type_args.is_empty() {
                                 // Cross-module generic call: genserver::start_typed::<Counter>()
                                 // Check if we have the generic function in the registry
-                                let type_names: Vec<String> = type_args
+                                let type_names: Vec<String> = effective_type_args
                                     .iter()
                                     .map(|t| self.type_to_name(t))
                                     .collect();
@@ -2065,7 +2073,7 @@ impl CoreErlangEmitter {
                 self.emit("}#");
             }
 
-            Expr::MethodCall { receiver, method, args, resolved_module } => {
+            Expr::MethodCall { receiver, method, args, resolved_module, inferred_type_args: _ } => {
                 // UFCS: Transform expr.method(args) into method(expr, args)
                 let mut all_args = vec![receiver.as_ref().clone()];
                 all_args.extend(args.iter().cloned());
@@ -2309,6 +2317,7 @@ impl CoreErlangEmitter {
                     Expr::Call {
                         func,
                         type_args,
+                        inferred_type_args,
                         args,
                     } => {
                         // Prepend left as first argument
@@ -2317,6 +2326,7 @@ impl CoreErlangEmitter {
                         let new_call = Expr::Call {
                             func: func.clone(),
                             type_args: type_args.clone(),
+                            inferred_type_args: inferred_type_args.clone(),
                             args: new_args,
                         };
                         self.emit_expr(&new_call)?;
@@ -2326,6 +2336,7 @@ impl CoreErlangEmitter {
                         let new_call = Expr::Call {
                             func: Box::new(Expr::Ident(name.clone())),
                             type_args: vec![],
+                            inferred_type_args: vec![],
                             args: vec![left.as_ref().clone()],
                         };
                         self.emit_expr(&new_call)?;
@@ -2337,6 +2348,7 @@ impl CoreErlangEmitter {
                                 segments: segments.clone(),
                             }),
                             type_args: vec![],
+                            inferred_type_args: vec![],
                             args: vec![left.as_ref().clone()],
                         };
                         self.emit_expr(&new_call)?;

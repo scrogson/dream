@@ -1037,6 +1037,7 @@ impl<'source> Parser<'source> {
                 expr = Expr::Call {
                     func: Box::new(expr),
                     type_args,
+                    inferred_type_args: vec![],
                     args,
                 };
             } else if !type_args.is_empty() {
@@ -1067,6 +1068,7 @@ impl<'source> Parser<'source> {
                         method: field,
                         args,
                         resolved_module: None,
+                        inferred_type_args: vec![],
                     };
                 } else {
                     expr = Expr::FieldAccess {
