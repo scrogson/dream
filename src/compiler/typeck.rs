@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::compiler::ast::{
     self, BinOp, Block, Expr, ExternItem, ExternMod, Function, ImplBlock, Item, MatchArm, Module,
-    Pattern, Stmt, TypeParam, UnaryOp,
+    Pattern, Stmt, StringPart, TypeParam, UnaryOp,
 };
 use crate::compiler::error::{TypeError, TypeResult};
 
@@ -1241,6 +1241,16 @@ impl TypeChecker {
             // Literals
             Expr::Int(_) => Ok(Ty::Int),
             Expr::String(_) => Ok(Ty::String),
+            Expr::StringInterpolation(parts) => {
+                // Type check each expression part (any type is allowed)
+                for part in parts {
+                    if let StringPart::Expr(e) = part {
+                        self.infer_expr(e)?;
+                    }
+                }
+                // Result is always String
+                Ok(Ty::String)
+            }
             Expr::Atom(name) => Ok(Ty::AtomLiteral(name.clone())),
             Expr::Bool(_) => Ok(Ty::Bool),
             Expr::Unit => Ok(Ty::Unit),
@@ -2331,6 +2341,16 @@ impl TypeChecker {
             // Simple expressions that don't need annotation
             Expr::Int(_) | Expr::String(_) | Expr::Atom(_)
             | Expr::Bool(_) | Expr::Unit | Expr::Ident(_) | Expr::Path { .. } => expr.clone(),
+
+            Expr::StringInterpolation(parts) => {
+                let annotated_parts = parts.iter().map(|part| {
+                    match part {
+                        StringPart::Literal(s) => StringPart::Literal(s.clone()),
+                        StringPart::Expr(e) => StringPart::Expr(Box::new(self.annotate_expr(e))),
+                    }
+                }).collect();
+                Expr::StringInterpolation(annotated_parts)
+            }
         }
     }
 
@@ -2707,6 +2727,13 @@ impl MethodResolver {
                     self.resolve_expr(&mut seg.value);
                 }
             }
+            Expr::StringInterpolation(parts) => {
+                for part in parts {
+                    if let StringPart::Expr(e) = part {
+                        self.resolve_expr(e);
+                    }
+                }
+            }
             // Leaf expressions - no children to resolve
             Expr::Int(_)
             | Expr::String(_)
@@ -2724,6 +2751,7 @@ impl MethodResolver {
     fn infer_expr_type(&self, expr: &Expr) -> Ty {
         match expr {
             Expr::String(_) => Ty::String,
+            Expr::StringInterpolation(_) => Ty::String,
             Expr::Int(_) => Ty::Int,
             Expr::Bool(_) => Ty::Bool,
             Expr::Atom(name) => Ty::AtomLiteral(name.clone()),

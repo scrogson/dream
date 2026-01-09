@@ -243,6 +243,15 @@ pub enum Stmt {
     Expr(Expr),
 }
 
+/// Part of an interpolated string.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart {
+    /// Literal string segment.
+    Literal(String),
+    /// Interpolated expression.
+    Expr(Box<Expr>),
+}
+
 /// Expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -250,6 +259,8 @@ pub enum Expr {
     Int(i64),
     /// String literal.
     String(String),
+    /// Interpolated string: `"Hello {name}!"`.
+    StringInterpolation(Vec<StringPart>),
     /// Atom literal (e.g., `:ok`).
     Atom(String),
     /// Boolean literal.

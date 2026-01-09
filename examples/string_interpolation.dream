@@ -1,0 +1,31 @@
+// Test string interpolation
+
+pub fn main() -> int {
+    let name = "world";
+    let msg = "Hello {name}!";
+    io::println(msg);
+
+    // Test with expression
+    let a = 2;
+    let b = 3;
+    let sum_msg = "{a} + {b} = {a + b}";
+    io::println(sum_msg);
+
+    io::println("{a * b} is the product of {a} and {b}");
+
+    // Test escaped braces
+    let escaped = "Use {{braces}} like this";
+    io::println(escaped);
+
+    // Test multiple interpolations
+    let x = 10;
+    let y = 20;
+    let multi = "x={x}, y={y}, sum={x + y}";
+    io::println(multi);
+
+    // Plain string still works
+    let plain = "no interpolation";
+    io::println(plain);
+
+    0
+}

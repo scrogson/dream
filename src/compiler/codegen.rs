@@ -400,6 +400,17 @@ impl Codegen {
                 Ok(dest)
             }
 
+            Expr::StringInterpolation(_parts) => {
+                // TODO: VM target needs proper string concatenation support
+                // For now, emit a placeholder atom
+                let dest = self.regs.alloc();
+                self.emit(Instruction::LoadAtom {
+                    name: "__str_interpolated__".to_string(),
+                    dest,
+                });
+                Ok(dest)
+            }
+
             Expr::Atom(a) => {
                 let dest = self.regs.alloc();
                 self.emit(Instruction::LoadAtom {

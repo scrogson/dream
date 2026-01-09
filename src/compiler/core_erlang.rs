@@ -46,7 +46,8 @@ pub type SharedGenericRegistry = Arc<RwLock<GenericFunctionRegistry>>;
 
 use crate::compiler::ast::{
     BinOp, BitEndianness, BitSegmentType, BitSignedness, BitStringSegment, Block, Expr, Function,
-    Item, MatchArm, Module, Pattern, Stmt, TraitDef, TraitImpl, Type, UnaryOp, UseDecl, UseTree,
+    Item, MatchArm, Module, Pattern, Stmt, StringPart, TraitDef, TraitImpl, Type, UnaryOp, UseDecl,
+    UseTree,
 };
 
 /// Core Erlang emitter error.
@@ -1606,6 +1607,35 @@ impl CoreErlangEmitter {
                 let chars: Vec<String> = s.chars().map(|c| (c as u32).to_string()).collect();
                 self.emit(&chars.join(", "));
                 self.emit("]");
+            }
+
+            Expr::StringInterpolation(parts) => {
+                // Convert interpolated string to iolist and then binary
+                // Result: call 'erlang':'iolist_to_binary'([part1, part2, ...])
+                self.emit("call 'erlang':'iolist_to_binary'([");
+                for (i, part) in parts.iter().enumerate() {
+                    if i > 0 {
+                        self.emit(", ");
+                    }
+                    match part {
+                        StringPart::Literal(s) => {
+                            // Emit literal as char code list
+                            self.emit("[");
+                            let chars: Vec<String> =
+                                s.chars().map(|c| (c as u32).to_string()).collect();
+                            self.emit(&chars.join(", "));
+                            self.emit("]");
+                        }
+                        StringPart::Expr(e) => {
+                            // Convert expression to string using display::to_string
+                            // (doesn't add quotes around strings)
+                            self.emit("call 'dream::display':'to_string'(");
+                            self.emit_expr(e)?;
+                            self.emit(")");
+                        }
+                    }
+                }
+                self.emit("])");
             }
 
             Expr::Atom(a) => {

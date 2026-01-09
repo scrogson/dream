@@ -114,6 +114,26 @@ pub fn display_any(term: any) -> binary {
     do_display_any(term, DisplayOpts::new())
 }
 
+/// Convert any term to a string for interpolation.
+/// Unlike display_any, this doesn't add quotes around strings.
+/// Use this for string interpolation: "Hello {name}!"
+pub fn to_string(term: any) -> binary {
+    if :erlang::is_binary(term) {
+        // Return string directly without quotes
+        term
+    } else if :erlang::is_list(term) {
+        // Check if it's a printable string (charlist)
+        if :io_lib::printable_list(term) {
+            :erlang::list_to_binary(term)
+        } else {
+            display_any(term)
+        }
+    } else {
+        // For other types, use standard display
+        display_any(term)
+    }
+}
+
 pub fn display_any_opts(term: any, opts: DisplayOpts) -> binary {
     do_display_any(term, opts)
 }
@@ -163,7 +183,7 @@ fn format_struct(term: any, struct_tag: atom, opts: DisplayOpts) -> binary {
     let fields_str = join_strings(field_strs, ", ");
 
     // Build "TypeName { fields }"
-    concat(concat(concat(type_name, " { "), fields_str), " }")
+    concat(concat(concat(type_name, " {{ "), fields_str), " }}")
 }
 
 /// Extract the type name from a fully qualified name like "module::TypeName"
@@ -287,7 +307,7 @@ fn format_map(term: any, opts: DisplayOpts) -> binary {
         concat(concat(key_str, " => "), value_str)
     }, entries);
     let entries_str = join_strings(entry_strs, ", ");
-    concat(concat("{ ", entries_str), " }")
+    concat(concat("{{ ", entries_str), " }}")
 }
 
 /// Join a list of strings with a separator

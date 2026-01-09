@@ -2,9 +2,19 @@
 
 use logos::Logos;
 
+/// Parts of an interpolated string from the lexer.
+/// The parser will convert `Interpolation(String)` to actual parsed expressions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LexStringPart {
+    /// A literal string segment (escapes already processed)
+    Literal(String),
+    /// Raw expression text to be parsed (content between { and })
+    Interpolation(String),
+}
+
 /// Process escape sequences in a string literal.
-/// Handles: \n, \r, \t, \\, \", \0
-fn process_escapes(s: &str) -> String {
+/// Handles: \n, \r, \t, \\, \", \0, {{ → {, }} → }
+pub fn process_escapes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 
@@ -17,6 +27,8 @@ fn process_escapes(s: &str) -> String {
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
                 Some('0') => result.push('\0'),
+                Some('{') => result.push('{'),
+                Some('}') => result.push('}'),
                 Some(other) => {
                     // Unknown escape - keep as-is
                     result.push('\\');
@@ -24,12 +36,133 @@ fn process_escapes(s: &str) -> String {
                 }
                 None => result.push('\\'),
             }
+        } else if c == '{' && chars.peek() == Some(&'{') {
+            // {{ -> {
+            chars.next();
+            result.push('{');
+        } else if c == '}' && chars.peek() == Some(&'}') {
+            // }} -> }
+            chars.next();
+            result.push('}');
         } else {
             result.push(c);
         }
     }
 
     result
+}
+
+/// Check if a string contains interpolation (unescaped `{`).
+pub fn has_interpolation(s: &str) -> bool {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            // Skip escaped character
+            chars.next();
+        } else if c == '{' {
+            // Check if it's escaped as {{
+            if chars.peek() == Some(&'{') {
+                chars.next(); // Skip the second {
+            } else {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Parse a string with interpolation into parts.
+/// Handles `{{` and `}}` escapes.
+pub fn parse_interpolated_string(s: &str) -> Vec<LexStringPart> {
+    let mut parts = Vec::new();
+    let mut current_literal = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            // Handle escape sequences in literal parts
+            match chars.next() {
+                Some('n') => current_literal.push('\n'),
+                Some('r') => current_literal.push('\r'),
+                Some('t') => current_literal.push('\t'),
+                Some('\\') => current_literal.push('\\'),
+                Some('"') => current_literal.push('"'),
+                Some('0') => current_literal.push('\0'),
+                Some('{') => current_literal.push('{'),
+                Some('}') => current_literal.push('}'),
+                Some(other) => {
+                    current_literal.push('\\');
+                    current_literal.push(other);
+                }
+                None => current_literal.push('\\'),
+            }
+        } else if c == '{' {
+            // Check for escaped {{ -> literal {
+            if chars.peek() == Some(&'{') {
+                chars.next();
+                current_literal.push('{');
+            } else {
+                // Start of interpolation
+                // Save current literal if non-empty
+                if !current_literal.is_empty() {
+                    parts.push(LexStringPart::Literal(current_literal));
+                    current_literal = String::new();
+                }
+
+                // Parse until matching }
+                let mut expr = String::new();
+                let mut brace_depth = 1;
+
+                while let Some(ic) = chars.next() {
+                    if ic == '{' {
+                        brace_depth += 1;
+                        expr.push(ic);
+                    } else if ic == '}' {
+                        brace_depth -= 1;
+                        if brace_depth == 0 {
+                            break;
+                        }
+                        expr.push(ic);
+                    } else if ic == '"' {
+                        // Handle nested string in expression
+                        expr.push(ic);
+                        while let Some(sc) = chars.next() {
+                            expr.push(sc);
+                            if sc == '\\' {
+                                if let Some(esc) = chars.next() {
+                                    expr.push(esc);
+                                }
+                            } else if sc == '"' {
+                                break;
+                            }
+                        }
+                    } else {
+                        expr.push(ic);
+                    }
+                }
+
+                parts.push(LexStringPart::Interpolation(expr));
+            }
+        } else if c == '}' {
+            // Check for escaped }} -> literal }
+            if chars.peek() == Some(&'}') {
+                chars.next();
+                current_literal.push('}');
+            } else {
+                // Stray } - just include it
+                current_literal.push('}');
+            }
+        } else {
+            current_literal.push(c);
+        }
+    }
+
+    // Don't forget the trailing literal
+    if !current_literal.is_empty() {
+        parts.push(LexStringPart::Literal(current_literal));
+    }
+
+    parts
 }
 
 /// Tokens produced by the lexer.
@@ -94,11 +227,15 @@ pub enum Token {
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Int(i64),
 
+    /// String literal - stores RAW content (quotes stripped, escapes NOT processed).
+    /// The parser will:
+    /// 1. Check for interpolation (`{expr}` syntax)
+    /// 2. If found: parse as InterpolatedString
+    /// 3. If not: process escapes and create Expr::String
     #[regex(r#""([^"\\]|\\.)*""#, |lex| {
         let s = lex.slice();
-        // Strip quotes and process escape sequences
-        let content = &s[1..s.len()-1];
-        Some(process_escapes(content))
+        // Strip quotes but keep raw content for interpolation detection
+        Some(s[1..s.len()-1].to_string())
     })]
     String(String),
 

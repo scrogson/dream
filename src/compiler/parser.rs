@@ -4,7 +4,9 @@ use crate::compiler::ast::*;
 use crate::compiler::error::{ParseError, ParseResult};
 use crate::compiler::lexer::{Lexer, Span, SpannedToken};
 use crate::compiler::prelude::prelude_items_for_module;
-use crate::compiler::token::Token;
+use crate::compiler::token::{
+    has_interpolation, parse_interpolated_string, process_escapes, LexStringPart, Token,
+};
 
 /// Recursive descent parser.
 pub struct Parser<'source> {
@@ -1194,9 +1196,17 @@ impl<'source> Parser<'source> {
             return Ok(Expr::Int(n));
         }
 
-        if let Some(Token::String(s)) = self.peek().cloned() {
+        if let Some(Token::String(raw)) = self.peek().cloned() {
             self.advance();
-            return Ok(Expr::String(s));
+            // Check for string interpolation
+            if has_interpolation(&raw) {
+                let parts = parse_interpolated_string(&raw);
+                let ast_parts = self.parse_string_interpolation_parts(parts)?;
+                return Ok(Expr::StringInterpolation(ast_parts));
+            } else {
+                // Plain string - process escapes
+                return Ok(Expr::String(process_escapes(&raw)));
+            }
         }
 
         // Check for atom or quoted atom (for extern calls or literal atoms)
@@ -1727,9 +1737,10 @@ impl<'source> Parser<'source> {
             return Ok(Pattern::Int(n));
         }
 
-        if let Some(Token::String(s)) = self.peek().cloned() {
+        if let Some(Token::String(raw)) = self.peek().cloned() {
             self.advance();
-            return Ok(Pattern::String(s));
+            // Patterns don't support interpolation - just process escapes
+            return Ok(Pattern::String(process_escapes(&raw)));
         }
 
         if let Some(Token::Atom(a)) = self.peek().cloned() {
@@ -2459,6 +2470,41 @@ impl<'source> Parser<'source> {
         };
         self.advance();
         Ok(name)
+    }
+
+    /// Parse string interpolation parts into AST StringParts.
+    /// Converts LexStringPart::Interpolation to parsed expressions.
+    fn parse_string_interpolation_parts(
+        &mut self,
+        parts: Vec<LexStringPart>,
+    ) -> ParseResult<Vec<StringPart>> {
+        let mut result = Vec::new();
+
+        for part in parts {
+            match part {
+                LexStringPart::Literal(s) => {
+                    result.push(StringPart::Literal(s));
+                }
+                LexStringPart::Interpolation(expr_str) => {
+                    // Create a new parser for the expression string
+                    let mut sub_parser = Parser::new(&expr_str);
+                    let expr = sub_parser.parse_expr()?;
+
+                    // Ensure the entire expression was consumed
+                    if sub_parser.peek().is_some() {
+                        return Err(ParseError::unexpected_token(
+                            sub_parser.peek().unwrap(),
+                            "end of interpolation",
+                            sub_parser.current_span(),
+                        ));
+                    }
+
+                    result.push(StringPart::Expr(Box::new(expr)));
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 
