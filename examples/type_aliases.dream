@@ -22,6 +22,19 @@ mod type_aliases {
     // Public type aliases (can be exported)
     pub type ApiResponse = :success | :failure;
 
+    // ========== Generic Type Aliases ==========
+    //
+    // Type aliases can have type parameters, enabling reusable type patterns.
+
+    // Generic result type - T is substituted when the alias is used
+    type MyResult<T> = (:ok, T) | :error;
+
+    // Multiple type parameters
+    type Either<L, R> = (:left, L) | (:right, R);
+
+    // Generic pair (same type for both elements)
+    type Pair<T> = (T, T);
+
     // ========== Using Type Aliases ==========
 
     pub fn create_user(id: UserId, name: Username) -> (UserId, Username) {
@@ -54,8 +67,31 @@ mod type_aliases {
         if ok { :success } else { :failure }
     }
 
+    // ========== Using Generic Type Aliases ==========
+
+    pub fn divide(a: int, b: int) -> MyResult<int> {
+        if b == 0 {
+            :error
+        } else {
+            (:ok, a / b)
+        }
+    }
+
+    pub fn parse_int(s: string) -> Either<string, int> {
+        // Simplified - in reality would parse the string
+        if s == "42" {
+            (:right, 42)
+        } else {
+            (:left, "parse error")
+        }
+    }
+
+    pub fn make_pair(x: int) -> Pair<int> {
+        (x, x)
+    }
+
     pub fn main() -> :ok {
-        // Using type aliases
+        // Using simple type aliases
         let user = create_user(42, "alice");
         :io::format("User: ~p~n", [user]);
 
@@ -73,6 +109,27 @@ mod type_aliases {
 
         let api = check_api(true);
         :io::format("API response: ~p~n", [api]);
+
+        // Using generic type aliases
+        :io::format("~n=== Generic Type Aliases ===~n", []);
+
+        // MyResult<int> - T is substituted with int
+        let div_result: MyResult<int> = divide(10, 2);
+        :io::format("10 / 2 = ~p~n", [div_result]);
+
+        let div_error: MyResult<int> = divide(10, 0);
+        :io::format("10 / 0 = ~p~n", [div_error]);
+
+        // Either<string, int> - L=string, R=int
+        let parsed: Either<string, int> = parse_int("42");
+        :io::format("parse('42') = ~p~n", [parsed]);
+
+        let parse_err: Either<string, int> = parse_int("abc");
+        :io::format("parse('abc') = ~p~n", [parse_err]);
+
+        // Pair<int> - both elements are int
+        let pair: Pair<int> = make_pair(5);
+        :io::format("Pair: ~p~n", [pair]);
 
         :ok
     }

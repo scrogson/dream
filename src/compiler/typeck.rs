@@ -295,6 +295,14 @@ pub struct TraitImplInfo {
     pub methods: Vec<String>,
 }
 
+/// Information about a type alias.
+#[derive(Debug, Clone)]
+pub struct TypeAliasInfo {
+    pub name: String,
+    pub type_params: Vec<TypeParam>,
+    pub ty: Ty,
+}
+
 // ============================================================================
 // Match Exhaustiveness Checking Types
 // ============================================================================
@@ -438,8 +446,8 @@ pub struct TypeEnv {
     functions: HashMap<String, FnInfo>,
     /// Impl methods: (type_name, method_name) -> FnInfo
     methods: HashMap<(String, String), FnInfo>,
-    /// Type aliases (for future use)
-    type_aliases: HashMap<String, Ty>,
+    /// Type aliases: name -> info (includes type parameters for generic aliases)
+    type_aliases: HashMap<String, TypeAliasInfo>,
     /// Trait definitions: trait_name -> TraitInfo
     traits: HashMap<String, TraitInfo>,
     /// Trait implementations: (trait_name, type_name) -> TraitImplInfo
@@ -897,9 +905,27 @@ impl TypeChecker {
                     "binary" => Ty::Binary,
                     _ => {
                         // Check if it's a type alias
-                        if type_args.is_empty() {
-                            if let Some(aliased_ty) = self.env.type_aliases.get(name) {
-                                return aliased_ty.clone();
+                        if let Some(alias_info) = self.env.type_aliases.get(name).cloned() {
+                            if alias_info.type_params.is_empty() {
+                                // Non-generic alias - return as-is
+                                return alias_info.ty;
+                            } else {
+                                // Generic alias - substitute type parameters
+                                let resolved_args: Vec<Ty> = type_args
+                                    .iter()
+                                    .map(|t| self.ast_type_to_ty(t))
+                                    .collect();
+
+                                // Build substitution map: T -> int, E -> string, etc.
+                                let mut subst = HashMap::new();
+                                for (param, arg) in
+                                    alias_info.type_params.iter().zip(resolved_args.iter())
+                                {
+                                    subst.insert(param.name.clone(), arg.clone());
+                                }
+
+                                // Apply substitution to the aliased type
+                                return alias_info.ty.substitute(&subst);
                             }
                         }
                         // Otherwise, it's a named type (struct, enum, etc.)
@@ -1076,10 +1102,16 @@ impl TypeChecker {
                     self.collect_extern_mod(extern_mod, &extern_mod.name);
                 }
                 Item::TypeAlias(alias) => {
-                    // Type aliases are collected but resolved lazily in ast_type_to_ty
-                    // For now, store the raw AST type; we'll resolve it when used
+                    // Store type alias with its type parameters for generic alias support
                     let ty = self.ast_type_to_ty(&alias.ty);
-                    self.env.type_aliases.insert(alias.name.clone(), ty);
+                    self.env.type_aliases.insert(
+                        alias.name.clone(),
+                        TypeAliasInfo {
+                            name: alias.name.clone(),
+                            type_params: alias.type_params.clone(),
+                            ty,
+                        },
+                    );
                 }
                 _ => {}
             }
