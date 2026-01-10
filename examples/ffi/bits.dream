@@ -1,7 +1,7 @@
 // Binary/Bit String Syntax example
 // Demonstrates Erlang-style binary construction and pattern matching
 
-mod binary_example {
+mod bits {
     use io::{println, format};
 
     // Create a simple binary with byte values

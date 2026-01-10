@@ -1,0 +1,115 @@
+/// HashMap example - testing locally defined HashMap
+/// Uses Option and Result from the prelude.
+///
+/// NOTE: This example demonstrates how to build a HashMap abstraction using FFI.
+/// For production code, prefer using stdlib/map.dream which provides the
+/// same functionality with a cleaner API.
+
+mod hashmap {
+    use io::{println, format};
+
+    pub enum KeyError {
+        NotFound,
+    }
+
+    // HashMap struct wrapping Erlang's native map type
+    pub struct HashMap {
+        data: map,
+    }
+
+    impl HashMap {
+        pub fn new() -> HashMap {
+            HashMap { data: :maps::new() }
+        }
+
+        pub fn get<K, V>(self, key: K) -> Option<V> {
+            if :maps::is_key(key, self.data) {
+                Some(:maps::get(key, self.data))
+            } else {
+                None
+            }
+        }
+
+        pub fn get_or<K, V>(self, key: K, default: V) -> V {
+            :maps::get(key, self.data, default)
+        }
+
+        pub fn has_key<K>(self, key: K) -> bool {
+            :maps::is_key(key, self.data)
+        }
+
+        pub fn put<K, V>(self, key: K, value: V) -> HashMap {
+            HashMap { data: :maps::put(key, value, self.data) }
+        }
+
+        pub fn size(self) -> int {
+            :maps::size(self.data)
+        }
+
+        pub fn keys<K>(self) -> [K] {
+            :maps::keys(self.data)
+        }
+
+        pub fn values<V>(self) -> [V] {
+            :maps::values(self.data)
+        }
+    }
+
+    pub fn main() -> atom {
+        println("=== HashMap Example ===");
+        println("");
+
+        // Create a new empty map using Type::method() syntax
+        let m = HashMap::new();
+        println("Created empty map");
+
+        // Add some key-value pairs using UFCS syntax: m.put(key, value)
+        let m = m.put("name", "Alice");
+        let m = m.put("city", "Portland");
+        let m = m.put("age", 30);
+        format("Added 3 entries, size: ~p~n", [m.size()]);
+
+        // Get values with default using UFCS
+        println("");
+        println("Getting values:");
+        let name = m.get_or("name", "Unknown");
+        format("  name: ~p~n", [name]);
+
+        let missing = m.get_or("missing", "default");
+        format("  missing (default): ~p~n", [missing]);
+
+        // Check keys using UFCS
+        println("");
+        println("Checking keys:");
+        format("  has 'name': ~p~n", [m.has_key("name")]);
+        format("  has 'email': ~p~n", [m.has_key("email")]);
+
+        // All keys and values using UFCS
+        println("");
+        format("Keys: ~p~n", [m.keys()]);
+        format("Values: ~p~n", [m.values()]);
+
+        // Option-based get using UFCS
+        println("");
+        println("Option-based get:");
+        let name_opt = m.get("name");
+        if :erlang::is_tuple(name_opt) {
+            let v = :erlang::element(2, name_opt);
+            format("  Found: ~p~n", [v]);
+        } else {
+            println("  Not found");
+        };
+
+        let missing_opt = m.get("nonexistent");
+        if :erlang::is_tuple(missing_opt) {
+            let v = :erlang::element(2, missing_opt);
+            format("  Found: ~p~n", [v]);
+        } else {
+            println("  'nonexistent' not found (expected)");
+        };
+
+        println("");
+        println("Done!");
+        :ok
+    }
+}

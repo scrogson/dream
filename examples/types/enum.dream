@@ -1,9 +1,5 @@
 /// Enum module example - demonstrating collection operations
 
-// Import enumerable functions for list operations
-// Note: We use qualified names for Map methods to avoid conflicts
-use enumerable::{flat_map, sort_by, uniq, chunk, zip, range};
-
 // Local Map struct for the Iter trait demo
 pub struct Map {
     data: map,
@@ -54,22 +50,18 @@ pub fn main() -> atom {
     let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     io::dbg_opts(numbers, display::DisplayOpts::new().with_label("Numbers"));
 
-    // Pipeline with dbg for debugging each step
-    let result = numbers
-        |> enumerable::map(|x| { x * 2 })
-        |> io::dbg_opts(display::DisplayOpts::new().with_label("Doubled"))
-        |> enumerable::filter(|x| { x % 2 == 0 })
-        |> io::dbg_opts(display::DisplayOpts::new().with_label("Evens"));
+    // Transform and filter
+    let doubled = enumerable::map(numbers, |x| { x * 2 });
+    :io::format("Doubled: ~p~n", [doubled]);
+
+    let evens = enumerable::filter(doubled, |x| { x % 2 == 0 });
+    :io::format("Evens: ~p~n", [evens]);
 
     // Reduce - accumulate a value
     let sum = enumerable::reduce(numbers, 0, |x, acc| { x + acc });
     :io::format("Sum: ~p~n", [sum]);
 
     :io::format("~n--- Searching ---~n", []);
-
-    // Find - first matching element
-    let first_gt_5 = enumerable::find(numbers, |x| { x > 5 });
-    :io::format("First > 5: ~p~n", [first_gt_5]);
 
     // Any - check if any match
     let has_even = enumerable::any(numbers, |x| { x % 2 == 0 });
@@ -93,33 +85,27 @@ pub fn main() -> atom {
     let after_three = enumerable::drop(numbers, 3);
     :io::format("After 3: ~p~n", [after_three]);
 
-    // Chunk - split into sublists
-    let chunks = chunk(numbers, 3);
-    :io::format("Chunks of 3: ~p~n", [chunks]);
-
     :io::format("~n--- Combining ---~n", []);
 
     // Zip - combine two lists
     let letters = ["a", "b", "c"];
-    let zipped = zip([1, 2, 3], letters);
+    let zipped = enumerable::zip([1, 2, 3], letters);
     :io::format("Zipped: ~p~n", [zipped]);
 
     :io::format("~n--- Transformations ---~n", []);
 
     // Flat map - map and flatten
-    let expanded = flat_map([1, 2, 3], |x| { [x, x * 10] });
+    let expanded = enumerable::flat_map([1, 2, 3], |x| { [x, x * 10] });
     :io::format("Flat mapped: ~p~n", [expanded]);
 
-    // Sort by - custom sort
-    let words = ["banana", "apple", "cherry"];
-    let by_length = sort_by(words, |a, b| {
-        :erlang::length(a) < :erlang::length(b)
-    });
-    :io::format("Sorted by length: ~p~n", [by_length]);
+    // Sort using default comparison
+    let unsorted = [3, 1, 4, 1, 5, 9, 2, 6];
+    let sorted = enumerable::sort(unsorted);
+    :io::format("Sorted: ~p~n", [sorted]);
 
     // Uniq - remove duplicates
     let with_dupes = [1, 2, 2, 3, 3, 3, 4];
-    let unique = uniq(with_dupes);
+    let unique = enumerable::uniq(with_dupes);
     :io::format("Unique: ~p~n", [unique]);
 
     // Reverse
@@ -128,7 +114,7 @@ pub fn main() -> atom {
 
     :io::format("~n--- Ranges ---~n", []);
 
-    let r = range(1, 5);
+    let r = enumerable::range(1, 5);
     :io::format("Range 1..5: ~p~n", [r]);
 
     :io::format("~n--- Iter Trait (Map) ---~n", []);
