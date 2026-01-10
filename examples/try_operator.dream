@@ -1,49 +1,81 @@
-// Try Operator Example
+// Test ? operator error propagation
 //
-// The ? operator extracts values from Result and Option types.
-// - On Ok(value) or Some(value), it extracts the value
-// - On Err(e) or None, it throws for early return
-//
-// Note: Functions using ? should return Result to properly propagate errors.
+// The ? operator should:
+// - Return the inner value on Ok/Some
+// - Early-return the error on Err/None (not crash)
 
-mod try_operator {
-    // Parse a number, returning Err if invalid
-    pub fn parse_int(s: string) -> Result<int, string> {
-        if s == "42" {
-            Ok(42)
-        } else if s == "0" {
-            Ok(0)
-        } else {
-            Err("not a valid number")
+use io::{println, format};
+
+// A function that might fail
+fn might_fail(x: int) -> Result<int, string> {
+    if x < 0 {
+        Err("negative number")
+    } else {
+        Ok(x * 2)
+    }
+}
+
+// Chain multiple ? operators - errors should propagate
+fn chain_results(x: int) -> Result<int, string> {
+    let a = might_fail(x)?;      // Returns Err if x < 0
+    let b = might_fail(a)?;      // Returns Err if a < 0 (won't happen)
+    let c = might_fail(b)?;      // Continue the chain
+    Ok(c)
+}
+
+// Test with Option type
+fn find_positive(items: [int]) -> Option<int> {
+    match items {
+        [] => None,
+        [head | tail] => {
+            if head > 0 {
+                Some(head)
+            } else {
+                find_positive(tail)
+            }
         }
     }
+}
 
-    // Double a number from a string, using ? for error propagation
-    pub fn double_parsed(s: string) -> Result<int, string> {
-        let n = parse_int(s)?;
-        Ok(n * 2)
-    }
+fn find_two_positives(items: [int]) -> Option<(int, int)> {
+    let first = find_positive(items)?;
+    // For second, skip past the first one - simplified for demo
+    let second = find_positive([first + 1])?;
+    Some((first, second))
+}
 
-    // Chain multiple fallible operations
-    pub fn add_parsed(a: string, b: string) -> Result<int, string> {
-        let x = parse_int(a)?;
-        let y = parse_int(b)?;
-        Ok(x + y)
-    }
+pub fn main() {
+    println("=== Testing ? operator error propagation ===");
+    println("");
 
-    pub fn main() -> :ok {
-        // Success cases - ? extracts the value
-        let r1 = double_parsed("42");
-        :io::format("double_parsed(42) = ~p~n", [r1]);
+    // Test 1: Successful chain
+    println("Test 1: chain_results(5)");
+    match chain_results(5) {
+        Ok(result) => format("  Ok(~p) - SUCCESS~n", [result]),
+        Err(e) => format("  Err(~p) - UNEXPECTED~n", [e])
+    };
 
-        // Chain success
-        let r2 = add_parsed("42", "0");
-        :io::format("add_parsed(42, 0) = ~p~n", [r2]);
+    // Test 2: Error propagation
+    println("Test 2: chain_results(-1)");
+    match chain_results(-1) {
+        Ok(result) => format("  Ok(~p) - UNEXPECTED (should have failed)~n", [result]),
+        Err(e) => format("  Err(~p) - SUCCESS (error propagated correctly)~n", [e])
+    };
 
-        // Direct ? usage on Ok value
-        let value = parse_int("42")?;
-        :io::format("parse_int(42)? = ~p~n", [value]);
+    // Test 3: Option - success case
+    println("Test 3: find_positive([1, 2, 3])");
+    match find_positive([1, 2, 3]) {
+        Some(v) => format("  Some(~p) - SUCCESS~n", [v]),
+        None => println("  None - UNEXPECTED")
+    };
 
-        :ok
-    }
+    // Test 4: Option - none case
+    println("Test 4: find_positive([-1, -2, -3])");
+    match find_positive([-1, -2, -3]) {
+        Some(v) => format("  Some(~p) - UNEXPECTED~n", [v]),
+        None => println("  None - SUCCESS (correctly returned None)")
+    };
+
+    println("");
+    println("=== All tests complete ===");
 }

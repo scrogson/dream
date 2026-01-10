@@ -29,8 +29,8 @@ extern mod file {
     fn read_file(filename: binary) -> Result<any, any>;
     fn make_link(existing: binary, new: binary) -> Result<(), any>;
     fn make_symlink(existing: binary, new: binary) -> Result<(), any>;
-    fn write_file(filename: binary, bytes: any) -> Result<(), any>;
-    fn write_file(filename: binary, bytes: any, modes: [any]) -> Result<(), any>;
+    fn write_file(filename: binary, bytes_: any) -> Result<(), any>;
+    fn write_file(filename: binary, bytes_: any, modes: [any]) -> Result<(), any>;
     fn open(file: any, modes: [any]) -> Result<any, any>;
     fn close(iodevice: any) -> Result<(), any>;
     fn advise(iodevice: any, offset: int, length: int, advise: atom) -> Result<(), any>;
@@ -39,9 +39,9 @@ extern mod file {
     fn read_line(iodevice: any) -> any;
     fn pread(iodevice: any, locnums: any) -> any;
     fn pread(iodevice: any, location: any, number: int) -> any;
-    fn write(iodevice: any, bytes: any) -> Result<(), any>;
+    fn write(iodevice: any, bytes_: any) -> Result<(), any>;
     fn pwrite(iodevice: any, locbytes: any) -> Result<(), (any, any)>;
-    fn pwrite(iodevice: any, location: any, bytes: any) -> Result<(), any>;
+    fn pwrite(iodevice: any, location: any, bytes_: any) -> Result<(), any>;
     fn datasync(iodevice: any) -> Result<(), any>;
     fn sync(iodevice: any) -> Result<(), any>;
     fn position(iodevice: any, location: any) -> Result<any, any>;
@@ -65,7 +65,7 @@ extern mod file {
     fn change_group(filename: binary, gid: int) -> Result<(), any>;
     fn change_time(filename: binary, mtime: ((int, int, int), (int, int, int))) -> Result<(), any>;
     fn change_time(filename: binary, atime: ((int, int, int), (int, int, int)), mtime: ((int, int, int), (int, int, int))) -> Result<(), any>;
-    fn sendfile(rawfile: any, socket: any, offset: int, bytes: int, opts: [any]) -> Result<int, any>;
+    fn sendfile(rawfile: any, socket: any, offset: int, bytes_: int, opts: [any]) -> Result<int, any>;
     fn sendfile(filename: binary, socket: any) -> Result<int, any>;
 }
 

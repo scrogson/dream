@@ -917,7 +917,7 @@ fn is_dream_keyword(name: &str) -> bool {
         "enum" | "mod" | "pub" | "self" | "spawn" | "receive" | "after" |
         "return" | "use" | "as" | "impl" | "trait" | "for" | "when" | "true" |
         "false" | "extern" | "type" | "string" | "int" | "bool" | "float" |
-        "integer" | "atom" | "pid" | "ref" | "map" | "list" | "tuple"
+        "integer" | "atom" | "pid" | "ref" | "map" | "list" | "tuple" | "bytes"
     )
 }
 

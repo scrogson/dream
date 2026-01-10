@@ -195,6 +195,16 @@ impl CoreErlangEmitter {
         name
     }
 
+    /// Check if a return type is Result<T, E>.
+    fn is_result_type(ty: &Option<Type>) -> bool {
+        matches!(ty, Some(Type::Named { name, .. }) if name == "Result")
+    }
+
+    /// Check if a return type is Option<T>.
+    fn is_option_type(ty: &Option<Type>) -> bool {
+        matches!(ty, Some(Type::Named { name, .. }) if name == "Option")
+    }
+
     /// Find all types that have a method with the given name in their impl block.
     fn find_impl_types_for_method(&self, method_name: &str) -> Vec<String> {
         self.impl_methods
@@ -1290,7 +1300,115 @@ impl CoreErlangEmitter {
         self.newline();
 
         self.indent += 1;
+
+        // Check if we need try/catch wrapping for ? operator error propagation
+        let needs_result_catch = Self::is_result_type(&func.return_type);
+        let needs_option_catch = Self::is_option_type(&func.return_type);
+
+        if needs_result_catch || needs_option_catch {
+            self.emit("try");
+            self.newline();
+            self.indent += 1;
+        }
+
         self.emit_block(&func.body)?;
+
+        if needs_result_catch {
+            // After emit_block, indent is at try body level (indent 3)
+            // We need to emit 'of' at same visual level as 'try' (4 spaces = indent 1)
+            // But 'try' was emitted when indent was 1, then we incremented to 2, then to 3 for body
+            // So we need to go back 2 levels to get 'of' at the right visual position
+            self.indent -= 2;
+            self.newline();
+            let result_var = self.fresh_var();
+            self.emit(&format!("of <{}> ->", result_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&result_var);
+            self.indent -= 1;
+            self.newline();
+            let class_var = self.fresh_var();
+            let reason_var = self.fresh_var();
+            let stack_var = self.fresh_var();
+            let err_var = self.fresh_var();
+            // Core Erlang catch pattern must be on same line as 'catch'
+            self.emit(&format!(
+                "catch <{}, {}, {}> ->",
+                class_var, reason_var, stack_var
+            ));
+            self.indent += 1;
+            self.newline();
+            // Match the reason to extract error or re-raise
+            self.emit(&format!("case {} of", reason_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!("<{{'error', {}}}> when 'true' ->", err_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!("{{'error', {}}}", err_var));
+            self.indent -= 1;
+            self.newline();
+            // Re-raise other exceptions
+            let other_var = self.fresh_var();
+            self.emit(&format!("<{}> when 'true' ->", other_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!(
+                "call 'erlang':'raise'({}, {}, {})",
+                class_var, other_var, stack_var
+            ));
+            self.indent -= 2; // Back from case body to case keyword level
+            self.newline();
+            self.emit("end"); // Close case
+            // Note: Core Erlang try expressions do NOT have a closing 'end' keyword
+            // The try ends implicitly after the catch body
+        } else if needs_option_catch {
+            // After emit_block, indent is at try body level (indent 3)
+            // We need to emit 'of' at same visual level as 'try' (4 spaces = indent 1)
+            self.indent -= 2;
+            self.newline();
+            let result_var = self.fresh_var();
+            self.emit(&format!("of <{}> ->", result_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&result_var);
+            self.indent -= 1;
+            self.newline();
+            let class_var = self.fresh_var();
+            let reason_var = self.fresh_var();
+            let stack_var = self.fresh_var();
+            // Core Erlang catch pattern must be on same line as 'catch'
+            self.emit(&format!(
+                "catch <{}, {}, {}> ->",
+                class_var, reason_var, stack_var
+            ));
+            self.indent += 1;
+            self.newline();
+            // Match the reason to check for 'none' or re-raise
+            self.emit(&format!("case {} of", reason_var));
+            self.indent += 1;
+            self.newline();
+            self.emit("<'none'> when 'true' ->");
+            self.indent += 1;
+            self.newline();
+            self.emit("'none'");
+            self.indent -= 1;
+            self.newline();
+            // Re-raise other exceptions
+            let other_var = self.fresh_var();
+            self.emit(&format!("<{}> when 'true' ->", other_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!(
+                "call 'erlang':'raise'({}, {}, {})",
+                class_var, other_var, stack_var
+            ));
+            self.indent -= 2; // Back from case body to case keyword level
+            self.newline();
+            self.emit("end"); // Close case
+            // Note: Core Erlang try expressions do NOT have a closing 'end' keyword
+        }
+
         self.indent -= 1;
 
         self.indent -= 1;
@@ -1333,6 +1451,17 @@ impl CoreErlangEmitter {
         self.newline();
 
         self.indent += 1;
+
+        // Check if we need try/catch wrapping for ? operator error propagation
+        // Use the first clause's return type (all clauses have the same return type)
+        let needs_result_catch = Self::is_result_type(&clauses[0].return_type);
+        let needs_option_catch = Self::is_option_type(&clauses[0].return_type);
+
+        if needs_result_catch || needs_option_catch {
+            self.emit("try");
+            self.newline();
+            self.indent += 1;
+        }
 
         // For single param, case on that param directly
         // For multiple params, case on a tuple of params
@@ -1392,6 +1521,100 @@ impl CoreErlangEmitter {
 
         self.indent -= 1;
         self.emit("end");
+
+        // Close try/catch if needed
+        if needs_result_catch {
+            // After case end, indent is at try body level (indent 3)
+            // We need to emit 'of' at same visual level as 'try' (4 spaces = indent 1)
+            self.indent -= 2;
+            self.newline();
+            let result_var = self.fresh_var();
+            self.emit(&format!("of <{}> ->", result_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&result_var);
+            self.indent -= 1;
+            self.newline();
+            let class_var = self.fresh_var();
+            let reason_var = self.fresh_var();
+            let stack_var = self.fresh_var();
+            let err_var = self.fresh_var();
+            // Core Erlang catch pattern must be on same line as 'catch'
+            self.emit(&format!(
+                "catch <{}, {}, {}> ->",
+                class_var, reason_var, stack_var
+            ));
+            self.indent += 1;
+            self.newline();
+            // Match the reason to extract error or re-raise
+            self.emit(&format!("case {} of", reason_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!("<{{'error', {}}}> when 'true' ->", err_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!("{{'error', {}}}", err_var));
+            self.indent -= 1;
+            self.newline();
+            // Re-raise other exceptions
+            let other_var = self.fresh_var();
+            self.emit(&format!("<{}> when 'true' ->", other_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!(
+                "call 'erlang':'raise'({}, {}, {})",
+                class_var, other_var, stack_var
+            ));
+            self.indent -= 2; // Back from case body to case keyword level
+            self.newline();
+            self.emit("end"); // Close case
+            // Note: Core Erlang try expressions do NOT have a closing 'end' keyword
+        } else if needs_option_catch {
+            // After case end, indent is at try body level (indent 3)
+            // We need to emit 'of' at same visual level as 'try' (4 spaces = indent 1)
+            self.indent -= 2;
+            self.newline();
+            let result_var = self.fresh_var();
+            self.emit(&format!("of <{}> ->", result_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&result_var);
+            self.indent -= 1;
+            self.newline();
+            let class_var = self.fresh_var();
+            let reason_var = self.fresh_var();
+            let stack_var = self.fresh_var();
+            // Core Erlang catch pattern must be on same line as 'catch'
+            self.emit(&format!(
+                "catch <{}, {}, {}> ->",
+                class_var, reason_var, stack_var
+            ));
+            self.indent += 1;
+            self.newline();
+            // Match the reason to check for 'none' or re-raise
+            self.emit(&format!("case {} of", reason_var));
+            self.indent += 1;
+            self.newline();
+            self.emit("<'none'> when 'true' ->");
+            self.indent += 1;
+            self.newline();
+            self.emit("'none'");
+            self.indent -= 1;
+            self.newline();
+            // Re-raise other exceptions
+            let other_var = self.fresh_var();
+            self.emit(&format!("<{}> when 'true' ->", other_var));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!(
+                "call 'erlang':'raise'({}, {}, {})",
+                class_var, other_var, stack_var
+            ));
+            self.indent -= 2; // Back from case body to case keyword level
+            self.newline();
+            self.emit("end"); // Close case
+            // Note: Core Erlang try expressions do NOT have a closing 'end' keyword
+        }
 
         self.indent -= 1;
 
