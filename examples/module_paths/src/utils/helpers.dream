@@ -1,0 +1,5 @@
+// Helper utilities
+
+pub fn format_name(name: string) -> string {
+    string::concat("Hello, ", name)
+}

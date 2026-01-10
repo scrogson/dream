@@ -1,0 +1,13 @@
+// Root module - demonstrates nested module paths
+// Explicit mod declarations to load submodules
+mod utils;
+
+pub fn main() -> atom {
+    // Call sibling modules using qualified names
+    let sum = utils::math::add(10, 20);
+    let greeting = utils::helpers::format_name("World");
+
+    io::println(greeting);
+    io::format("10 + 20 = ~p~n", [sum]);
+    :ok
+}

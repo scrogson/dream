@@ -84,17 +84,17 @@ pub fn flat_map<T, U>(items: [T], f: fn(T) -> [U]) -> [U] {
 
 /// Find the first element matching the predicate.
 pub fn find<T>(items: [T], pred: fn(T) -> bool) -> Option<T> {
-    find_loop(items, pred)
+    find_in_list(items, pred)
 }
 
-fn find_loop<T>(items: [T], pred: fn(T) -> bool) -> Option<T> {
+fn find_in_list<T>(items: [T], pred: fn(T) -> bool) -> Option<T> {
     match items {
         [] => None,
         [head | tail] => {
             if pred(head) {
                 Some(head)
             } else {
-                find_loop(tail, pred)
+                find_in_list(tail, pred)
             }
         }
     }

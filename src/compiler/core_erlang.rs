@@ -246,6 +246,24 @@ impl CoreErlangEmitter {
         }
     }
 
+    /// Resolve a user module path (like "utils::math") to its full form.
+    /// For user modules in a package, prepends the package name.
+    /// For standalone files or stdlib, uses beam_module_name.
+    fn resolve_user_module_path(&self, path: &str) -> String {
+        // First check if it's a stdlib module by looking at the first segment
+        let first_segment = path.split("::").next().unwrap_or(path);
+        if Self::STDLIB_MODULES.contains(&first_segment) {
+            // Stdlib module - add dream:: prefix to first segment
+            format!("dream::{}", path)
+        } else if let Some(pkg) = &self.module_context.package_name {
+            // User module in a package - prepend package name
+            format!("{}::{}", pkg, path)
+        } else {
+            // Standalone file - use as-is
+            path.to_string()
+        }
+    }
+
     /// Collect imports from a UseDecl into the imports map.
     fn collect_imports(&mut self, use_decl: &UseDecl) {
         match &use_decl.tree {
@@ -2447,21 +2465,46 @@ impl CoreErlangEmitter {
                             }
                         }
                     }
-                    Expr::Path { segments } if segments.len() == 3 => {
-                        // Cross-module impl method call: module::Type::method()
-                        // Becomes: call 'dream::module':'Type_method'(args)
-                        let module = &segments[0];
-                        let type_name = &segments[1];
-                        let method = &segments[2];
-                        let mangled_name = format!("{}_{}", type_name, method);
-                        self.emit(&format!(
-                            "call '{}':'{}'",
-                            Self::beam_module_name(&module.to_lowercase()),
-                            mangled_name
-                        ));
-                        self.emit("(");
-                        self.emit_args(args)?;
-                        self.emit(")");
+                    Expr::Path { segments } if segments.len() >= 3 => {
+                        // Distinguish between:
+                        // 1. module::Type::method() - impl method (Type starts uppercase)
+                        // 2. module::submodule::function() - nested module (submodule starts lowercase)
+                        let second = &segments[1];
+                        let is_type = second.chars().next().map_or(false, |c| c.is_uppercase());
+
+                        if is_type && segments.len() == 3 {
+                            // Cross-module impl method call: module::Type::method()
+                            // Becomes: call 'dream::module':'Type_method'(args)
+                            let module = &segments[0];
+                            let type_name = &segments[1];
+                            let method = &segments[2];
+                            let mangled_name = format!("{}_{}", type_name, method);
+                            self.emit(&format!(
+                                "call '{}':'{}'",
+                                Self::beam_module_name(&module.to_lowercase()),
+                                mangled_name
+                            ));
+                            self.emit("(");
+                            self.emit_args(args)?;
+                            self.emit(")");
+                        } else {
+                            // Nested module function call: module::submodule::function()
+                            // Module path is segments[0..n-1], function is segments[n-1]
+                            let func_name = &segments[segments.len() - 1];
+                            let module_segments = &segments[..segments.len() - 1];
+                            let module_path = module_segments.join("::");
+
+                            // Resolve the module path (handles user modules within package)
+                            let resolved = self.resolve_user_module_path(&module_path);
+                            self.emit(&format!(
+                                "call '{}':'{}'",
+                                resolved,
+                                func_name
+                            ));
+                            self.emit("(");
+                            self.emit_args(args)?;
+                            self.emit(")");
+                        }
                     }
                     _ => {
                         // Higher-order function application

@@ -213,6 +213,40 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
         return ExitCode::from(1);
     }
 
+    // Check if this file is part of a project (dream.toml in parent directories)
+    if let Some(project_root) = find_project_root(source_file) {
+        if let Ok(config) = ProjectConfig::load(&project_root.join("dream.toml")) {
+            // This is a project file - use project mode
+            let src_dir = config.src_dir(&project_root);
+            let build_dir = output
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| config.beam_dir(&project_root));
+
+            if let Err(e) = fs::create_dir_all(&build_dir) {
+                eprintln!("Error creating build directory: {}", e);
+                return ExitCode::from(1);
+            }
+
+            println!("Compiling {}...", config.package.name);
+
+            let mut loader = ModuleLoader::with_package(
+                config.package.name.clone(),
+                src_dir.clone(),
+            );
+            if let Err(e) = loader.load_all_in_dir(&src_dir) {
+                eprintln!("Error loading modules: {}", e);
+                return ExitCode::from(1);
+            }
+
+            return compile_modules(
+                loader.into_modules(),
+                &build_dir,
+                target,
+                Some(&config.package.name),
+            );
+        }
+    }
+
     // Default output directory is current directory
     let build_dir = output
         .map(|p| p.to_path_buf())
@@ -227,6 +261,18 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
     println!("Compiling {}...", source_file.display());
 
     compile_and_emit(source_file, &build_dir, target)
+}
+
+/// Find the project root by looking for dream.toml in parent directories.
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    let mut current = start.canonicalize().ok()?;
+    while let Some(parent) = current.parent() {
+        current = parent.to_path_buf();
+        if current.join("dream.toml").exists() {
+            return Some(current);
+        }
+    }
+    None
 }
 
 /// Compile source file(s) and emit to build directory.
@@ -639,37 +685,46 @@ fn compile_stdlib() -> Result<PathBuf, String> {
     fs::create_dir_all(&output_dir)
         .map_err(|e| format!("Failed to create stdlib output directory: {}", e))?;
 
-    // Find all .dream files in stdlib
+    // Check if any stdlib files need recompilation
     let entries = fs::read_dir(&stdlib_dir)
         .map_err(|e| format!("Failed to read stdlib directory: {}", e))?;
 
+    let mut needs_compile = false;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("dream") {
-            // Check if .beam file exists and is newer than source
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            let beam_name = CoreErlangEmitter::beam_module_name(stem);
-            let beam_file = output_dir.join(format!("{}.beam", beam_name));
+            // Stdlib modules are named dream::<stem>, beam files use just the stem
+            let beam_file = output_dir.join(format!("{}.beam", stem));
 
-            let needs_compile = if beam_file.exists() {
-                // Check if source is newer than beam
-                let src_modified = path.metadata().and_then(|m| m.modified()).ok();
-                let beam_modified = beam_file.metadata().and_then(|m| m.modified()).ok();
-                match (src_modified, beam_modified) {
-                    (Some(src), Some(beam)) => src > beam,
-                    _ => true,
-                }
-            } else {
-                true
-            };
+            if !beam_file.exists() {
+                needs_compile = true;
+                break;
+            }
 
-            if needs_compile {
-                let result = compile_and_emit(&path, &output_dir, "beam");
-                if result != ExitCode::SUCCESS {
-                    // Log warning but continue with other modules
-                    eprintln!("Warning: Failed to compile stdlib module: {}", path.display());
+            // Check if source is newer than beam
+            let src_modified = path.metadata().and_then(|m| m.modified()).ok();
+            let beam_modified = beam_file.metadata().and_then(|m| m.modified()).ok();
+            if let (Some(src), Some(beam)) = (src_modified, beam_modified) {
+                if src > beam {
+                    needs_compile = true;
+                    break;
                 }
             }
+        }
+    }
+
+    if needs_compile {
+        // Load all stdlib modules with "dream" as the package name
+        let mut loader = ModuleLoader::with_package("dream".to_string(), stdlib_dir.clone());
+        if let Err(e) = loader.load_all_in_dir(&stdlib_dir) {
+            return Err(format!("Failed to load stdlib modules: {}", e));
+        }
+
+        // Compile all stdlib modules
+        let result = compile_modules(loader.into_modules(), &output_dir, "beam", Some("dream"));
+        if result != ExitCode::SUCCESS {
+            return Err("Failed to compile stdlib".to_string());
         }
     }
 

@@ -587,13 +587,44 @@ impl<'source> Parser<'source> {
             segments.push(self.expect_ident()?);
 
             // Continue parsing segments until we hit the item name
-            while self.check(&Token::ColonColon) && self.is_module_segment_ahead() {
+            // After consuming a segment, we're at ::. We need to check if the next
+            // ident is a segment (followed by ::) or the final item (followed by ; or as or {)
+            while self.check(&Token::ColonColon) && self.has_more_path_after_colon() {
                 self.advance(); // consume ::
                 segments.push(self.expect_ident()?);
             }
         }
 
         Ok(ModulePath { prefix, segments })
+    }
+
+    /// Check if there's more path segments after the current ::.
+    /// Assumes we're positioned at ::. Looks at the ident after :: and what follows it.
+    /// Returns true if: :: ident :: (more path)
+    /// Returns false if: :: ident (end - item name)
+    fn has_more_path_after_colon(&self) -> bool {
+        // Current should be ::
+        if self.pos >= self.tokens.len() {
+            return false;
+        }
+        if self.tokens[self.pos].token != Token::ColonColon {
+            return false;
+        }
+
+        // pos+1 should be an ident
+        if self.pos + 1 >= self.tokens.len() {
+            return false;
+        }
+        match &self.tokens[self.pos + 1].token {
+            Token::Ident(_) | Token::TypeIdent(_) => {}
+            _ => return false,
+        }
+
+        // pos+2 should be :: for this to be a segment (not the final item)
+        if self.pos + 2 >= self.tokens.len() {
+            return false;
+        }
+        self.tokens[self.pos + 2].token == Token::ColonColon
     }
 
     /// Check if the current position has a module segment followed by more path.
