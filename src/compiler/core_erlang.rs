@@ -2279,6 +2279,29 @@ impl CoreErlangEmitter {
                             self.emit("(");
                             self.emit_args(args)?;
                             self.emit(")");
+                        } else if second == "from" && args.len() == 1 && effective_type_args.is_empty() {
+                            // Special case: Type::from(value) - infer trait type arg from argument
+                            // E.g., Wrapper::from(42) -> infer From<int>, call From_int_Wrapper_from
+                            let arg_type = self.infer_expr_type(&args[0]);
+                            let mangled_name = format!("From_{}_{}_from", arg_type, first);
+
+                            // Check if this impl exists
+                            if self.impl_methods.contains(&(format!("From_{}_{}", arg_type, first), "from".to_string())) {
+                                self.emit(&format!("apply '{}'/{}", mangled_name, args.len()));
+                                self.emit("(");
+                                self.emit_args(args)?;
+                                self.emit(")");
+                            } else {
+                                // Fall through to module call
+                                self.emit(&format!(
+                                    "call '{}':'{}'",
+                                    Self::beam_module_name(&first.to_lowercase()),
+                                    second
+                                ));
+                                self.emit("(");
+                                self.emit_args(args)?;
+                                self.emit(")");
+                            }
                         } else {
                             // Module:Function call - add dream:: prefix for Dream modules
                             // Check if this is a call with type args (explicit or inferred)

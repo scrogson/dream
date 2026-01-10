@@ -23,18 +23,18 @@ impl From<string> for Wrapper {
 }
 
 pub fn main() -> atom {
-    // Test From trait - use turbofish to specify trait type arg
-    let w1 = Wrapper::from::<int>(42);
-    :io::format("From<int>: w1.value = ~p~n", [w1.value]);
+    // Test From trait - infer type from argument (no turbofish needed!)
+    let w1 = Wrapper::from(42);
+    :io::format("From (inferred): w1.value = ~p~n", [w1.value]);
 
-    let w2 = Wrapper::from::<string>("hello");
-    :io::format("From<string>: w2.value = ~p~n", [w2.value]);
+    let w2 = Wrapper::from("hello");
+    :io::format("From (inferred): w2.value = ~p~n", [w2.value]);
 
-    // Test blanket Into impl - static call syntax
-    let w3 = int::into::<Wrapper>(100);
-    :io::format("Into (static): w3.value = ~p~n", [w3.value]);
+    // Explicit turbofish still works
+    let w3 = Wrapper::from::<int>(100);
+    :io::format("From (turbofish): w3.value = ~p~n", [w3.value]);
 
-    // Test blanket Into impl - method syntax!
+    // Into with method syntax
     let w4 = 200.into::<Wrapper>();
     :io::format("Into (method): w4.value = ~p~n", [w4.value]);
 
