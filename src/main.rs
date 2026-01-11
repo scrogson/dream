@@ -86,9 +86,12 @@ enum Commands {
     },
     /// Show version information
     Version,
+    /// Start an interactive Dream shell (REPL)
+    Shell,
 }
 
 mod bindgen;
+mod repl;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -115,6 +118,7 @@ fn main() -> ExitCode {
             println!("dream {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
+        Commands::Shell => repl::run_shell(),
     }
 }
 
