@@ -850,11 +850,26 @@ fn cmd_run(
     // 1. If --eval flag is set, always use eval mode (call function and exit)
     // 2. If function is explicitly specified, use eval mode
     // 3. If application is configured and no function specified, use application mode
-    // 4. Otherwise, use eval mode with main()
+    // 4. If __script__ module exists and no function specified, run the script
+    // 5. Otherwise, use eval mode with main()
     let use_app_mode = !eval_mode && function.is_none() && app_config.is_some();
+
+    // Check if __script__ module exists (for script files with top-level expressions)
+    let script_beam = beam_dir.join("__script__.beam");
+    let has_script_module = script_beam.exists();
 
     if use_app_mode {
         run_application(&beam_dir, &module_name, &app_config.unwrap(), stdlib_dir.as_ref())
+    } else if has_script_module && function.is_none() && !eval_mode {
+        // Run script mode: execute __script__:__main__()
+        run_function(
+            &beam_dir,
+            "__script__",
+            "__main__",
+            args,
+            no_halt,
+            stdlib_dir.as_ref(),
+        )
     } else {
         let func = function.unwrap_or("main");
         run_function(&beam_dir, &module_name, func, args, no_halt, stdlib_dir.as_ref())
@@ -950,16 +965,17 @@ fn run_function(
     println!();
 
     // Build eval expression
+    // Quote both module and function names to handle atoms like __main__
     let eval_expr = if no_halt {
         // Print result but don't halt - keep BEAM running
         format!(
-            "io:format(\"~p~n\", ['{}':{}({})]).",
+            "io:format(\"~p~n\", ['{}':'{}'({})]).",
             module_name, function, args_str
         )
     } else {
         // Print result and halt
         format!(
-            "io:format(\"~p~n\", ['{}':{}({})]), halt().",
+            "io:format(\"~p~n\", ['{}':'{}'({})]), halt().",
             module_name, function, args_str
         )
     };

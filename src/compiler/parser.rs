@@ -93,6 +93,7 @@ impl<'source> Parser<'source> {
     /// Parse a source file that may contain multiple wrapped modules.
     /// Returns all modules found in the file.
     /// If the file contains file-based items (not wrapped in mod {}), returns a single module.
+    /// If the file contains top-level expressions after modules, creates a `__script__` module.
     pub fn parse_file_modules(&mut self, fallback_name: &str) -> ParseResult<Vec<Module>> {
         let mut modules = Vec::new();
 
@@ -103,13 +104,15 @@ impl<'source> Parser<'source> {
                 if self.check(&Token::Mod) && self.peek_is_wrapped_module() {
                     modules.push(self.parse_module()?);
                 } else {
-                    // Non-module item at top level - this is an error in a multi-module file
-                    let span = self.current_span();
-                    return Err(ParseError::new(
-                        "expected `mod` block in multi-module file",
-                        span,
-                    ));
+                    // Non-module tokens - parse as script expressions
+                    break;
                 }
+            }
+
+            // If there are remaining tokens, parse them as script statements
+            if !self.is_at_end() {
+                let script_module = self.parse_script_module()?;
+                modules.push(script_module);
             }
         } else {
             // File-based module: parse items directly
@@ -118,6 +121,63 @@ impl<'source> Parser<'source> {
         }
 
         Ok(modules)
+    }
+
+    /// Parse top-level statements/expressions into a synthetic `__script__` module.
+    /// This enables script-style execution: the `__main__` function is called when the file runs.
+    fn parse_script_module(&mut self) -> ParseResult<Module> {
+        let start_span = self.current_span();
+        let mut stmts = Vec::new();
+        let mut expr = None;
+
+        while !self.is_at_end() {
+            // Check if this is a let statement
+            if self.check(&Token::Let) {
+                stmts.push(self.parse_let_stmt()?);
+            } else {
+                // Parse expression
+                let e = self.parse_expr()?;
+
+                // Check if followed by semicolon (statement) or not (trailing expr)
+                if self.check(&Token::Semi) {
+                    self.advance();
+                    stmts.push(Stmt::Expr(e));
+                } else if self.is_at_end() {
+                    // Trailing expression (final result)
+                    expr = Some(Box::new(e));
+                } else {
+                    // Expression statements that don't need semicolons
+                    if Self::is_block_expr(&e) {
+                        stmts.push(Stmt::Expr(e));
+                    } else {
+                        let span = self.current_span();
+                        return Err(ParseError::new("expected `;` or end of file", span));
+                    }
+                }
+            }
+        }
+
+        // Create the __main__ function with return type `any`
+        // so it accepts any expression as the final result
+        let main_fn = Function {
+            name: "__main__".to_string(),
+            type_params: vec![],
+            params: vec![],
+            guard: None,
+            return_type: Some(Type::Any),
+            body: Block { stmts, expr },
+            is_pub: true,
+            span: Span {
+                start: start_span.start,
+                end: self.current_span().end,
+            },
+        };
+
+        Ok(Module {
+            name: "__script__".to_string(),
+            items: vec![Item::Function(main_fn)],
+            source: Some(self.source.to_string()),
+        })
     }
 
     /// Check if the next tokens are `mod <path> {` (wrapped module).

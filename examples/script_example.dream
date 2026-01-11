@@ -1,0 +1,33 @@
+// Example: Script-style execution in Dream
+//
+// This file demonstrates top-level expressions that run when the script loads.
+// Similar to Elixir's .exs files, you can define modules and then execute code
+// outside of any function.
+
+mod calculator {
+    pub fn add(a: int, b: int) -> int {
+        a + b
+    }
+
+    pub fn multiply(a: int, b: int) -> int {
+        a * b
+    }
+}
+
+mod greeter {
+    pub fn hello(name: string) -> string {
+        "Hello, {name}!"
+    }
+}
+
+// Top-level expressions - executed when script runs
+io::println(greeter::hello("World"));
+
+let sum = calculator::add(10, 20);
+io::println("10 + 20 = {sum}");
+
+let product = calculator::multiply(5, 7);
+io::println("5 * 7 = {product}");
+
+// The final expression is the script's return value
+:ok
