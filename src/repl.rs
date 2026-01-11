@@ -21,8 +21,8 @@ use rustyline::validate::Validator;
 use rustyline::{Context, Editor, ExternalPrinter, Helper};
 
 use dream::compiler::{
-    check_modules, CompilerError, CoreErlangEmitter, GenericFunctionRegistry, Item, ModuleContext,
-    Parser,
+    check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
+    GenericFunctionRegistry, Item, ModuleContext, Parser,
 };
 use std::sync::{Arc, RwLock};
 
@@ -648,13 +648,16 @@ impl ReplState {
             }
         }
 
+        // Resolve stdlib method calls (e.g., Some(1).map(f) -> option::map(Some(1), f))
+        let mut module = annotated_modules.remove(0);
+        resolve_stdlib_methods(&mut module);
+
         // Compile to Core Erlang
         let registry = Arc::new(RwLock::new(GenericFunctionRegistry::new()));
-        let module = &annotated_modules[0];
 
         // Prefix with dream::
-        let mut prefixed_module = module.clone();
-        prefixed_module.name = format!("dream::{}", module.name);
+        let mut prefixed_module = module;
+        prefixed_module.name = format!("dream::{}", prefixed_module.name);
 
         let module_context = ModuleContext::default();
         let mut emitter = CoreErlangEmitter::with_registry_and_context(registry, module_context);

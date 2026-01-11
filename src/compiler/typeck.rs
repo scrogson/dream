@@ -3783,6 +3783,22 @@ impl MethodResolver {
                     args: vec![Ty::Any, Ty::Any],
                 }
             }
+            Expr::EnumVariant { type_name: None, variant, .. } => {
+                // Infer type from well-known variant names
+                match variant.as_str() {
+                    "Some" | "None" => Ty::Named {
+                        name: "Option".to_string(),
+                        module: None,
+                        args: vec![Ty::Any],
+                    },
+                    "Ok" | "Err" => Ty::Named {
+                        name: "Result".to_string(),
+                        module: None,
+                        args: vec![Ty::Any, Ty::Any],
+                    },
+                    _ => Ty::Any,
+                }
+            }
             _ => Ty::Any,
         }
     }
