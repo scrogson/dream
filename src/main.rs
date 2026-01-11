@@ -645,7 +645,16 @@ fn load_stdlib_modules() -> Vec<Module> {
 
 /// Get the stdlib output directory.
 fn stdlib_beam_dir() -> PathBuf {
-    // Use target/stdlib for compiled stdlib .beam files
+    // Use target/stdlib relative to executable for compiled stdlib .beam files
+    // This ensures stdlib is found regardless of working directory
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Executable is at target/release/dream or target/debug/dream
+            // Stdlib should be at target/stdlib
+            return exe_dir.join("../stdlib");
+        }
+    }
+    // Fallback to relative path
     PathBuf::from("target/stdlib")
 }
 
@@ -694,8 +703,8 @@ fn compile_stdlib() -> Result<PathBuf, String> {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("dream") {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            // Stdlib modules are named dream::<stem>, beam files use just the stem
-            let beam_file = output_dir.join(format!("{}.beam", stem));
+            // Stdlib modules are named dream::<stem>, beam files use the full name
+            let beam_file = output_dir.join(format!("dream::{}.beam", stem));
 
             if !beam_file.exists() {
                 needs_compile = true;
