@@ -2714,15 +2714,6 @@ impl<'source> Parser<'source> {
         self.peek() == Some(expected)
     }
 
-    /// Check if the next token is `>`, handling the case where `>>` needs to be split.
-    /// Used for parsing generic type arguments like `Option<T>` and nested `Option<Option<T>>`.
-    fn check_gt(&self) -> bool {
-        if self.pending_gt {
-            return true;
-        }
-        matches!(self.peek(), Some(Token::Gt) | Some(Token::GtGt))
-    }
-
     /// Expect a `>` token, handling the case where `>>` needs to be split.
     /// When we see `>>` and expect `>`, we consume it but set `pending_gt`
     /// so the next `>` expectation is satisfied without consuming another token.
