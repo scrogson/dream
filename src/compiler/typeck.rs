@@ -480,6 +480,9 @@ pub struct TypeEnv {
     /// Extern function imports: local_name -> (module, function_name)
     /// Used for `use jason::encode; encode(data)` syntax
     extern_imports: HashMap<String, (String, String)>,
+    /// Maps extern function (module, dream_name, arity) -> beam_name
+    /// Used for #[name = "encode!"] attribute support on functions
+    extern_function_names: HashMap<(String, String, usize), String>,
 }
 
 impl TypeEnv {
@@ -504,6 +507,7 @@ impl TypeEnv {
             extern_module_names: self.extern_module_names.clone(),
             extern_modules: self.extern_modules.clone(),
             extern_imports: self.extern_imports.clone(),
+            extern_function_names: self.extern_function_names.clone(),
         }
     }
 
@@ -1348,6 +1352,20 @@ impl TypeChecker {
                     self.collect_extern_mod(nested, &nested_path);
                 }
                 ExternItem::Function(func) => {
+                    // Extract #[name = "actual_fn_name"] attribute if present
+                    let beam_fn_name = func
+                        .attrs
+                        .iter()
+                        .find_map(|attr| {
+                            if attr.name == "name" {
+                                if let AttributeArgs::Eq(value) = &attr.args {
+                                    return Some(value.clone());
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or_else(|| func.name.clone());
+
                     let params: Vec<(String, Ty)> = func
                         .params
                         .iter()
@@ -1361,10 +1379,20 @@ impl TypeChecker {
                         ret,
                     };
                     let arity = info.params.len();
+
+                    // Store the function info
                     self.env.extern_functions.insert(
                         (module_path.to_string(), func.name.clone(), arity),
                         info,
                     );
+
+                    // Store the Dream name -> BEAM name mapping if different
+                    if beam_fn_name != func.name {
+                        self.env.extern_function_names.insert(
+                            (module_path.to_string(), func.name.clone(), arity),
+                            beam_fn_name,
+                        );
+                    }
                 }
                 ExternItem::Type(_) => {
                     // TODO: Handle opaque type declarations
@@ -3674,6 +3702,9 @@ pub struct TypeCheckResult {
     pub modules: Vec<(String, TypeResult<Module>)>,
     /// Extern module name mappings (Dream name -> BEAM name)
     pub extern_module_names: HashMap<String, String>,
+    /// Extern function name mappings (module, dream_name, arity) -> beam_name
+    /// Used for #[name = "encode!"] attribute support on functions
+    pub extern_function_names: HashMap<(String, String, usize), String>,
 }
 
 /// Type check multiple modules and return results with extern module name mappings.
@@ -3729,6 +3760,7 @@ pub fn check_modules_with_metadata(modules: &[Module]) -> TypeCheckResult {
     TypeCheckResult {
         modules: results,
         extern_module_names: checker.env.extern_module_names.clone(),
+        extern_function_names: checker.env.extern_function_names.clone(),
     }
 }
 

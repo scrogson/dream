@@ -33,29 +33,38 @@ pub fn cmd_bindgen(files: &[std::path::PathBuf], output: Option<&Path>, _module:
         let is_elixir = extension == "ex" || extension == "exs";
         let is_header = extension == "hrl";
 
-        let (module_name, type_defs, specs, records, structs) = if is_elixir {
-            // Parse Elixir file
-            let module_name = extract_elixir_module_name(&source)
-                .unwrap_or_else(|| {
-                    file.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string()
-                });
-
+        if is_elixir {
+            // Parse Elixir file - may contain multiple modules
             let type_defs = parse_elixir_type_defs(&source);
             let mut registry = TypeRegistry::new();
             for td in &type_defs {
                 registry.register(td.clone());
             }
 
-            let specs = parse_elixir_specs(&source, &registry);
+            // Parse all modules and their specs from this file
+            let modules_with_specs = parse_elixir_modules_with_specs(&source, &registry);
 
-            // Parse defstruct declarations
-            let structs = parse_elixir_structs(&source, &module_name);
+            // Parse defstruct declarations for each module
+            let all_structs = parse_elixir_structs_multi(&source);
 
-            (module_name, type_defs, specs, Vec::new(), structs)
-        } else if is_header {
+            // Add each module's info separately
+            for (module_name, specs) in modules_with_specs {
+                let entry = all_modules
+                    .entry(module_name.clone())
+                    .or_insert_with(ModuleInfo::new);
+                entry.specs.extend(specs);
+                // Type defs go to all modules (shared within file)
+                entry.type_defs.extend(type_defs.clone());
+                // Add structs for this specific module
+                if let Some(structs) = all_structs.get(&module_name) {
+                    entry.structs.extend(structs.clone());
+                }
+            }
+
+            continue; // Already added to all_modules, skip the common path below
+        }
+
+        let (module_name, type_defs, specs, records, structs) = if is_header {
             // Parse Erlang header file (.hrl)
             // Header files typically don't have a module declaration, use filename
             let module_name = file.file_stem()
@@ -237,6 +246,7 @@ fn extract_module_name(source: &str) -> Option<String> {
 
 /// Extract module name from defmodule declaration (Elixir).
 /// Handles: defmodule Foo.Bar do, defmodule Foo.Bar.Baz do
+#[allow(dead_code)] // Used by tests
 fn extract_elixir_module_name(source: &str) -> Option<String> {
     for line in source.lines() {
         let trimmed = line.trim();
@@ -348,7 +358,88 @@ fn parse_elixir_single_type_def(text: &str) -> Option<ErlangTypeDef> {
     })
 }
 
-/// Parse all @spec declarations from Elixir source.
+/// Parse all modules and their @spec declarations from Elixir source.
+/// Returns a map of module_name -> specs, properly handling files with multiple modules.
+fn parse_elixir_modules_with_specs(
+    source: &str,
+    registry: &TypeRegistry,
+) -> HashMap<String, Vec<ErlangSpec>> {
+    let mut modules: HashMap<String, Vec<ErlangSpec>> = HashMap::new();
+    let mut current_module: Option<String> = None;
+    let mut in_spec = false;
+    let mut spec_text = String::new();
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+
+        // Skip comments
+        if trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Track module declarations
+        if trimmed.starts_with("defmodule ") {
+            if let Some(name) = extract_module_name_from_line(trimmed) {
+                current_module = Some(name.clone());
+                modules.entry(name).or_insert_with(Vec::new);
+            }
+        }
+
+        if trimmed.starts_with("@spec ") {
+            in_spec = true;
+            spec_text = trimmed.to_string();
+
+            // Check if spec is complete
+            if is_elixir_spec_complete(&spec_text) {
+                if let Some(spec) = parse_elixir_single_spec(&spec_text, registry) {
+                    if let Some(ref module) = current_module {
+                        modules.entry(module.clone()).or_insert_with(Vec::new).push(spec);
+                    }
+                }
+                in_spec = false;
+                spec_text.clear();
+            }
+        } else if in_spec {
+            spec_text.push(' ');
+            spec_text.push_str(trimmed);
+
+            if is_elixir_spec_complete(&spec_text) {
+                if let Some(spec) = parse_elixir_single_spec(&spec_text, registry) {
+                    if let Some(ref module) = current_module {
+                        modules.entry(module.clone()).or_insert_with(Vec::new).push(spec);
+                    }
+                }
+                in_spec = false;
+                spec_text.clear();
+            }
+        }
+    }
+
+    modules
+}
+
+/// Extract module name from a defmodule line.
+fn extract_module_name_from_line(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("defmodule ") {
+        return None;
+    }
+    let rest = trimmed.strip_prefix("defmodule ")?.trim();
+    let end = rest
+        .find(" do")
+        .or_else(|| rest.find(','))
+        .unwrap_or(rest.len());
+    let module_name = rest[..end].trim();
+    // Normalize to Elixir. prefix
+    if module_name.starts_with("Elixir.") {
+        Some(module_name.to_string())
+    } else {
+        Some(format!("Elixir.{}", module_name))
+    }
+}
+
+/// Parse all @spec declarations from Elixir source (legacy, for single-module files).
+#[allow(dead_code)] // Used by tests
 fn parse_elixir_specs(source: &str, registry: &TypeRegistry) -> Vec<ErlangSpec> {
     let mut specs = Vec::new();
     let mut in_spec = false;
@@ -739,6 +830,7 @@ fn parse_elixir_struct_fields(s: &str) -> Vec<(String, ErlangType)> {
 
 /// Parse defstruct declarations from Elixir source.
 /// Handles: defstruct [:field1, :field2] and defstruct field1: nil, field2: value
+#[allow(dead_code)] // Used by tests
 fn parse_elixir_structs(source: &str, module_name: &str) -> Vec<ElixirStruct> {
     let mut structs = Vec::new();
     let mut in_defstruct = false;
@@ -771,6 +863,62 @@ fn parse_elixir_structs(source: &str, module_name: &str) -> Vec<ElixirStruct> {
             if is_defstruct_complete(&defstruct_text) {
                 if let Some(st) = parse_single_defstruct(&defstruct_text, module_name) {
                     structs.push(st);
+                }
+                in_defstruct = false;
+                defstruct_text.clear();
+            }
+        }
+    }
+
+    structs
+}
+
+/// Parse defstruct declarations from Elixir source, tracking which module each belongs to.
+/// Returns a map of module_name -> structs for files with multiple modules.
+fn parse_elixir_structs_multi(source: &str) -> HashMap<String, Vec<ElixirStruct>> {
+    let mut structs: HashMap<String, Vec<ElixirStruct>> = HashMap::new();
+    let mut current_module: Option<String> = None;
+    let mut in_defstruct = false;
+    let mut defstruct_text = String::new();
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+
+        // Skip comments
+        if trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Track module declarations
+        if trimmed.starts_with("defmodule ") {
+            if let Some(name) = extract_module_name_from_line(trimmed) {
+                current_module = Some(name);
+            }
+        }
+
+        if trimmed.starts_with("defstruct ") || trimmed == "defstruct" {
+            in_defstruct = true;
+            defstruct_text = trimmed.to_string();
+
+            // Check if defstruct is complete (single line)
+            if is_defstruct_complete(&defstruct_text) {
+                if let Some(ref module) = current_module {
+                    if let Some(st) = parse_single_defstruct(&defstruct_text, module) {
+                        structs.entry(module.clone()).or_insert_with(Vec::new).push(st);
+                    }
+                }
+                in_defstruct = false;
+                defstruct_text.clear();
+            }
+        } else if in_defstruct {
+            defstruct_text.push(' ');
+            defstruct_text.push_str(trimmed);
+
+            if is_defstruct_complete(&defstruct_text) {
+                if let Some(ref module) = current_module {
+                    if let Some(st) = parse_single_defstruct(&defstruct_text, module) {
+                        structs.entry(module.clone()).or_insert_with(Vec::new).push(st);
+                    }
                 }
                 in_defstruct = false;
                 defstruct_text.clear();
@@ -1781,15 +1929,33 @@ fn is_dream_keyword(name: &str) -> bool {
     )
 }
 
+/// Convert CamelCase to snake_case.
+/// Examples: "EncodeError" -> "encode_error", "JSONParser" -> "json_parser"
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if c.is_uppercase() {
+            // Add underscore before uppercase (except at start)
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Sanitize a module name to be a valid Dream identifier.
 /// Handles Elixir modules (Elixir.Foo.Bar -> foo_bar) and other special cases.
 fn sanitize_module_name(name: &str) -> String {
-    // Handle Elixir modules: Elixir.Foo.Bar -> foo_bar
+    // Handle Elixir modules: Elixir.Foo.BarBaz -> foo_bar_baz
     if name.starts_with("Elixir.") {
         let without_prefix = &name[7..]; // Remove "Elixir."
         return without_prefix
             .split('.')
-            .map(|s| s.to_lowercase())
+            .map(|s| camel_to_snake(s))
             .collect::<Vec<_>>()
             .join("_");
     }
@@ -1801,7 +1967,7 @@ fn sanitize_module_name(name: &str) -> String {
     if name.contains('.') {
         let sanitized = name
             .split('.')
-            .map(|s| s.to_lowercase())
+            .map(|s| camel_to_snake(s))
             .collect::<Vec<_>>()
             .join("_");
         return sanitize_identifier(&sanitized);
@@ -1839,6 +2005,74 @@ fn sanitize_identifier(name: &str) -> String {
     }
 
     result
+}
+
+/// Check if a name is a Dream keyword that conflicts with function names.
+/// Type names (atom, string, int, etc.) are NOT included because the parser
+/// can distinguish `atom` (type) from `atom(...)` (function call).
+fn is_dream_function_keyword(name: &str) -> bool {
+    matches!(
+        name,
+        "fn" | "let" | "mut" | "if" | "else" | "match" | "enum" | "mod" | "pub"
+            | "self"
+            | "spawn"
+            | "receive"
+            | "after"
+            | "return"
+            | "use"
+            | "as"
+            | "impl"
+            | "trait"
+            | "for"
+            | "when"
+            | "true"
+            | "false"
+            | "extern"
+            | "type"
+    )
+}
+
+/// Sanitize a function name to be a valid Dream identifier.
+/// Handles Elixir conventions:
+/// - `encode!` → `encode_bang` (raises on error)
+/// - `valid?` → `valid_q` (returns boolean)
+///
+/// Returns (sanitized_name, needs_name_attribute)
+fn sanitize_function_name(name: &str) -> (String, bool) {
+    let mut result = String::new();
+    let mut modified = false;
+
+    for c in name.chars() {
+        match c {
+            '!' => {
+                result.push_str("_bang");
+                modified = true;
+            }
+            '?' => {
+                result.push_str("_q");
+                modified = true;
+            }
+            c if c.is_ascii_alphanumeric() || c == '_' => {
+                result.push(c);
+            }
+            '-' => {
+                result.push('_');
+                modified = true;
+            }
+            _ => {
+                // Skip other invalid characters
+                modified = true;
+            }
+        }
+    }
+
+    // Only rename actual keywords, not type names (parser distinguishes fn calls)
+    if is_dream_function_keyword(&result) {
+        result.push('_');
+        modified = true;
+    }
+
+    (result, modified)
 }
 
 /// Generate .dreamt output from parsed module info.
@@ -1956,9 +2190,17 @@ fn generate_dreamt(modules: &HashMap<String, ModuleInfo>) -> String {
 
             let ret = erlang_type_to_dream(&spec.return_type);
 
+            // Sanitize function name (handles ! and ? suffixes from Elixir)
+            let (safe_fn_name, needs_attr) = sanitize_function_name(&spec.name);
+
+            // Add #[name = "..."] attribute if the function name was sanitized
+            if needs_attr {
+                output.push_str(&format!("    #[name = \"{}\"]\n", spec.name));
+            }
+
             output.push_str(&format!(
                 "    fn {}({}) -> {};\n",
-                spec.name,
+                safe_fn_name,
                 params.join(", "),
                 ret
             ));
@@ -2191,6 +2433,10 @@ mod tests {
         assert_eq!(sanitize_module_name("Elixir.Jason.Encoder"), "jason_encoder");
         // Elixir.Phoenix.Controller -> phoenix_controller
         assert_eq!(sanitize_module_name("Elixir.Phoenix.Controller"), "phoenix_controller");
+        // CamelCase within segments: Elixir.Jason.EncodeError -> jason_encode_error
+        assert_eq!(sanitize_module_name("Elixir.Jason.EncodeError"), "jason_encode_error");
+        // Multiple words: Elixir.Phoenix.LiveView -> phoenix_live_view
+        assert_eq!(sanitize_module_name("Elixir.Phoenix.LiveView"), "phoenix_live_view");
     }
 
     #[test]
@@ -2213,6 +2459,98 @@ mod tests {
         // Other dotted names
         assert_eq!(sanitize_module_name("foo.bar"), "foo_bar");
         assert_eq!(sanitize_module_name("cowboy_req"), "cowboy_req");
+    }
+
+    #[test]
+    fn test_sanitize_function_name_bang() {
+        // Elixir ! suffix (functions that raise on error)
+        let (name, needs_attr) = sanitize_function_name("encode!");
+        assert_eq!(name, "encode_bang");
+        assert!(needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("decode!");
+        assert_eq!(name, "decode_bang");
+        assert!(needs_attr);
+    }
+
+    #[test]
+    fn test_sanitize_function_name_question() {
+        // Elixir ? suffix (functions that return boolean)
+        let (name, needs_attr) = sanitize_function_name("valid?");
+        assert_eq!(name, "valid_q");
+        assert!(needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("empty?");
+        assert_eq!(name, "empty_q");
+        assert!(needs_attr);
+    }
+
+    #[test]
+    fn test_sanitize_function_name_normal() {
+        // Normal function names should not need attribute
+        let (name, needs_attr) = sanitize_function_name("encode");
+        assert_eq!(name, "encode");
+        assert!(!needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("my_function");
+        assert_eq!(name, "my_function");
+        assert!(!needs_attr);
+
+        // Type names are fine as function names (parser distinguishes by `(`)
+        let (name, needs_attr) = sanitize_function_name("atom");
+        assert_eq!(name, "atom");
+        assert!(!needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("string");
+        assert_eq!(name, "string");
+        assert!(!needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("map");
+        assert_eq!(name, "map");
+        assert!(!needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("list");
+        assert_eq!(name, "list");
+        assert!(!needs_attr);
+
+        let (name, needs_attr) = sanitize_function_name("struct");
+        assert_eq!(name, "struct");
+        assert!(!needs_attr);
+    }
+
+    #[test]
+    fn test_generate_function_name_attribute() {
+        // Test that #[name = "..."] is generated for functions with ! or ?
+        let mut modules = HashMap::new();
+        modules.insert("Elixir.Jason".to_string(), ModuleInfo {
+            specs: vec![
+                ErlangSpec {
+                    name: "encode".to_string(),
+                    params: vec![("input".to_string(), ErlangType::Any)],
+                    return_type: ErlangType::Any,
+                },
+                ErlangSpec {
+                    name: "encode!".to_string(),
+                    params: vec![("input".to_string(), ErlangType::Any)],
+                    return_type: ErlangType::Any,
+                },
+            ],
+            type_defs: Vec::new(),
+            records: Vec::new(),
+            structs: Vec::new(),
+        });
+
+        let output = generate_dreamt(&modules);
+
+        // Should have function name attribute for encode!
+        assert!(output.contains("#[name = \"encode!\"]"),
+            "Expected function #[name = \"encode!\"], got:\n{}", output);
+        // Should use sanitized function name
+        assert!(output.contains("fn encode_bang("),
+            "Expected 'fn encode_bang', got:\n{}", output);
+        // Regular encode should not have attribute
+        assert!(output.contains("fn encode("),
+            "Expected 'fn encode', got:\n{}", output);
     }
 
     #[test]

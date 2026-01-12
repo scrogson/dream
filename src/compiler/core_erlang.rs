@@ -136,6 +136,9 @@ pub struct CoreErlangEmitter {
     /// Maps Dream extern module name -> BEAM module name
     /// Used for #[name = "Elixir.Enum"] attribute support
     extern_module_names: HashMap<String, String>,
+    /// Maps (module, dream_name, arity) -> BEAM function name
+    /// Used for #[name = "encode!"] attribute support on functions
+    extern_function_names: HashMap<(String, String, usize), String>,
 }
 
 impl CoreErlangEmitter {
@@ -164,6 +167,7 @@ impl CoreErlangEmitter {
             cross_module_inlining_source: None,
             compile_options: CompileOptions::new(),
             extern_module_names: HashMap::new(),
+            extern_function_names: HashMap::new(),
         }
     }
 
@@ -221,6 +225,15 @@ impl CoreErlangEmitter {
     /// Used for #[name = "Elixir.Enum"] attribute support.
     pub fn set_extern_module_names(&mut self, mappings: HashMap<String, String>) {
         self.extern_module_names = mappings;
+    }
+
+    /// Set the extern function name mappings ((module, dream_name, arity) -> BEAM name).
+    /// Used for #[name = "encode!"] attribute support on functions.
+    pub fn set_extern_function_names(
+        &mut self,
+        mappings: HashMap<(String, String, usize), String>,
+    ) {
+        self.extern_function_names = mappings;
     }
 
     /// Register this module's generic functions in the shared registry.
@@ -3167,7 +3180,14 @@ impl CoreErlangEmitter {
                     .get(module)
                     .map(|s| s.as_str())
                     .unwrap_or(module);
-                self.emit(&format!("call '{}':'{}'(", beam_module, function));
+                // Use mapped BEAM function name if #[name = "..."] attribute was used
+                let arity = args.len();
+                let beam_function = self
+                    .extern_function_names
+                    .get(&(module.clone(), function.clone(), arity))
+                    .map(|s| s.as_str())
+                    .unwrap_or(function);
+                self.emit(&format!("call '{}':'{}'(", beam_module, beam_function));
                 self.emit_args(args)?;
                 self.emit(")");
             }
@@ -3755,19 +3775,20 @@ pub fn emit_core_erlang_with_typecheck(source: &str, typecheck: bool) -> CoreErl
         .parse_module()
         .map_err(|e| CoreErlangError::new(format!("Parse error: {}", e.message)))?;
 
-    let (module, extern_module_names) = if typecheck {
+    let (module, extern_module_names, extern_function_names) = if typecheck {
         use crate::compiler::typeck::check_modules_with_metadata;
-        // Type check and annotate the module, extract extern module name mappings
+        // Type check and annotate the module, extract extern module/function name mappings
         let result = check_modules_with_metadata(&[module]);
         let (_, type_result) = result.modules.into_iter().next().unwrap();
         let module = type_result.map_err(|e| CoreErlangError::new(format!("Type error: {}", e.message)))?;
-        (module, result.extern_module_names)
+        (module, result.extern_module_names, result.extern_function_names)
     } else {
-        (module, HashMap::new())
+        (module, HashMap::new(), HashMap::new())
     };
 
     let mut emitter = CoreErlangEmitter::new();
     emitter.set_extern_module_names(extern_module_names);
+    emitter.set_extern_function_names(extern_function_names);
     emitter.emit_module(&module)
 }
 
