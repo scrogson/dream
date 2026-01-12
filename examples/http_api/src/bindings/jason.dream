@@ -1,8 +1,0 @@
-// Auto-generated bindings for Jason (Elixir JSON library)
-// The #[name = "Elixir.Jason"] attribute maps 'jason' calls to 'Elixir.Jason' in BEAM
-
-#[name = "Elixir.Jason"]
-extern mod jason {
-    fn encode(input: any) -> Result<string, any>;
-    fn decode(input: string) -> Result<any, any>;
-}

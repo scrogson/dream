@@ -1,4 +1,2 @@
-// Bindings module - contains extern mod declarations for dependencies
-// Note: Most bindings are auto-generated in _build/bindings/
-
-mod jason;  // Manual binding for Jason JSON library
+// Bindings module
+// Note: Bindings are auto-generated in _build/bindings/ by `dream deps bindgen`
