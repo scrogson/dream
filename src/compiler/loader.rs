@@ -296,6 +296,9 @@ impl ModuleLoader {
         for module in &modules {
             let mut module = module.clone();
 
+            // Set source path for incremental compilation
+            module.source_path = Some(canonical.clone());
+
             // Add package prefix if we have a package context and the module
             // doesn't already have the prefix (e.g., wasn't already qualified)
             if let Some(ref package) = self.package_name {

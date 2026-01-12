@@ -1,0 +1,33 @@
+// Tests for http_api
+// Only compiled when running `dream test`
+
+#[test]
+pub fn test_addition() -> atom {
+    let result = 1 + 1;
+    if result != 2 {
+        :erlang::error(:assertion_failed)
+    } else {
+        :ok
+    }
+}
+
+#[test]
+pub fn test_list_operations() -> atom {
+    let list = [1, 2, 3];
+    let len = :erlang::length(list);
+    if len != 3 {
+        :erlang::error(:wrong_length)
+    } else {
+        :ok
+    }
+}
+
+#[test]
+pub fn test_map_operations() -> atom {
+    let map = :maps::new();
+    let map = :maps::put(:key, "value", map);
+    match :maps::get(:key, map) {
+        "value" => :ok,
+        _ => :erlang::error(:wrong_value)
+    }
+}

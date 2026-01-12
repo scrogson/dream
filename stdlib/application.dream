@@ -12,28 +12,38 @@
 /// use supervisor;
 ///
 /// impl Application {
-///     fn start(_start_type: atom, _args: any) -> (atom, pid) {
+///     fn start(_start_type: atom, _args: any) -> Result<pid, any> {
 ///         let children = [
 ///             (:worker, :my_worker, [], :permanent, :worker)
 ///         ];
 ///         let flags = (:one_for_one, 5, 10);
-///         supervisor::start_link(:my_app_sup, (flags, children))
+///         match supervisor::start_link(:my_app_sup, (flags, children)) {
+///             (:ok, pid) => Ok(pid),
+///             (:error, reason) => Err(reason)
+///         }
 ///     }
 /// }
 /// ```
 pub trait Application {
     /// Called when the application starts.
-    /// Returns (:ok, supervisor_pid) on success or (:error, reason) on failure.
-    fn start(start_type: atom, args: any) -> (atom, pid);
+    ///
+    /// `start_type` is typically `:normal`, but can be `:takeover` or `:failover`
+    /// in distributed systems.
+    /// `args` comes from the application's .app file.
+    ///
+    /// Returns Ok(supervisor_pid) on success or Err(reason) on failure.
+    fn start(start_type: atom, args: any) -> Result<pid, any>;
 
     /// Called before the application stops (optional).
-    /// The state argument is whatever was returned by start/2's second element.
-    fn prep_stop(state: any) -> any {
+    /// The state is the pid returned from start/2.
+    /// Return the state to pass to stop/1.
+    fn prep_stop(state: pid) -> pid {
         state
     }
 
     /// Called when the application stops (optional).
-    fn stop(state: any) -> atom {
+    /// The state is what was returned from prep_stop/1.
+    fn stop(state: pid) -> atom {
         :ok
     }
 }

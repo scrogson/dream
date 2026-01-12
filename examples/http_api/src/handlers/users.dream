@@ -1,0 +1,27 @@
+// Handler for GET /api/users
+
+/// Convert a string (charlist) to binary for JSON encoding
+fn to_binary(s: string) -> any {
+    :erlang::iolist_to_binary([s])
+}
+
+pub fn init(req: any, state: any) -> (atom, any, any) {
+    // Build a list of user maps for JSON response
+    let user1 = :maps::put(:name, to_binary("Alice"), :maps::put(:id, 1, :maps::new()));
+    let user2 = :maps::put(:name, to_binary("Bob"), :maps::put(:id, 2, :maps::new()));
+    let user3 = :maps::put(:name, to_binary("Charlie"), :maps::put(:id, 3, :maps::new()));
+    let data = :maps::put(:users, [user1, user2, user3], :maps::new());
+
+    match :"Elixir.Jason"::encode(data) {
+        (:ok, json) => {
+            let headers = :maps::put("content-type", "application/json", :maps::new());
+            let req2 = :cowboy_req::reply(200, headers, json, req);
+            (:ok, req2, state)
+        },
+        _ => {
+            let headers = :maps::put("content-type", "text/plain", :maps::new());
+            let req2 = :cowboy_req::reply(500, headers, "JSON encoding error", req);
+            (:ok, req2, state)
+        }
+    }
+}

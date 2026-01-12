@@ -11,6 +11,7 @@ pub fn prelude_items() -> Vec<Item> {
     vec![
         // enum Option<T> { Some(T), None }
         Item::Enum(EnumDef {
+            attrs: vec![],
             name: "Option".to_string(),
             type_params: vec![TypeParam { name: "T".to_string(), bounds: vec![] }],
             variants: vec![
@@ -27,6 +28,7 @@ pub fn prelude_items() -> Vec<Item> {
         }),
         // enum Result<T, E> { Ok(T), Err(E) }
         Item::Enum(EnumDef {
+            attrs: vec![],
             name: "Result".to_string(),
             type_params: vec![
                 TypeParam { name: "T".to_string(), bounds: vec![] },
@@ -109,6 +111,7 @@ mod tests {
     #[test]
     fn test_excludes_already_defined() {
         let existing = vec![Item::Enum(EnumDef {
+            attrs: vec![],
             name: "Option".to_string(),
             type_params: vec![TypeParam { name: "T".to_string(), bounds: vec![] }],
             variants: vec![],

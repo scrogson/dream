@@ -711,12 +711,25 @@ impl DepsManager {
         files
     }
 
-    /// Get ebin paths for all dependencies from _build directory.
+    /// Get ebin paths for all dependencies.
+    /// Checks both _build/dev/lib/ (for compiled deps) and deps/ (for hex packages with pre-built beams).
     pub fn dep_ebin_paths(&self) -> Vec<PathBuf> {
-        let build_lib = self.deps_build_dir();
         let mut paths = Vec::new();
 
+        // Check _build/dev/lib/ for compiled dependencies
+        let build_lib = self.deps_build_dir();
         if let Ok(entries) = fs::read_dir(&build_lib) {
+            for entry in entries.flatten() {
+                let ebin = entry.path().join("ebin");
+                if ebin.exists() {
+                    paths.push(ebin);
+                }
+            }
+        }
+
+        // Also check deps/ directory for hex packages with pre-built ebin
+        let deps_dir = self.project_root.join("deps");
+        if let Ok(entries) = fs::read_dir(&deps_dir) {
             for entry in entries.flatten() {
                 let ebin = entry.path().join("ebin");
                 if ebin.exists() {

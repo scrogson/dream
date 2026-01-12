@@ -312,6 +312,8 @@ pub enum Token {
     PipeRight,
     #[token("::")]
     ColonColon,
+    #[token("#[")]
+    HashBracket,
 
     #[token("+")]
     Plus,
@@ -418,6 +420,7 @@ impl std::fmt::Display for Token {
             Token::FatArrow => write!(f, "=>"),
             Token::PipeRight => write!(f, "|>"),
             Token::ColonColon => write!(f, "::"),
+            Token::HashBracket => write!(f, "#["),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -578,5 +581,23 @@ mod tests {
             lex.next(),
             Some(Ok(Token::QuotedAtom("with.dots".to_string())))
         );
+    }
+
+    #[test]
+    fn test_attributes() {
+        // Attribute syntax: #[name]
+        let mut lex = Token::lexer("#[test]");
+        assert_eq!(lex.next(), Some(Ok(Token::HashBracket)));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("test".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::RBracket)));
+
+        // Attribute with args: #[cfg(test)]
+        let mut lex = Token::lexer("#[cfg(test)]");
+        assert_eq!(lex.next(), Some(Ok(Token::HashBracket)));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("cfg".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::LParen)));
+        assert_eq!(lex.next(), Some(Ok(Token::Ident("test".to_string()))));
+        assert_eq!(lex.next(), Some(Ok(Token::RParen)));
+        assert_eq!(lex.next(), Some(Ok(Token::RBracket)));
     }
 }

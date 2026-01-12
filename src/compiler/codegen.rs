@@ -185,6 +185,7 @@ impl Codegen {
                     for method in &impl_block.methods {
                         let mangled_name = format!("{}_{}", impl_block.type_name, method.name);
                         let mangled_method = Function {
+                            attrs: vec![],
                             name: mangled_name,
                             type_params: method.type_params.clone(),
                             params: method.params.clone(),
@@ -205,6 +206,7 @@ impl Codegen {
                             trait_impl.trait_name, trait_impl.type_name, method.name
                         );
                         let mangled_method = Function {
+                            attrs: vec![],
                             name: mangled_name,
                             type_params: method.type_params.clone(),
                             params: method.params.clone(),

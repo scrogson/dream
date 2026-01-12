@@ -2931,9 +2931,11 @@ impl TypeChecker {
     /// Annotate a module by filling in inferred_type_args on Call expressions.
     pub fn annotate_module(&mut self, module: &Module) -> Module {
         Module {
+            attrs: module.attrs.clone(),
             name: module.name.clone(),
             items: module.items.iter().map(|item| self.annotate_item(item)).collect(),
             source: module.source.clone(),
+            source_path: module.source_path.clone(),
         }
     }
 
@@ -2948,6 +2950,7 @@ impl TypeChecker {
 
     fn annotate_function(&mut self, func: &Function) -> Function {
         Function {
+            attrs: func.attrs.clone(),
             name: func.name.clone(),
             type_params: func.type_params.clone(),
             params: func.params.clone(),

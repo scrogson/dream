@@ -8,13 +8,14 @@ use clap::{Parser, Subcommand};
 
 use dream::{
     compiler::{
-        check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
+        cfg, check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
         GenericFunctionRegistry, Item, Module, ModuleContext, ModuleLoader, Parser as DreamParser,
         SharedGenericRegistry,
     },
-    config::{generate_dream_toml, generate_main_dream, ApplicationConfig, ProjectConfig},
+    config::{generate_dream_toml, generate_main_dream, ApplicationConfig, CompileOptions, ProjectConfig},
     deps::DepsManager,
 };
+use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 #[derive(Parser)]
@@ -42,6 +43,9 @@ enum Commands {
         /// Output directory
         #[arg(long, short)]
         output: Option<PathBuf>,
+        /// Enable features for conditional compilation (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
     },
     /// Compile the project or a single file (alias for build)
     Compile {
@@ -53,6 +57,9 @@ enum Commands {
         /// Output directory
         #[arg(long, short)]
         output: Option<PathBuf>,
+        /// Enable features for conditional compilation (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
     },
     /// Build and run the project or a single file
     Run {
@@ -70,8 +77,19 @@ enum Commands {
         /// Environment: dev, test, prod (default: dev)
         #[arg(short, long, default_value = "dev")]
         env: String,
+        /// Enable features for conditional compilation (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
         /// Arguments to pass to the function
         args: Vec<String>,
+    },
+    /// Run tests
+    Test {
+        /// Filter tests by name (substring match)
+        filter: Option<String>,
+        /// Enable features for conditional compilation (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        features: Vec<String>,
     },
     /// Generate .dreamt type stubs from Erlang source files
     Bindgen {
@@ -112,8 +130,8 @@ fn main() -> ExitCode {
 
     match cli.command {
         Commands::New { name } => cmd_new(&name),
-        Commands::Build { file, target, output } | Commands::Compile { file, target, output } => {
-            cmd_build(file.as_deref(), &target, output.as_deref())
+        Commands::Build { file, target, output, features } | Commands::Compile { file, target, output, features } => {
+            cmd_build(file.as_deref(), &target, output.as_deref(), &features)
         }
         Commands::Run {
             file,
@@ -121,8 +139,10 @@ fn main() -> ExitCode {
             eval,
             no_halt,
             env,
+            features,
             args,
-        } => cmd_run(file.as_deref(), function.as_deref(), eval, no_halt, &env, &args),
+        } => cmd_run(file.as_deref(), function.as_deref(), eval, no_halt, &env, &features, &args),
+        Commands::Test { filter, features } => cmd_test(filter.as_deref(), &features),
         Commands::Bindgen {
             files,
             output,
@@ -219,10 +239,10 @@ fn cmd_deps(action: DepsAction) -> ExitCode {
 }
 
 /// Build the project or a standalone file.
-fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>) -> ExitCode {
+fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>, features: &[String]) -> ExitCode {
     // Determine if we're building a standalone file or a project
     if let Some(source_file) = file {
-        return build_standalone_file(source_file, target, output);
+        return build_standalone_file(source_file, target, output, features);
     }
 
     // Project mode: find project root and load config
@@ -262,12 +282,17 @@ fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>) -> ExitCo
     let modules = loader.into_modules();
     let module_names: Vec<String> = modules.iter().map(|m| m.name.clone()).collect();
 
+    // Resolve features (CLI features + their dependencies from config)
+    let resolved_features = config.resolve_features(features);
+    let compile_options = CompileOptions::with_features(resolved_features);
+
     // Compile all loaded modules with package name for module resolution
-    let result = compile_modules(
+    let result = compile_modules_with_options(
         modules,
         &build_dir,
         target,
         Some(&config.package.name),
+        &compile_options,
     );
 
     // Generate .app file if compilation succeeded
@@ -281,7 +306,7 @@ fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>) -> ExitCo
 }
 
 /// Build a standalone .dream file.
-fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>) -> ExitCode {
+fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>, features: &[String]) -> ExitCode {
     if !source_file.exists() {
         eprintln!("Error: file not found: {}", source_file.display());
         return ExitCode::from(1);
@@ -312,11 +337,16 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
                 return ExitCode::from(1);
             }
 
-            return compile_modules(
+            // Resolve features
+            let resolved_features = config.resolve_features(features);
+            let compile_options = CompileOptions::with_features(resolved_features);
+
+            return compile_modules_with_options(
                 loader.into_modules(),
                 &build_dir,
                 target,
                 Some(&config.package.name),
+                &compile_options,
             );
         }
     }
@@ -334,7 +364,7 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
 
     println!("Compiling {}...", source_file.display());
 
-    compile_and_emit(source_file, &build_dir, target)
+    compile_and_emit(source_file, &build_dir, target, features)
 }
 
 /// Find the project root by looking for dream.toml in parent directories.
@@ -350,7 +380,7 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
 }
 
 /// Compile source file(s) and emit to build directory.
-fn compile_and_emit(entry_file: &Path, build_dir: &Path, target: &str) -> ExitCode {
+fn compile_and_emit(entry_file: &Path, build_dir: &Path, target: &str, features: &[String]) -> ExitCode {
     // Load modules
     let mut loader = ModuleLoader::new();
     if let Err(e) = loader.load_project(entry_file) {
@@ -358,8 +388,12 @@ fn compile_and_emit(entry_file: &Path, build_dir: &Path, target: &str) -> ExitCo
         return ExitCode::from(1);
     }
 
+    // Create compile options from features (standalone files have no feature resolution)
+    let resolved_features: HashSet<String> = features.iter().cloned().collect();
+    let compile_options = CompileOptions::with_features(resolved_features);
+
     // Standalone files don't have a package context
-    compile_modules(loader.into_modules(), build_dir, target, None)
+    compile_modules_with_options(loader.into_modules(), build_dir, target, None, &compile_options)
 }
 
 /// Compile modules to Core Erlang and optionally BEAM.
@@ -372,6 +406,26 @@ fn compile_modules(
     // Use stdlib generics registry if available
     let stdlib_registry = load_stdlib_generics();
     compile_modules_with_registry(modules, build_dir, target, stdlib_registry, package_name)
+}
+
+/// Compile modules to Core Erlang and optionally BEAM, with compile options for cfg filtering.
+fn compile_modules_with_options(
+    modules: Vec<Module>,
+    build_dir: &Path,
+    target: &str,
+    package_name: Option<&str>,
+    compile_options: &CompileOptions,
+) -> ExitCode {
+    // Use stdlib generics registry if available
+    let stdlib_registry = load_stdlib_generics();
+    compile_modules_with_registry_and_options(
+        modules,
+        build_dir,
+        target,
+        stdlib_registry,
+        package_name,
+        compile_options,
+    )
 }
 
 /// Compile modules to Core Erlang and optionally BEAM, with a pre-populated registry.
@@ -605,6 +659,261 @@ fn compile_modules_with_registry(
     ExitCode::SUCCESS
 }
 
+/// Compile modules to Core Erlang and optionally BEAM, with registry and compile options.
+fn compile_modules_with_registry_and_options(
+    modules: Vec<Module>,
+    build_dir: &Path,
+    target: &str,
+    external_registry: Option<SharedGenericRegistry>,
+    package_name: Option<&str>,
+    compile_options: &CompileOptions,
+) -> ExitCode {
+    if modules.is_empty() {
+        eprintln!("No modules to compile");
+        return ExitCode::from(1);
+    }
+
+    // Load stub modules for FFI type checking
+    let stub_modules = load_stub_modules();
+
+    // Check if we're compiling stdlib itself (by checking if any module shares a name with stdlib)
+    let stdlib_module_names_raw: std::collections::HashSet<_> = load_stdlib_modules()
+        .iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    let user_module_names: std::collections::HashSet<_> = modules.iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    let is_compiling_stdlib = user_module_names.iter().any(|n| stdlib_module_names_raw.contains(n));
+
+    // Only load stdlib for type checking when compiling user code (not stdlib itself)
+    let stdlib_modules = if is_compiling_stdlib {
+        Vec::new()
+    } else {
+        load_stdlib_modules()
+    };
+
+    // Combine user modules with stub modules and stdlib for type checking
+    let mut all_modules_for_typeck: Vec<Module> = stub_modules;
+    all_modules_for_typeck.extend(stdlib_modules.iter().cloned());
+    all_modules_for_typeck.extend(modules.iter().cloned());
+
+    // Type check all modules together (allows cross-module type references)
+    // This also annotates the AST with inferred type arguments
+    let mut has_errors = false;
+
+    let mut annotated_modules: Vec<Module> = Vec::new();
+    let type_results = check_modules(&all_modules_for_typeck);
+
+    // List of stdlib module names for filtering
+    let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
+        .map(|m| m.name.clone())
+        .collect();
+
+    for (module_name, result) in type_results {
+        // Skip stub modules (they don't have function bodies)
+        if module_name.ends_with("_stubs") || module_name == "erlang" {
+            continue;
+        }
+
+        // Skip stdlib modules for error reporting (but still process them for annotation)
+        let is_stdlib = stdlib_module_names.contains(&module_name);
+
+        match result {
+            Ok(annotated) => {
+                // Only keep user modules, not stdlib modules that were added for type checking
+                if modules.iter().any(|m| m.name == module_name) {
+                    annotated_modules.push(annotated);
+                }
+            }
+            Err(e) => {
+                // Only report errors for user modules, not stdlib
+                if !is_stdlib {
+                    has_errors = true;
+                    // Find the module to get source for error display
+                    if let Some(module) = modules.iter().find(|m| m.name == module_name) {
+                        if let Some(ref source) = module.source {
+                            let err = CompilerError::type_error(&module_name, source, e);
+                            eprintln!("  Type error in {}:\n{:?}", module_name, miette::Report::new(err));
+                        } else {
+                            eprintln!("  Type error in {}: {:?}", module_name, miette::Report::new(e));
+                        }
+                    } else {
+                        // Module not found in user modules - this shouldn't happen
+                        eprintln!("  Type error in {}: {:?}", module_name, e);
+                    }
+                }
+            }
+        }
+    }
+
+    if has_errors {
+        eprintln!("\nCompilation failed due to type errors.");
+        return ExitCode::from(1);
+    }
+
+    // Use annotated modules for code generation
+    let mut modules = annotated_modules;
+
+    // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
+    for module in &mut modules {
+        resolve_stdlib_methods(module);
+    }
+
+    // Create a shared registry for cross-module generic functions
+    // Start with external (stdlib) generics if available
+    let generic_registry: SharedGenericRegistry = external_registry
+        .unwrap_or_else(|| Arc::new(RwLock::new(GenericFunctionRegistry::new())));
+
+    // Collect local module short names for module resolution
+    // These are the short names (e.g., "hello_handler") that can be referenced
+    // as atoms like :hello_handler and should resolve to dream::package::hello_handler
+    let local_module_names: std::collections::HashSet<String> = if let Some(pkg) = package_name {
+        modules
+            .iter()
+            .filter_map(|m| {
+                // Extract the short name from the full module name
+                // e.g., "http_api::hello_handler" -> "hello_handler"
+                let prefix = format!("{}::", pkg);
+                if let Some(suffix) = m.name.strip_prefix(&prefix) {
+                    // Get the last segment (the actual module name)
+                    suffix.split("::").last().map(|s| s.to_string())
+                } else if m.name == pkg {
+                    // Root module - use package name
+                    Some(pkg.to_string())
+                } else {
+                    // Module name doesn't have package prefix, use as-is
+                    Some(m.name.clone())
+                }
+            })
+            .collect()
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    // Compile each module to Core Erlang (with incremental compilation)
+    let mut core_files = Vec::new();
+    let mut skipped_count = 0;
+
+    for module in &modules {
+        // All Dream modules are prefixed with dream:: (like Elixir uses Elixir.)
+        let beam_module_name = if module.name.starts_with("dream::") {
+            module.name.clone()
+        } else {
+            format!("dream::{}", module.name)
+        };
+
+        let beam_file = build_dir.join(format!("{}.beam", &beam_module_name));
+
+        // Check if module needs recompilation
+        if !needs_recompilation(module, &beam_file) {
+            skipped_count += 1;
+            continue;
+        }
+
+        // Create module-specific context for path resolution (crate::/super::/self::)
+        let module_context = match package_name {
+            Some(pkg) => ModuleContext::for_module(pkg, &module.name)
+                .with_local_modules(local_module_names.clone()),
+            None => ModuleContext::default(),
+        };
+
+        // Use with_all to include compile options for cfg filtering
+        let mut emitter = CoreErlangEmitter::with_all(
+            generic_registry.clone(),
+            module_context,
+            compile_options.clone(),
+        );
+        let core_erlang = match emitter.emit_module(module) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Compile error in {}: {}", module.name, e);
+                return ExitCode::from(1);
+            }
+        };
+
+        // Register this module's generic functions for cross-module use
+        {
+            let mut registry = generic_registry.write().unwrap();
+            emitter.register_generics(&mut registry);
+        }
+
+        let core_file = build_dir.join(format!("{}.core", &beam_module_name));
+        if let Err(e) = fs::write(&core_file, &core_erlang) {
+            eprintln!("Error writing {}: {}", core_file.display(), e);
+            return ExitCode::from(1);
+        }
+
+        println!("  Compiled {}.core", &beam_module_name);
+        core_files.push(core_file);
+    }
+
+    // If target is "core", we're done
+    if target == "core" {
+        println!();
+        if skipped_count > 0 {
+            println!("Build complete. {} module(s) up to date, {} recompiled.", skipped_count, core_files.len());
+        } else {
+            println!("Build complete. Core Erlang files in {}", build_dir.display());
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    // For "beam" target, invoke erlc
+    if target == "beam" && !core_files.is_empty() {
+        // Check if erlc is available
+        if !command_exists("erlc") {
+            eprintln!();
+            eprintln!("Warning: erlc not found in PATH");
+            eprintln!("Install Erlang/OTP to compile to BEAM bytecode.");
+            eprintln!();
+            eprintln!("Core Erlang files are in {}", build_dir.display());
+            eprintln!("You can compile manually with: erlc +from_core *.core");
+            return ExitCode::from(1);
+        }
+
+        // Batch compile all .core files in a single erlc invocation
+        let mut cmd = Command::new("erlc");
+        cmd.arg("+from_core").arg("-o").arg(build_dir);
+        for core_file in &core_files {
+            cmd.arg(core_file);
+        }
+
+        let status = cmd.status();
+        match status {
+            Ok(s) if s.success() => {
+                for core_file in &core_files {
+                    let beam_name = core_file.file_stem().unwrap().to_string_lossy();
+                    println!("  Compiled {}.beam", beam_name);
+                    // Clean up intermediate .core file
+                    let _ = fs::remove_file(core_file);
+                }
+            }
+            Ok(s) => {
+                eprintln!("erlc failed with exit code {:?}", s.code());
+                return ExitCode::from(1);
+            }
+            Err(e) => {
+                eprintln!("Error running erlc: {}", e);
+                return ExitCode::from(1);
+            }
+        }
+    }
+
+    println!();
+    if skipped_count > 0 && core_files.is_empty() {
+        println!("Build complete. All {} module(s) up to date.", skipped_count);
+    } else if skipped_count > 0 {
+        println!("Build complete. {} module(s) up to date, {} recompiled.", skipped_count, core_files.len());
+    } else {
+        println!("Build complete.");
+    }
+
+    ExitCode::SUCCESS
+}
+
 /// Generate an OTP .app file for the Dream application.
 fn generate_app_file(
     build_dir: &Path,
@@ -653,8 +962,9 @@ fn generate_app_file(
     // Build the mod entry if an application module is configured
     let mod_entry = if let Some(ref app_config) = config.application {
         if let Some(ref module) = app_config.module {
-            // Build fully qualified module name: dream::package::module
-            let full_module = format!("dream::{}::{}", app_name, module);
+            // Build fully qualified module name: dream::module
+            // The module name in config already includes the package prefix (e.g., "http_api::app")
+            let full_module = format!("dream::{}", module);
             format!("  {{mod, {{'{}', []}}}},\n", full_module)
         } else {
             String::new()
@@ -993,6 +1303,7 @@ fn cmd_run(
     eval_mode: bool,
     no_halt: bool,
     env: &str,
+    features: &[String],
     args: &[String],
 ) -> ExitCode {
     // Compile stdlib first
@@ -1023,7 +1334,7 @@ fn cmd_run(
         };
 
         // Build the standalone file
-        let build_result = cmd_build(Some(source_file), "beam", Some(&build_dir));
+        let build_result = cmd_build(Some(source_file), "beam", Some(&build_dir), features);
         if build_result != ExitCode::SUCCESS {
             return build_result;
         }
@@ -1034,7 +1345,7 @@ fn cmd_run(
         (build_dir, module_name, None)
     } else {
         // Project mode
-        let build_result = cmd_build(None, "beam", None);
+        let build_result = cmd_build(None, "beam", None, features);
         if build_result != ExitCode::SUCCESS {
             return build_result;
         }
@@ -1303,4 +1614,216 @@ fn command_exists(cmd: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Check if a module needs recompilation.
+/// Returns true if the source file is newer than the beam file, or beam doesn't exist.
+fn needs_recompilation(module: &Module, beam_file: &Path) -> bool {
+    // If beam file doesn't exist, needs compilation
+    if !beam_file.exists() {
+        return true;
+    }
+
+    // If no source path, always recompile (can't check)
+    let source_path = match &module.source_path {
+        Some(p) => p,
+        None => return true,
+    };
+
+    // Compare modification times
+    let src_modified = source_path.metadata().and_then(|m| m.modified()).ok();
+    let beam_modified = beam_file.metadata().and_then(|m| m.modified()).ok();
+
+    match (src_modified, beam_modified) {
+        (Some(src), Some(beam)) => src > beam,
+        _ => true, // If we can't check, recompile to be safe
+    }
+}
+
+/// Run tests in the project.
+fn cmd_test(filter: Option<&str>, features: &[String]) -> ExitCode {
+    // Find project root and load config
+    let (project_root, config) = match ProjectConfig::from_project_root() {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return ExitCode::from(1);
+        }
+    };
+
+    let src_dir = config.src_dir(&project_root);
+    let build_dir = config.beam_dir_for_env(&project_root, "test");
+
+    // Create build directory
+    if let Err(e) = fs::create_dir_all(&build_dir) {
+        eprintln!("Error creating build directory: {}", e);
+        return ExitCode::from(1);
+    }
+
+    println!("Compiling {} in test mode...", config.package.name);
+
+    // Load all .dream files in src/ directory with package context
+    let mut loader = ModuleLoader::with_package(
+        config.package.name.clone(),
+        src_dir.clone(),
+    );
+    if let Err(e) = loader.load_all_in_dir(&src_dir) {
+        eprintln!("Error loading modules: {}", e);
+        return ExitCode::from(1);
+    }
+
+    let modules = loader.into_modules();
+
+    // Discover test functions before compilation
+    let mut test_functions: Vec<(String, String)> = Vec::new(); // (module_name, function_name)
+    for module in &modules {
+        for item in &module.items {
+            if let Item::Function(func) = item {
+                if cfg::is_test(&func.attrs) {
+                    // Apply filter if provided
+                    if let Some(pattern) = filter {
+                        if !func.name.contains(pattern) {
+                            continue;
+                        }
+                    }
+                    test_functions.push((module.name.clone(), func.name.clone()));
+                }
+            }
+        }
+    }
+
+    if test_functions.is_empty() {
+        println!();
+        if filter.is_some() {
+            println!("No tests match the filter.");
+        } else {
+            println!("No tests found.");
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    // Resolve features (CLI features + their dependencies from config)
+    let resolved_features = config.resolve_features(features);
+    let compile_options = CompileOptions::for_testing_with_features(resolved_features);
+
+    // Compile all modules in test mode
+    let result = compile_modules_with_options(
+        modules,
+        &build_dir,
+        "beam",
+        Some(&config.package.name),
+        &compile_options,
+    );
+
+    if result != ExitCode::SUCCESS {
+        return result;
+    }
+
+    // Compile stdlib if needed
+    let stdlib_dir = match compile_stdlib() {
+        Ok(dir) => Some(dir),
+        Err(e) => {
+            eprintln!("Warning: {}", e);
+            None
+        }
+    };
+
+    // Check if erl is available
+    if !command_exists("erl") {
+        eprintln!("Error: erl not found in PATH");
+        eprintln!("Install Erlang/OTP to run tests.");
+        return ExitCode::from(1);
+    }
+
+    // Get deps ebin paths
+    let mut deps_dirs: Vec<PathBuf> = {
+        let deps_manager = DepsManager::new(project_root, config);
+        deps_manager.dep_ebin_paths()
+    };
+
+    // Add Elixir stdlib paths if available
+    deps_dirs.extend(find_elixir_ebin_dirs());
+
+    // Run tests
+    println!();
+    println!("Running {} test{}...", test_functions.len(), if test_functions.len() == 1 { "" } else { "s" });
+    println!();
+
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut failures: Vec<(String, String, String)> = Vec::new(); // (module, function, error)
+
+    for (module_name, func_name) in &test_functions {
+        // Build the full module name with dream:: prefix
+        let beam_module = if module_name.starts_with("dream::") {
+            module_name.clone()
+        } else {
+            format!("dream::{}", module_name)
+        };
+
+        // Build eval expression to run the test and catch any errors
+        let eval_expr = format!(
+            "try '{}':'{}'() of _ -> io:format(\"ok~n\"), halt(0) catch Class:Reason:Stack -> io:format(\"~p:~p~n~p~n\", [Class, Reason, Stack]), halt(1) end.",
+            beam_module, func_name
+        );
+
+        let mut cmd = Command::new("erl");
+        cmd.arg("-pa").arg(&build_dir);
+
+        // Add stdlib to code path if available
+        if let Some(ref stdlib) = stdlib_dir {
+            cmd.arg("-pa").arg(stdlib);
+        }
+
+        // Add deps ebin directories to code path
+        for dep_dir in &deps_dirs {
+            cmd.arg("-pa").arg(dep_dir);
+        }
+
+        cmd.arg("-noshell").arg("-eval").arg(&eval_expr);
+
+        let output = cmd.output();
+
+        match output {
+            Ok(out) => {
+                if out.status.success() {
+                    passed += 1;
+                    println!("  {} {}::{} ... ok", "\u{2713}", module_name, func_name);
+                } else {
+                    failed += 1;
+                    let stderr = String::from_utf8_lossy(&out.stdout).to_string();
+                    failures.push((module_name.clone(), func_name.clone(), stderr));
+                    println!("  {} {}::{} ... FAILED", "\u{2717}", module_name, func_name);
+                }
+            }
+            Err(e) => {
+                failed += 1;
+                failures.push((module_name.clone(), func_name.clone(), e.to_string()));
+                println!("  {} {}::{} ... FAILED ({})", "\u{2717}", module_name, func_name, e);
+            }
+        }
+    }
+
+    // Print summary
+    println!();
+    if !failures.is_empty() {
+        println!("Failures:");
+        println!();
+        for (module, func, error) in &failures {
+            println!("  {}::{}", module, func);
+            for line in error.lines() {
+                println!("    {}", line);
+            }
+            println!();
+        }
+    }
+
+    let total = passed + failed;
+    if failed == 0 {
+        println!("{} test{} passed.", total, if total == 1 { "" } else { "s" });
+        ExitCode::SUCCESS
+    } else {
+        println!("{} passed, {} failed.", passed, failed);
+        ExitCode::from(1)
+    }
 }

@@ -1,0 +1,9 @@
+// Handler for 404 Not Found
+
+pub fn init(req: any, state: any) -> (atom, any, any) {
+    let path = :cowboy_req::path(req);
+    let body = :io_lib::format("Not Found: ~s", [path]);
+    let headers = :maps::put("content-type", "text/plain", :maps::new());
+    let req2 = :cowboy_req::reply(404, headers, body, req);
+    (:ok, req2, state)
+}

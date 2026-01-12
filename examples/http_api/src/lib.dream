@@ -1,0 +1,19 @@
+// HTTP API Example
+// A simple JSON API using cowboy (Erlang HTTP server)
+//
+// Project structure:
+//   src/
+//     lib.dream           - This file (root module)
+//     app.dream           - Application trait implementation
+//     handlers/
+//       hello.dream       - GET /api/hello handler
+//       users.dream       - GET /api/users handler
+//       not_found.dream   - 404 handler
+
+mod app;
+mod handlers;
+mod tests;
+
+pub fn version() -> string {
+    "0.1.0"
+}

@@ -3,7 +3,7 @@ name = "http_api"
 version = "0.1.0"
 
 [application]
-mod = "http_api"
+mod = "http_api::app"
 
 [dependencies]
 cowboy = "2.12.0"

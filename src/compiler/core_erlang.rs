@@ -3,6 +3,8 @@
 //! This module generates Core Erlang source code from the AST,
 //! which can then be compiled to BEAM bytecode using `erlc +from_core`.
 
+use crate::compiler::cfg;
+use crate::config::CompileOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
@@ -101,6 +103,9 @@ pub struct CoreErlangEmitter {
     variables: HashSet<String>,
     /// Local functions defined in the current module (name, arity)
     local_functions: HashSet<(String, usize)>,
+    /// Local type names (structs, enums) defined in this module
+    /// Used to distinguish `impl Type { }` from `impl Trait { }`
+    local_types: HashSet<String>,
 
     // Monomorphization support
     /// Generic functions: func_name → Function (for functions with type params)
@@ -126,6 +131,8 @@ pub struct CoreErlangEmitter {
     /// When emitting a cross-module inlined function, this tracks the source module.
     /// Used to rewrite same-module calls from the source to cross-module calls.
     cross_module_inlining_source: Option<String>,
+    /// Compile options for conditional compilation (test mode, features).
+    compile_options: CompileOptions,
 }
 
 impl CoreErlangEmitter {
@@ -143,6 +150,7 @@ impl CoreErlangEmitter {
             has_self_param: false,
             variables: HashSet::new(),
             local_functions: HashSet::new(),
+            local_types: HashSet::new(),
             generic_functions: HashMap::new(),
             pending_monomorphizations: HashSet::new(),
             type_param_subst: HashMap::new(),
@@ -151,6 +159,15 @@ impl CoreErlangEmitter {
             external_generics: None,
             cross_module_monomorphizations: HashSet::new(),
             cross_module_inlining_source: None,
+            compile_options: CompileOptions::new(),
+        }
+    }
+
+    /// Create an emitter with compile options.
+    pub fn with_options(options: CompileOptions) -> Self {
+        Self {
+            compile_options: options,
+            ..Self::new()
         }
     }
 
@@ -178,6 +195,20 @@ impl CoreErlangEmitter {
         Self {
             external_generics: Some(registry),
             module_context: context,
+            ..Self::new()
+        }
+    }
+
+    /// Create a fully configured emitter with all options.
+    pub fn with_all(
+        registry: SharedGenericRegistry,
+        context: ModuleContext,
+        options: CompileOptions,
+    ) -> Self {
+        Self {
+            external_generics: Some(registry),
+            module_context: context,
+            compile_options: options,
             ..Self::new()
         }
     }
@@ -1019,16 +1050,23 @@ impl CoreErlangEmitter {
 
     /// Emit all methods for a trait implementation, including default methods.
     fn emit_trait_impl_methods(&mut self, trait_impl: &TraitImpl) -> CoreErlangResult<()> {
-        // Collect method names explicitly implemented
+        // Collect method names explicitly implemented (only those passing cfg)
         let impl_method_names: HashSet<String> =
-            trait_impl.methods.iter().map(|m| m.name.clone()).collect();
+            trait_impl.methods.iter()
+                .filter(|m| cfg::should_include(&m.attrs, &self.compile_options))
+                .map(|m| m.name.clone())
+                .collect();
 
         let simple_trait = Self::simple_trait_name(&trait_impl.trait_name);
         // Format trait type args for mangling: From<int> -> "From_int"
         let trait_type_args_suffix = self.format_trait_type_args(&trait_impl.trait_type_args);
 
-        // Emit explicitly implemented methods
+        // Emit explicitly implemented methods (filtered by cfg)
         for method in &trait_impl.methods {
+            // Skip methods excluded by cfg
+            if !cfg::should_include(&method.attrs, &self.compile_options) {
+                continue;
+            }
             // Mangled name: Trait_TypeArg_ImplType_method
             // e.g., From_int_MyType_from
             let mangled_name = format!(
@@ -1036,6 +1074,7 @@ impl CoreErlangEmitter {
                 simple_trait, trait_type_args_suffix, trait_impl.type_name, method.name
             );
             let mangled_method = Function {
+                attrs: vec![],
                 name: mangled_name,
                 type_params: method.type_params.clone(),
                 params: method.params.clone(),
@@ -1059,6 +1098,7 @@ impl CoreErlangEmitter {
                             simple_trait, trait_type_args_suffix, trait_impl.type_name, trait_method.name
                         );
                         let default_method = Function {
+                            attrs: vec![],
                             name: mangled_name,
                             type_params: trait_method.type_params.clone(),
                             params: trait_method.params.clone(),
@@ -1143,10 +1183,23 @@ impl CoreErlangEmitter {
         // First pass: collect imports, traits, local functions, and register impl methods
         for item in &module.items {
             match item {
+                Item::Struct(s) => {
+                    // Register struct as a local type
+                    self.local_types.insert(s.name.clone());
+                }
+                Item::Enum(e) => {
+                    // Register enum as a local type
+                    self.local_types.insert(e.name.clone());
+                }
                 Item::Use(use_decl) => {
                     self.collect_imports(use_decl);
                 }
                 Item::Function(func) => {
+                    // Skip functions excluded by cfg
+                    if !cfg::should_include(&func.attrs, &self.compile_options) {
+                        continue;
+                    }
+
                     // Register local function for BIF shadowing
                     self.local_functions
                         .insert((func.name.clone(), func.params.len()));
@@ -1159,9 +1212,12 @@ impl CoreErlangEmitter {
                 }
                 Item::Impl(impl_block) => {
                     // Register impl methods for Type::method() resolution
+                    // Filter individual methods by cfg
                     for method in &impl_block.methods {
-                        self.impl_methods
-                            .insert((impl_block.type_name.clone(), method.name.clone()));
+                        if cfg::should_include(&method.attrs, &self.compile_options) {
+                            self.impl_methods
+                                .insert((impl_block.type_name.clone(), method.name.clone()));
+                        }
                     }
                 }
                 Item::Trait(trait_def) => {
@@ -1170,17 +1226,25 @@ impl CoreErlangEmitter {
                         .insert(trait_def.name.clone(), trait_def.clone());
                 }
                 Item::TraitImpl(trait_impl) => {
-                    // Collect method names implemented in this impl
+                    // Collect method names implemented in this impl (only those passing cfg)
                     let impl_method_names: HashSet<String> =
-                        trait_impl.methods.iter().map(|m| m.name.clone()).collect();
+                        trait_impl.methods.iter()
+                            .filter(|m| cfg::should_include(&m.attrs, &self.compile_options))
+                            .map(|m| m.name.clone())
+                            .collect();
                     let simple_trait =
                         Self::simple_trait_name(&trait_impl.trait_name).to_string();
                     // Format trait type args for registration: From<int> -> "_int"
                     let trait_type_args_suffix =
                         self.format_trait_type_args(&trait_impl.trait_type_args);
 
-                    // Register trait impl methods for dispatch
+                    // Register trait impl methods for dispatch (filtered by cfg)
                     for method in &trait_impl.methods {
+                        // Skip methods excluded by cfg
+                        if !cfg::should_include(&method.attrs, &self.compile_options) {
+                            continue;
+                        }
+
                         // Use simple trait name with type args: From_int_MyType
                         self.impl_methods.insert((
                             format!(
@@ -1255,11 +1319,15 @@ impl CoreErlangEmitter {
         // Module header (with Dream. prefix)
         self.emit(&format!("module '{}'", self.module_name));
 
-        // Group functions by (name, arity) for multi-clause support
+        // Group functions by (name, arity) for multi-clause support (filtered by cfg)
         let mut func_groups: std::collections::HashMap<(String, usize), Vec<&Function>> =
             std::collections::HashMap::new();
         for item in &module.items {
             if let Item::Function(f) = item {
+                // Skip functions excluded by cfg
+                if !cfg::should_include(&f.attrs, &self.compile_options) {
+                    continue;
+                }
                 func_groups
                     .entry((f.name.clone(), f.params.len()))
                     .or_default()
@@ -1276,6 +1344,10 @@ impl CoreErlangEmitter {
         for item in &module.items {
             match item {
                 Item::Function(f) if f.is_pub => {
+                    // Skip functions excluded by cfg
+                    if !cfg::should_include(&f.attrs, &self.compile_options) {
+                        continue;
+                    }
                     // Note: Generic functions ARE exported - Erlang is dynamically typed
                     // so they work at runtime via type erasure
                     let key = (f.name.clone(), f.params.len());
@@ -1285,26 +1357,47 @@ impl CoreErlangEmitter {
                     }
                 }
                 Item::Impl(impl_block) => {
+                    // Check if this impl is for a local type (struct/enum) or a trait
+                    // impl Point { } -> local type, mangle names
+                    // impl Application { } -> trait, inject methods directly
+                    let is_local_type = self.local_types.contains(&impl_block.type_name);
+
                     for method in &impl_block.methods {
+                        // Skip methods excluded by cfg
+                        if !cfg::should_include(&method.attrs, &self.compile_options) {
+                            continue;
+                        }
                         if method.is_pub {
-                            let mangled_name =
-                                format!("{}_{}", impl_block.type_name, method.name);
-                            exports.push(format!("'{}'/{}", mangled_name, method.params.len()));
+                            let export_name = if is_local_type {
+                                // Local type impl: mangle name (e.g., Point_new)
+                                format!("{}_{}", impl_block.type_name, method.name)
+                            } else {
+                                // Trait impl: use original name (e.g., start, stop)
+                                method.name.clone()
+                            };
+                            exports.push(format!("'{}'/{}", export_name, method.params.len()));
                         }
                     }
                 }
                 Item::TraitImpl(trait_impl) => {
-                    // Collect method names explicitly implemented
+                    // Collect method names explicitly implemented (filtered by cfg)
                     let impl_method_names: HashSet<String> =
-                        trait_impl.methods.iter().map(|m| m.name.clone()).collect();
+                        trait_impl.methods.iter()
+                            .filter(|m| cfg::should_include(&m.attrs, &self.compile_options))
+                            .map(|m| m.name.clone())
+                            .collect();
                     let simple_trait =
                         Self::simple_trait_name(&trait_impl.trait_name);
                     // Format trait type args for mangling: From<int> -> "_int"
                     let trait_type_args_suffix =
                         self.format_trait_type_args(&trait_impl.trait_type_args);
 
-                    // Export explicitly implemented methods
+                    // Export explicitly implemented methods (filtered by cfg)
                     for method in &trait_impl.methods {
+                        // Skip methods excluded by cfg
+                        if !cfg::should_include(&method.attrs, &self.compile_options) {
+                            continue;
+                        }
                         if method.is_pub {
                             let mangled_name = format!(
                                 "{}{}_{}_{}",
@@ -1372,13 +1465,27 @@ impl CoreErlangEmitter {
             }
         }
 
-        // Emit impl block methods
+        // Emit impl block methods (filtered by cfg)
         for item in &module.items {
             if let Item::Impl(impl_block) = item {
+                // Check if this impl is for a local type (struct/enum) or a trait
+                let is_local_type = self.local_types.contains(&impl_block.type_name);
+
                 for method in &impl_block.methods {
-                    let mangled_name = format!("{}_{}", impl_block.type_name, method.name);
-                    let mangled_method = Function {
-                        name: mangled_name,
+                    // Skip methods excluded by cfg
+                    if !cfg::should_include(&method.attrs, &self.compile_options) {
+                        continue;
+                    }
+                    let func_name = if is_local_type {
+                        // Local type impl: mangle name (e.g., Point_new)
+                        format!("{}_{}", impl_block.type_name, method.name)
+                    } else {
+                        // Trait impl: use original name (e.g., start, stop)
+                        method.name.clone()
+                    };
+                    let emitted_method = Function {
+                        attrs: vec![],
+                        name: func_name,
                         type_params: method.type_params.clone(),
                         params: method.params.clone(),
                         guard: method.guard.clone(),
@@ -1388,7 +1495,7 @@ impl CoreErlangEmitter {
                         span: method.span.clone(),
                     };
                     self.newline();
-                    self.emit_function(&mangled_method)?;
+                    self.emit_function(&emitted_method)?;
                 }
             }
         }
@@ -1441,6 +1548,7 @@ impl CoreErlangEmitter {
 
                 // Create a modified function with the monomorphized name
                 let mono_func = Function {
+                    attrs: vec![],
                     name: mono_name,
                     type_params: vec![], // No type params in monomorphized version
                     params: generic_func.params.clone(),
@@ -1520,6 +1628,7 @@ impl CoreErlangEmitter {
 
                     // Create a modified function with the monomorphized name
                     let mono_func = Function {
+                        attrs: vec![],
                         name: mono_name,
                         type_params: vec![], // No type params in monomorphized version
                         params: generic_func.params.clone(),

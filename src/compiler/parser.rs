@@ -51,9 +51,11 @@ impl<'source> Parser<'source> {
         all_items.extend(items);
 
         Ok(Module {
+            attrs: vec![],
             name,
             items: all_items,
             source: Some(self.source.to_string()),
+            source_path: None,
         })
     }
 
@@ -84,9 +86,11 @@ impl<'source> Parser<'source> {
         all_items.extend(items);
 
         Ok(Module {
+            attrs: vec![],
             name: module_name.to_string(),
             items: all_items,
             source: Some(self.source.to_string()),
+            source_path: None,
         })
     }
 
@@ -160,6 +164,7 @@ impl<'source> Parser<'source> {
         // Create the __main__ function with return type `any`
         // so it accepts any expression as the final result
         let main_fn = Function {
+            attrs: vec![],
             name: "__main__".to_string(),
             type_params: vec![],
             params: vec![],
@@ -174,9 +179,11 @@ impl<'source> Parser<'source> {
         };
 
         Ok(Module {
+            attrs: vec![],
             name: "__script__".to_string(),
             items: vec![Item::Function(main_fn)],
             source: Some(self.source.to_string()),
+            source_path: None,
         })
     }
 
@@ -217,9 +224,131 @@ impl<'source> Parser<'source> {
         idx < self.tokens.len() && matches!(self.tokens[idx].token, Token::LBrace)
     }
 
+    // =========================================================================
+    // Attribute Parsing
+    // =========================================================================
+
+    /// Parse zero or more attributes: `#[attr1] #[attr2] ...`
+    fn parse_attributes(&mut self) -> ParseResult<Vec<Attribute>> {
+        let mut attrs = Vec::new();
+        while self.check(&Token::HashBracket) {
+            attrs.push(self.parse_attribute()?);
+        }
+        Ok(attrs)
+    }
+
+    /// Parse a single attribute: `#[name]`, `#[name(args)]`, or `#[name = "value"]`
+    fn parse_attribute(&mut self) -> ParseResult<Attribute> {
+        let start = self.current_span().start;
+        self.expect(&Token::HashBracket)?;
+
+        let name = self.expect_ident()?;
+        let args = self.parse_attribute_args()?;
+
+        let end = self.current_span().end;
+        self.expect(&Token::RBracket)?;
+
+        Ok(Attribute {
+            name,
+            args,
+            span: start..end,
+        })
+    }
+
+    /// Parse attribute arguments after the name: `(args)`, `= "value"`, or nothing
+    fn parse_attribute_args(&mut self) -> ParseResult<AttributeArgs> {
+        if self.check(&Token::LParen) {
+            self.advance();
+            let args = self.parse_attribute_arg_list()?;
+            self.expect(&Token::RParen)?;
+            Ok(AttributeArgs::Parenthesized(args))
+        } else if self.check(&Token::Eq) {
+            self.advance();
+            // Expect a string literal
+            if let Some(SpannedToken {
+                token: Token::String(s),
+                ..
+            }) = self.tokens.get(self.pos)
+            {
+                let value = s.clone();
+                self.advance();
+                Ok(AttributeArgs::Eq(value))
+            } else {
+                Err(ParseError::new(
+                    "expected string literal after `=` in attribute",
+                    self.current_span(),
+                ))
+            }
+        } else {
+            Ok(AttributeArgs::None)
+        }
+    }
+
+    /// Parse a comma-separated list of attribute arguments
+    fn parse_attribute_arg_list(&mut self) -> ParseResult<Vec<AttributeArg>> {
+        let mut args = Vec::new();
+
+        // Handle empty parens
+        if self.check(&Token::RParen) {
+            return Ok(args);
+        }
+
+        loop {
+            args.push(self.parse_attribute_arg()?);
+
+            if self.check(&Token::Comma) {
+                self.advance();
+                // Allow trailing comma
+                if self.check(&Token::RParen) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(args)
+    }
+
+    /// Parse a single attribute argument: `ident`, `key = "value"`, or `func(args)`
+    fn parse_attribute_arg(&mut self) -> ParseResult<AttributeArg> {
+        let name = self.expect_ident()?;
+
+        if self.check(&Token::Eq) {
+            // Key-value: `feature = "json"`
+            self.advance();
+            if let Some(SpannedToken {
+                token: Token::String(s),
+                ..
+            }) = self.tokens.get(self.pos)
+            {
+                let value = s.clone();
+                self.advance();
+                Ok(AttributeArg::KeyValue(name, value))
+            } else {
+                Err(ParseError::new(
+                    "expected string literal after `=` in attribute argument",
+                    self.current_span(),
+                ))
+            }
+        } else if self.check(&Token::LParen) {
+            // Nested: `not(test)` or `all(feature = "a", feature = "b")`
+            self.advance();
+            let nested_args = self.parse_attribute_arg_list()?;
+            self.expect(&Token::RParen)?;
+            Ok(AttributeArg::Nested(name, nested_args))
+        } else {
+            // Simple identifier: `test`
+            Ok(AttributeArg::Ident(name))
+        }
+    }
+
     /// Parse a top-level item.
     pub fn parse_item(&mut self) -> ParseResult<Item> {
-        // Use statements don't have pub modifier
+        // Parse any attributes before the item
+        let attrs = self.parse_attributes()?;
+
+        // Use statements don't have pub modifier (and don't support attributes currently)
         if self.check(&Token::Use) {
             return self.parse_use_decl();
         }
@@ -249,13 +378,13 @@ impl<'source> Parser<'source> {
         if self.check(&Token::Extern) {
             self.parse_extern_mod()
         } else if self.check(&Token::Fn) {
-            Ok(Item::Function(self.parse_function(is_pub)?))
+            Ok(Item::Function(self.parse_function(is_pub, attrs)?))
         } else if self.check(&Token::Struct) {
-            Ok(Item::Struct(self.parse_struct(is_pub)?))
+            Ok(Item::Struct(self.parse_struct(is_pub, attrs)?))
         } else if self.check(&Token::Enum) {
-            Ok(Item::Enum(self.parse_enum(is_pub)?))
+            Ok(Item::Enum(self.parse_enum(is_pub, attrs)?))
         } else if self.check(&Token::Type) {
-            Ok(Item::TypeAlias(self.parse_type_alias(is_pub)?))
+            Ok(Item::TypeAlias(self.parse_type_alias(is_pub, attrs)?))
         } else if self.check(&Token::Mod) {
             self.parse_mod_decl(is_pub)
         } else {
@@ -276,7 +405,7 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a type alias: `type Result = :ok | :error;` or `type Result<T> = (:ok, T) | :error;`
-    fn parse_type_alias(&mut self, is_pub: bool) -> ParseResult<TypeAlias> {
+    fn parse_type_alias(&mut self, is_pub: bool, attrs: Vec<Attribute>) -> ParseResult<TypeAlias> {
         self.expect(&Token::Type)?;
         let name = self.expect_type_ident()?;
 
@@ -292,6 +421,7 @@ impl<'source> Parser<'source> {
         self.expect(&Token::Semi)?;
 
         Ok(TypeAlias {
+            attrs,
             name,
             type_params,
             ty,
@@ -427,6 +557,9 @@ impl<'source> Parser<'source> {
                     continue;
                 }
 
+                // Parse attributes for methods
+                let attrs = self.parse_attributes()?;
+
                 // Methods can have pub modifier
                 let is_pub = self.check(&Token::Pub);
                 if is_pub {
@@ -434,7 +567,7 @@ impl<'source> Parser<'source> {
                 }
 
                 if self.check(&Token::Fn) {
-                    methods.push(self.parse_function(is_pub)?);
+                    methods.push(self.parse_function(is_pub, attrs)?);
                 } else {
                     let span = self.current_span();
                     return Err(ParseError::new("expected `fn` or `type` in trait impl", span));
@@ -483,6 +616,9 @@ impl<'source> Parser<'source> {
                 // Regular impl block
                 let mut methods = Vec::new();
                 while !self.check(&Token::RBrace) && !self.is_at_end() {
+                    // Parse attributes for methods
+                    let attrs = self.parse_attributes()?;
+
                     // Methods can have pub modifier
                     let is_pub = self.check(&Token::Pub);
                     if is_pub {
@@ -490,7 +626,7 @@ impl<'source> Parser<'source> {
                     }
 
                     if self.check(&Token::Fn) {
-                        methods.push(self.parse_function(is_pub)?);
+                        methods.push(self.parse_function(is_pub, attrs)?);
                     } else {
                         let span = self.current_span();
                         return Err(ParseError::new("expected `fn` in impl block", span));
@@ -785,7 +921,7 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a function definition.
-    fn parse_function(&mut self, is_pub: bool) -> ParseResult<Function> {
+    fn parse_function(&mut self, is_pub: bool, attrs: Vec<Attribute>) -> ParseResult<Function> {
         let start = self.current_span().start;
         self.expect(&Token::Fn)?;
         let name = self.expect_ident()?;
@@ -828,6 +964,7 @@ impl<'source> Parser<'source> {
             .unwrap_or(start);
 
         Ok(Function {
+            attrs,
             name,
             type_params,
             params,
@@ -909,7 +1046,7 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a struct definition.
-    fn parse_struct(&mut self, is_pub: bool) -> ParseResult<StructDef> {
+    fn parse_struct(&mut self, is_pub: bool, attrs: Vec<Attribute>) -> ParseResult<StructDef> {
         self.expect(&Token::Struct)?;
         let name = self.expect_type_ident()?;
 
@@ -934,6 +1071,7 @@ impl<'source> Parser<'source> {
 
         self.expect(&Token::RBrace)?;
         Ok(StructDef {
+            attrs,
             name,
             type_params,
             fields,
@@ -942,7 +1080,7 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse an enum definition.
-    fn parse_enum(&mut self, is_pub: bool) -> ParseResult<EnumDef> {
+    fn parse_enum(&mut self, is_pub: bool, attrs: Vec<Attribute>) -> ParseResult<EnumDef> {
         self.expect(&Token::Enum)?;
         let name = self.expect_type_ident()?;
 
@@ -1007,6 +1145,7 @@ impl<'source> Parser<'source> {
 
         self.expect(&Token::RBrace)?;
         Ok(EnumDef {
+            attrs,
             name,
             type_params,
             variants,
@@ -4560,6 +4699,267 @@ mod tests {
             }
         } else {
             panic!("expected use declaration");
+        }
+    }
+
+    // =========================================================================
+    // Attribute Parsing Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_simple_attribute() {
+        let source = r#"
+            mod test {
+                #[test]
+                fn test_something() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "test_something");
+            assert_eq!(func.attrs.len(), 1);
+            assert_eq!(func.attrs[0].name, "test");
+            assert!(matches!(func.attrs[0].args, AttributeArgs::None));
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_cfg_attribute_simple() {
+        let source = r#"
+            mod test {
+                #[cfg(test)]
+                fn test_only() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "test_only");
+            assert_eq!(func.attrs.len(), 1);
+            assert_eq!(func.attrs[0].name, "cfg");
+            if let AttributeArgs::Parenthesized(args) = &func.attrs[0].args {
+                assert_eq!(args.len(), 1);
+                if let AttributeArg::Ident(ident) = &args[0] {
+                    assert_eq!(ident, "test");
+                } else {
+                    panic!("expected ident argument");
+                }
+            } else {
+                panic!("expected parenthesized args");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_cfg_attribute_feature() {
+        let source = r#"
+            mod test {
+                #[cfg(feature = "json")]
+                fn with_json() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "with_json");
+            if let AttributeArgs::Parenthesized(args) = &func.attrs[0].args {
+                if let AttributeArg::KeyValue(key, value) = &args[0] {
+                    assert_eq!(key, "feature");
+                    assert_eq!(value, "json");
+                } else {
+                    panic!("expected key-value argument");
+                }
+            } else {
+                panic!("expected parenthesized args");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_cfg_attribute_not() {
+        let source = r#"
+            mod test {
+                #[cfg(not(test))]
+                fn production_only() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "production_only");
+            if let AttributeArgs::Parenthesized(args) = &func.attrs[0].args {
+                if let AttributeArg::Nested(name, nested) = &args[0] {
+                    assert_eq!(name, "not");
+                    assert_eq!(nested.len(), 1);
+                    if let AttributeArg::Ident(inner) = &nested[0] {
+                        assert_eq!(inner, "test");
+                    } else {
+                        panic!("expected ident in nested");
+                    }
+                } else {
+                    panic!("expected nested argument");
+                }
+            } else {
+                panic!("expected parenthesized args");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_attributes() {
+        let source = r#"
+            mod test {
+                #[test]
+                #[cfg(feature = "json")]
+                fn test_with_json() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "test_with_json");
+            assert_eq!(func.attrs.len(), 2);
+            assert_eq!(func.attrs[0].name, "test");
+            assert_eq!(func.attrs[1].name, "cfg");
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_attribute_on_struct() {
+        let source = r#"
+            mod test {
+                #[cfg(feature = "serde")]
+                struct User {
+                    name: string
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Struct(struct_def) = first_user_item(&module) {
+            assert_eq!(struct_def.name, "User");
+            assert_eq!(struct_def.attrs.len(), 1);
+            assert_eq!(struct_def.attrs[0].name, "cfg");
+        } else {
+            panic!("expected struct");
+        }
+    }
+
+    #[test]
+    fn test_parse_attribute_on_enum() {
+        let source = r#"
+            mod test {
+                #[cfg(test)]
+                enum TestResult {
+                    Pass,
+                    Fail
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Enum(enum_def) = first_user_item(&module) {
+            assert_eq!(enum_def.name, "TestResult");
+            assert_eq!(enum_def.attrs.len(), 1);
+            assert_eq!(enum_def.attrs[0].name, "cfg");
+        } else {
+            panic!("expected enum");
+        }
+    }
+
+    #[test]
+    fn test_parse_attribute_doc_equals() {
+        let source = r#"
+            mod test {
+                #[doc = "This is a function"]
+                fn documented() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            assert_eq!(func.name, "documented");
+            assert_eq!(func.attrs.len(), 1);
+            assert_eq!(func.attrs[0].name, "doc");
+            if let AttributeArgs::Eq(value) = &func.attrs[0].args {
+                assert_eq!(value, "This is a function");
+            } else {
+                panic!("expected eq args");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_attribute_cfg_all() {
+        let source = r#"
+            mod test {
+                #[cfg(all(feature = "a", feature = "b"))]
+                fn needs_both() {}
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(func) = first_user_item(&module) {
+            if let AttributeArgs::Parenthesized(args) = &func.attrs[0].args {
+                if let AttributeArg::Nested(name, nested) = &args[0] {
+                    assert_eq!(name, "all");
+                    assert_eq!(nested.len(), 2);
+                } else {
+                    panic!("expected nested argument");
+                }
+            } else {
+                panic!("expected parenthesized args");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_attribute_on_impl_method() {
+        let source = r#"
+            mod test {
+                struct Foo {}
+
+                impl Foo {
+                    #[test]
+                    fn test_method(self) {}
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        // Skip prelude items and struct to get to impl
+        let items = user_items(&module);
+        if let Item::Impl(impl_block) = &items[1] {
+            assert_eq!(impl_block.methods.len(), 1);
+            assert_eq!(impl_block.methods[0].attrs.len(), 1);
+            assert_eq!(impl_block.methods[0].attrs[0].name, "test");
+        } else {
+            panic!("expected impl block");
         }
     }
 }

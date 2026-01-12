@@ -4,6 +4,7 @@
 //! for a Rust-like language that compiles to Dream bytecode.
 
 mod ast;
+pub mod cfg;
 mod codegen;
 pub mod core_erlang;
 mod error;
@@ -15,6 +16,7 @@ mod token;
 pub mod typeck;
 
 pub use ast::*;
+pub use cfg::{is_test, should_include};
 pub use codegen::{compile, compile_file, Codegen, CodegenError, CodegenResult};
 pub use core_erlang::{
     emit_core_erlang, CoreErlangEmitter, CoreErlangError, GenericFunctionRegistry,

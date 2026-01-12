@@ -3,7 +3,7 @@
 //! Handles parsing of `dream.toml` manifest files and project discovery.
 
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +40,11 @@ pub struct ProjectConfig {
     pub application: Option<ApplicationConfig>,
     #[serde(default)]
     pub dependencies: HashMap<String, Dependency>,
+    /// Feature flags for conditional compilation.
+    /// Each feature can depend on other features.
+    /// Example: `[features]\n json = []\n full = ["json", "async"]`
+    #[serde(default)]
+    pub features: HashMap<String, Vec<String>>,
 }
 
 /// A dependency specification.
@@ -221,6 +226,82 @@ impl ProjectConfig {
             .map(|app| app.env.clone())
             .unwrap_or_default()
     }
+
+    /// Resolve feature dependencies and return all enabled features.
+    /// Given a list of requested features, this returns those features
+    /// plus all features they transitively depend on.
+    pub fn resolve_features(&self, requested: &[String]) -> HashSet<String> {
+        let mut enabled = HashSet::new();
+        let mut to_process: Vec<String> = requested.to_vec();
+
+        while let Some(feature) = to_process.pop() {
+            if enabled.contains(&feature) {
+                continue;
+            }
+            enabled.insert(feature.clone());
+
+            // Add dependencies of this feature
+            if let Some(deps) = self.features.get(&feature) {
+                for dep in deps {
+                    if !enabled.contains(dep) {
+                        to_process.push(dep.clone());
+                    }
+                }
+            }
+        }
+
+        enabled
+    }
+}
+
+// =============================================================================
+// Compile Options
+// =============================================================================
+
+/// Options for conditional compilation.
+/// Used to evaluate `#[cfg(...)]` attributes during code generation.
+#[derive(Debug, Clone, Default)]
+pub struct CompileOptions {
+    /// Whether we're compiling in test mode (enables `#[cfg(test)]` items).
+    pub test_mode: bool,
+    /// Set of enabled features for `#[cfg(feature = "...")]`.
+    pub features: HashSet<String>,
+}
+
+impl CompileOptions {
+    /// Create new compile options with no features and test mode off.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create compile options for test mode.
+    pub fn for_testing() -> Self {
+        Self {
+            test_mode: true,
+            features: HashSet::new(),
+        }
+    }
+
+    /// Create compile options with specific features.
+    pub fn with_features(features: HashSet<String>) -> Self {
+        Self {
+            test_mode: false,
+            features,
+        }
+    }
+
+    /// Create compile options for test mode with specific features.
+    pub fn for_testing_with_features(features: HashSet<String>) -> Self {
+        Self {
+            test_mode: true,
+            features,
+        }
+    }
+
+    /// Check if a feature is enabled.
+    pub fn has_feature(&self, feature: &str) -> bool {
+        self.features.contains(feature)
+    }
 }
 
 /// Generate a default dream.toml content for a new project.
@@ -328,5 +409,100 @@ version = "0.1.0"
         let config: ProjectConfig = toml::from_str(content).unwrap();
         assert!(!config.is_application());
         assert_eq!(config.application_module(), None);
+    }
+
+    #[test]
+    fn test_parse_features() {
+        let content = r#"
+[package]
+name = "my_app"
+version = "0.1.0"
+
+[features]
+json = []
+async = []
+full = ["json", "async"]
+"#;
+        let config: ProjectConfig = toml::from_str(content).unwrap();
+        assert_eq!(config.features.len(), 3);
+        assert!(config.features.contains_key("json"));
+        assert!(config.features.contains_key("async"));
+        assert!(config.features.contains_key("full"));
+        assert_eq!(config.features.get("full"), Some(&vec!["json".to_string(), "async".to_string()]));
+    }
+
+    #[test]
+    fn test_resolve_features_simple() {
+        let content = r#"
+[package]
+name = "my_app"
+version = "0.1.0"
+
+[features]
+json = []
+async = []
+"#;
+        let config: ProjectConfig = toml::from_str(content).unwrap();
+        let resolved = config.resolve_features(&["json".to_string()]);
+        assert_eq!(resolved.len(), 1);
+        assert!(resolved.contains("json"));
+    }
+
+    #[test]
+    fn test_resolve_features_with_dependencies() {
+        let content = r#"
+[package]
+name = "my_app"
+version = "0.1.0"
+
+[features]
+json = []
+async = []
+full = ["json", "async"]
+"#;
+        let config: ProjectConfig = toml::from_str(content).unwrap();
+        let resolved = config.resolve_features(&["full".to_string()]);
+        assert_eq!(resolved.len(), 3);
+        assert!(resolved.contains("json"));
+        assert!(resolved.contains("async"));
+        assert!(resolved.contains("full"));
+    }
+
+    #[test]
+    fn test_resolve_features_transitive() {
+        let content = r#"
+[package]
+name = "my_app"
+version = "0.1.0"
+
+[features]
+a = []
+b = ["a"]
+c = ["b"]
+"#;
+        let config: ProjectConfig = toml::from_str(content).unwrap();
+        let resolved = config.resolve_features(&["c".to_string()]);
+        assert_eq!(resolved.len(), 3);
+        assert!(resolved.contains("a"));
+        assert!(resolved.contains("b"));
+        assert!(resolved.contains("c"));
+    }
+
+    #[test]
+    fn test_compile_options() {
+        let opts = CompileOptions::new();
+        assert!(!opts.test_mode);
+        assert!(opts.features.is_empty());
+
+        let opts = CompileOptions::for_testing();
+        assert!(opts.test_mode);
+        assert!(opts.features.is_empty());
+
+        let mut features = HashSet::new();
+        features.insert("json".to_string());
+        let opts = CompileOptions::with_features(features);
+        assert!(!opts.test_mode);
+        assert!(opts.has_feature("json"));
+        assert!(!opts.has_feature("async"));
     }
 }

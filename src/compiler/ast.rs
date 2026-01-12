@@ -97,6 +97,41 @@ impl ModulePath {
     }
 }
 
+// =============================================================================
+// Attributes (for #[test], #[cfg(...)] etc.)
+// =============================================================================
+
+/// An attribute attached to an item.
+/// Syntax: `#[name]`, `#[name(args)]`, or `#[name = "value"]`
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: String,
+    pub args: AttributeArgs,
+    pub span: Span,
+}
+
+/// Arguments to an attribute.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeArgs {
+    /// No arguments: `#[test]`
+    None,
+    /// Parenthesized arguments: `#[cfg(test)]` or `#[cfg(feature = "json")]`
+    Parenthesized(Vec<AttributeArg>),
+    /// Equals value: `#[doc = "description"]`
+    Eq(String),
+}
+
+/// A single argument in parenthesized attribute args.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeArg {
+    /// Simple identifier: `test` in `#[cfg(test)]`
+    Ident(String),
+    /// Key-value pair: `feature = "json"` in `#[cfg(feature = "json")]`
+    KeyValue(String, String),
+    /// Nested function-like: `not(test)` in `#[cfg(not(test))]`
+    Nested(String, Vec<AttributeArg>),
+}
+
 /// Context for module resolution during compilation.
 #[derive(Debug, Clone, Default)]
 pub struct ModuleContext {
@@ -231,10 +266,14 @@ impl<T> Spanned<T> {
 /// A module declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
+    /// Attributes attached to this module
+    pub attrs: Vec<Attribute>,
     pub name: String,
     pub items: Vec<Item>,
     /// Source code for error reporting (optional)
     pub source: Option<String>,
+    /// Path to the source file (for incremental compilation)
+    pub source_path: Option<std::path::PathBuf>,
 }
 
 /// Top-level items in a module.
@@ -267,6 +306,8 @@ pub enum Item {
 /// `type Result<T> = (:ok, T) | :error;`
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAlias {
+    /// Attributes attached to this type alias
+    pub attrs: Vec<Attribute>,
     pub name: String,
     /// Generic type parameters (e.g., `<T, E>`)
     pub type_params: Vec<TypeParam>,
@@ -421,6 +462,8 @@ pub struct UseTreeItem {
 /// A function definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
+    /// Attributes attached to this function (e.g., `#[test]`)
+    pub attrs: Vec<Attribute>,
     pub name: String,
     /// Generic type parameters with optional bounds (e.g., `<T, U: Display>`)
     pub type_params: Vec<TypeParam>,
@@ -827,6 +870,8 @@ pub enum Type {
 /// Struct definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
+    /// Attributes attached to this struct
+    pub attrs: Vec<Attribute>,
     pub name: String,
     /// Generic type parameters with optional bounds (e.g., `<T: Display>`)
     pub type_params: Vec<TypeParam>,
@@ -837,6 +882,8 @@ pub struct StructDef {
 /// Enum definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
+    /// Attributes attached to this enum
+    pub attrs: Vec<Attribute>,
     pub name: String,
     /// Generic type parameters with optional bounds (e.g., `<T: Display, E>`)
     pub type_params: Vec<TypeParam>,
