@@ -540,6 +540,10 @@ struct ReplState {
     temp_dir: std::path::PathBuf,
     /// Last edited content from :edit command (for iterating)
     last_edit: Option<String>,
+    /// Extra code paths (for deps, project beam files, etc.)
+    extra_paths: Vec<std::path::PathBuf>,
+    /// Application to start (if running with -S)
+    app_name: Option<String>,
 }
 
 impl ReplState {
@@ -556,6 +560,29 @@ impl ReplState {
             stdlib_path,
             temp_dir,
             last_edit: None,
+            extra_paths: Vec::new(),
+            app_name: None,
+        }
+    }
+
+    fn with_app(app_name: String, beam_dir: std::path::PathBuf, deps_dirs: Vec<std::path::PathBuf>) -> Self {
+        let stdlib_path = find_stdlib_path();
+        let temp_dir = std::env::temp_dir();
+
+        let mut extra_paths = vec![beam_dir];
+        extra_paths.extend(deps_dirs);
+
+        Self {
+            bindings: Rc::new(RefCell::new(Vec::new())),
+            registry: Rc::new(RefCell::new(ModuleRegistry::new())),
+            beam_process: None,
+            beam_stdin: None,
+            result_rx: None,
+            stdlib_path,
+            temp_dir,
+            last_edit: None,
+            extra_paths,
+            app_name: Some(app_name),
         }
     }
 
@@ -575,7 +602,16 @@ impl ReplState {
             .map(|l| l.trim())
             .collect::<Vec<_>>()
             .join(" ");
-        let eval_code = format!("{}.", eval_code);
+
+        // If we have an app to start, add that to the eval code
+        let eval_code = if let Some(ref app_name) = self.app_name {
+            format!(
+                "{}, application:ensure_all_started({}).",
+                eval_code, app_name
+            )
+        } else {
+            format!("{}.", eval_code)
+        };
 
         let mut cmd = Command::new("erl");
         cmd.arg("-noshell");
@@ -583,6 +619,11 @@ impl ReplState {
 
         if let Some(ref stdlib) = self.stdlib_path {
             cmd.arg("-pa").arg(stdlib);
+        }
+
+        // Add extra paths (project beam files, deps, etc.)
+        for path in &self.extra_paths {
+            cmd.arg("-pa").arg(path);
         }
 
         cmd.arg("-eval").arg(&eval_code);
@@ -1195,6 +1236,156 @@ pub fn run_shell() -> ExitCode {
             }
             Err(ReadlineError::Eof) => {
                 println!("Goodbye!");
+                break;
+            }
+            Err(err) => {
+                eprintln!("Error: {:?}", err);
+                break;
+            }
+        }
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// Run the interactive shell with an application loaded (like `iex -S mix`)
+pub fn run_shell_with_app(
+    app_name: String,
+    beam_dir: std::path::PathBuf,
+    deps_dirs: Vec<std::path::PathBuf>,
+) -> ExitCode {
+    println!("Dream {} (BEAM backend)", env!("CARGO_PKG_VERSION"));
+    println!("Starting application '{}'...", app_name);
+    println!();
+
+    let mut state = ReplState::with_app(app_name.clone(), beam_dir, deps_dirs);
+
+    // Create Editor first so we can get an ExternalPrinter for BEAM output
+    let helper = ReplHelper::new(Rc::clone(&state.bindings), Rc::clone(&state.registry));
+    let mut rl = match Editor::new() {
+        Ok(editor) => editor,
+        Err(e) => {
+            eprintln!("Failed to initialize readline: {}", e);
+            return ExitCode::from(1);
+        }
+    };
+    rl.set_helper(Some(helper));
+
+    // Start BEAM with the app loaded
+    print!("Loading modules and starting application...");
+    std::io::stdout().flush().ok();
+
+    let start_result = if let Ok(printer) = rl.create_external_printer() {
+        state.ensure_beam_running(printer)
+    } else {
+        state.ensure_beam_running(StdoutPrinter)
+    };
+
+    if let Err(e) = start_result {
+        eprintln!(" failed: {}", e);
+        return ExitCode::from(1);
+    }
+
+    if let Err(e) = state.load_registry() {
+        println!(" failed to load registry: {}", e);
+    } else {
+        let count = state.registry.borrow().modules.len();
+        println!(" {} modules loaded.", count);
+    }
+
+    println!();
+    println!("Application '{}' started. Type :help for commands, :quit to exit.", app_name);
+    println!();
+
+    // Main REPL loop (same as run_shell)
+    loop {
+        let readline = rl.readline("dream> ");
+        match readline {
+            Ok(line) => {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                let _ = rl.add_history_entry(line);
+
+                if line.starts_with(':') {
+                    match line {
+                        ":quit" | ":q" => {
+                            println!("Stopping application and exiting...");
+                            break;
+                        }
+                        ":help" | ":h" => {
+                            print_help();
+                            continue;
+                        }
+                        ":clear" => {
+                            state.clear_bindings();
+                            println!("Bindings cleared.");
+                            continue;
+                        }
+                        ":bindings" | ":b" => {
+                            let bindings = state.bindings.borrow();
+                            if bindings.is_empty() {
+                                println!("No bindings.");
+                            } else {
+                                for binding in bindings.iter() {
+                                    println!("  {}", binding.name);
+                                }
+                            }
+                            continue;
+                        }
+                        ":reload" => {
+                            print!("Reloading modules...");
+                            std::io::stdout().flush().ok();
+                            state.registry.borrow_mut().modules.clear();
+                            if let Err(e) = state.load_registry() {
+                                println!(" failed: {}", e);
+                            } else {
+                                let count = state.registry.borrow().modules.len();
+                                println!(" {} modules loaded.", count);
+                            }
+                            continue;
+                        }
+                        ":edit" | ":e" => {
+                            match edit_and_eval(&mut state) {
+                                Ok(Some(result)) => println!("{}", result),
+                                Ok(None) => {}
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                            continue;
+                        }
+                        cmd if cmd.starts_with(":load ") => {
+                            let file = cmd.strip_prefix(":load ").unwrap().trim();
+                            if file.is_empty() {
+                                eprintln!("Usage: :load <file.dream>");
+                            } else {
+                                match load_and_compile(&mut state, file) {
+                                    Ok(msg) => println!("{}", msg),
+                                    Err(e) => eprintln!("Error: {}", e),
+                                }
+                            }
+                            continue;
+                        }
+                        _ => {
+                            eprintln!("Unknown command: {}", line);
+                            eprintln!("Type :help for available commands.");
+                            continue;
+                        }
+                    }
+                }
+
+                match parse_and_eval(&mut state, line) {
+                    Ok(result) => println!("{}", result),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+            }
+            Err(ReadlineError::Interrupted) => {
+                println!("^C");
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                println!("Stopping application and exiting...");
                 break;
             }
             Err(err) => {

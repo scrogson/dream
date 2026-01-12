@@ -1495,18 +1495,26 @@ fn run_application(
         return ExitCode::from(1);
     };
 
-    println!();
+    // Shell mode: use the Dream REPL with the application loaded
     if shell_mode {
-        println!("Starting application '{}' with interactive shell...", app_name);
-    } else {
-        println!("Starting application '{}'...", app_name);
+        let mut all_paths = vec![beam_dir.to_path_buf()];
+        if let Some(stdlib) = stdlib_dir {
+            all_paths.push(stdlib.clone());
+        }
+        all_paths.extend(deps_dirs.iter().cloned());
+
+        return repl::run_shell_with_app(app_name, beam_dir.to_path_buf(), all_paths);
     }
+
+    // Non-shell mode: run erl directly
+    println!();
+    println!("Starting application '{}'...", app_name);
     println!();
 
     // Build the eval expression for application mode:
     // 1. Set environment variables from config
     // 2. Use application:ensure_all_started/1 to start deps and our app
-    // 3. Block forever (receive loop) - unless in shell mode
+    // 3. Block forever (receive loop)
     let mut eval_parts = Vec::new();
 
     // Set application environment from config
@@ -1528,20 +1536,12 @@ fn run_application(
         app_name
     ));
 
-    // Print startup message
-    if shell_mode {
-        eval_parts.push(format!(
-            "io:format(\"Application '{}' started. Type Ctrl+G then 'q' to quit.~n~n\", [])",
-            app_name
-        ));
-    } else {
-        eval_parts.push(format!(
-            "io:format(\"Application '{}' started. Press Ctrl+C to stop.~n\", [])",
-            app_name
-        ));
-        // Block forever - the supervision tree handles everything
-        eval_parts.push("receive stop -> ok end".to_string());
-    }
+    // Print startup message and block forever
+    eval_parts.push(format!(
+        "io:format(\"Application '{}' started. Press Ctrl+C to stop.~n\", [])",
+        app_name
+    ));
+    eval_parts.push("receive stop -> ok end".to_string());
 
     let eval_expr = eval_parts.join(", ") + ".";
 
@@ -1558,13 +1558,7 @@ fn run_application(
         cmd.arg("-pa").arg(dep_dir);
     }
 
-    if shell_mode {
-        // Interactive shell mode - start app then give user a shell
-        cmd.arg("-eval").arg(&eval_expr);
-    } else {
-        // Non-interactive mode
-        cmd.arg("-noshell").arg("-eval").arg(&eval_expr);
-    }
+    cmd.arg("-noshell").arg("-eval").arg(&eval_expr);
 
     let status = cmd.status();
 
