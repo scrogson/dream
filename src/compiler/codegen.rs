@@ -399,12 +399,22 @@ impl Codegen {
             }
 
             Expr::String(s) => {
-                // Strings are represented as Value::String, but we don't have
-                // a LoadString instruction. For now, use a workaround with atoms.
-                // TODO: Add LoadString instruction
+                // Binary strings - TODO: Add LoadBinary instruction for VM target
+                // For now, use a workaround with atoms.
                 let dest = self.regs.alloc();
                 self.emit(Instruction::LoadAtom {
                     name: format!("__str_{}", s.replace(' ', "_")),
+                    dest,
+                });
+                Ok(dest)
+            }
+
+            Expr::Charlist(s) => {
+                // Charlists - TODO: Add proper string support in VM
+                // For now, use a workaround with atoms.
+                let dest = self.regs.alloc();
+                self.emit(Instruction::LoadAtom {
+                    name: format!("__charlist_{}", s.replace(' ', "_")),
                     dest,
                 });
                 Ok(dest)
@@ -1432,6 +1442,8 @@ impl Codegen {
             AstPattern::Int(n) => Ok(VmPattern::Int(*n)),
 
             AstPattern::String(s) => Ok(VmPattern::String(s.clone())),
+
+            AstPattern::Charlist(s) => Ok(VmPattern::String(s.clone())), // Charlists use same VM pattern for now
 
             AstPattern::Atom(a) => Ok(VmPattern::Atom(a.clone())),
 

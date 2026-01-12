@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 
 use dream::{
     compiler::{
-        cfg, check_modules, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
+        cfg, check_modules_with_metadata, resolve_stdlib_methods, CompilerError, CoreErlangEmitter,
         GenericFunctionRegistry, Item, Module, ModuleContext, ModuleLoader, Parser as DreamParser,
         SharedGenericRegistry,
     },
@@ -120,6 +120,8 @@ enum DepsAction {
     Get,
     /// Compile all dependencies
     Compile,
+    /// Generate bindings for dependencies
+    Bindgen,
 }
 
 mod bindgen;
@@ -225,11 +227,25 @@ fn cmd_deps(action: DepsAction) -> ExitCode {
                 return ExitCode::from(1);
             }
 
+            // Auto-generate bindings after fetching
+            if let Err(e) = deps_manager.generate_bindings() {
+                eprintln!("Warning: Failed to generate bindings: {}", e);
+                // Don't fail the command, just warn
+            }
+
             ExitCode::SUCCESS
         }
         DepsAction::Compile => {
             if let Err(e) = deps_manager.compile_deps() {
                 eprintln!("Error compiling dependencies: {}", e);
+                return ExitCode::from(1);
+            }
+
+            ExitCode::SUCCESS
+        }
+        DepsAction::Bindgen => {
+            if let Err(e) = deps_manager.generate_bindings() {
+                eprintln!("Error generating bindings: {}", e);
                 return ExitCode::from(1);
             }
 
@@ -273,6 +289,11 @@ fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>, features:
         config.package.name.clone(),
         src_dir.clone(),
     );
+
+    // Add _build/bindings/ to search path for auto-generated dependency bindings
+    let bindings_dir = project_root.join("_build").join("bindings");
+    loader.add_bindings_dir(bindings_dir);
+
     if let Err(e) = loader.load_all_in_dir(&src_dir) {
         eprintln!("Error loading modules: {}", e);
         return ExitCode::from(1);
@@ -332,6 +353,11 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
                 config.package.name.clone(),
                 src_dir.clone(),
             );
+
+            // Add _build/bindings/ to search path for auto-generated dependency bindings
+            let bindings_dir = project_root.join("_build").join("bindings");
+            loader.add_bindings_dir(bindings_dir);
+
             if let Err(e) = loader.load_all_in_dir(&src_dir) {
                 eprintln!("Error loading modules: {}", e);
                 return ExitCode::from(1);
@@ -473,14 +499,15 @@ fn compile_modules_with_registry(
     let mut has_errors = false;
 
     let mut annotated_modules: Vec<Module> = Vec::new();
-    let type_results = check_modules(&all_modules_for_typeck);
+    let type_check_result = check_modules_with_metadata(&all_modules_for_typeck);
+    let extern_module_names = type_check_result.extern_module_names.clone();
 
     // List of stdlib module names for filtering
     let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
         .map(|m| m.name.clone())
         .collect();
 
-    for (module_name, result) in type_results {
+    for (module_name, result) in type_check_result.modules {
         // Skip stub modules (they don't have function bodies)
         if module_name.ends_with("_stubs") || module_name == "erlang" {
             continue;
@@ -575,6 +602,9 @@ fn compile_modules_with_registry(
             generic_registry.clone(),
             module_context,
         );
+        // Set extern module name mappings for #[name = "..."] attribute support
+        emitter.set_extern_module_names(extern_module_names.clone());
+
         let core_erlang = match emitter.emit_module(module) {
             Ok(c) => c,
             Err(e) => {
@@ -705,14 +735,15 @@ fn compile_modules_with_registry_and_options(
     let mut has_errors = false;
 
     let mut annotated_modules: Vec<Module> = Vec::new();
-    let type_results = check_modules(&all_modules_for_typeck);
+    let type_check_result = check_modules_with_metadata(&all_modules_for_typeck);
+    let extern_module_names = type_check_result.extern_module_names.clone();
 
     // List of stdlib module names for filtering
     let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
         .map(|m| m.name.clone())
         .collect();
 
-    for (module_name, result) in type_results {
+    for (module_name, result) in type_check_result.modules {
         // Skip stub modules (they don't have function bodies)
         if module_name.ends_with("_stubs") || module_name == "erlang" {
             continue;
@@ -826,6 +857,9 @@ fn compile_modules_with_registry_and_options(
             module_context,
             compile_options.clone(),
         );
+        // Set extern module name mappings for #[name = "..."] attribute support
+        emitter.set_extern_module_names(extern_module_names.clone());
+
         let core_erlang = match emitter.emit_module(module) {
             Ok(c) => c,
             Err(e) => {
@@ -1667,6 +1701,11 @@ fn cmd_test(filter: Option<&str>, features: &[String]) -> ExitCode {
         config.package.name.clone(),
         src_dir.clone(),
     );
+
+    // Add _build/bindings/ to search path for auto-generated dependency bindings
+    let bindings_dir = project_root.join("_build").join("bindings");
+    loader.add_bindings_dir(bindings_dir);
+
     if let Err(e) = loader.load_all_in_dir(&src_dir) {
         eprintln!("Error loading modules: {}", e);
         return ExitCode::from(1);

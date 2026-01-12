@@ -3,11 +3,12 @@
 //! Performs semantic analysis to validate types across the program.
 //! The type checker runs after parsing and before code generation.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::compiler::ast::{
-    self, BinOp, Block, EnumPatternFields, EnumVariantArgs, Expr, ExternItem, ExternMod, Function,
-    ImplBlock, Item, MatchArm, Module, Pattern, Stmt, StringPart, TypeParam, UnaryOp, VariantKind,
+    self, AttributeArgs, BinOp, Block, EnumPatternFields, EnumVariantArgs, Expr, ExternItem,
+    ExternMod, Function, ImplBlock, Item, MatchArm, Module, PathPrefix, Pattern, Stmt, StringPart,
+    TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
 };
 use crate::compiler::error::{TypeError, TypeResult};
 
@@ -470,6 +471,15 @@ pub struct TypeEnv {
     /// External function signatures: (module, function, arity) -> FnInfo
     /// Used for type-checking FFI calls to Erlang/Elixir/etc
     extern_functions: HashMap<(String, String, usize), FnInfo>,
+    /// Maps Dream extern module name -> BEAM module name
+    /// Used for #[name = "Elixir.Enum"] attribute support
+    extern_module_names: HashMap<String, String>,
+    /// Set of known extern module names (Dream names)
+    /// Used to resolve `module::fn()` calls as extern calls
+    extern_modules: HashSet<String>,
+    /// Extern function imports: local_name -> (module, function_name)
+    /// Used for `use jason::encode; encode(data)` syntax
+    extern_imports: HashMap<String, (String, String)>,
 }
 
 impl TypeEnv {
@@ -491,6 +501,9 @@ impl TypeEnv {
             module_traits: self.module_traits.clone(),
             associated_types: self.associated_types.clone(),
             extern_functions: self.extern_functions.clone(),
+            extern_module_names: self.extern_module_names.clone(),
+            extern_modules: self.extern_modules.clone(),
+            extern_imports: self.extern_imports.clone(),
         }
     }
 
@@ -562,6 +575,33 @@ impl TypeEnv {
     pub fn get_extern_function(&self, module: &str, function: &str, arity: usize) -> Option<&FnInfo> {
         self.extern_functions
             .get(&(module.to_string(), function.to_string(), arity))
+    }
+
+    /// Check if a name is a known extern module.
+    pub fn is_extern_module(&self, name: &str) -> bool {
+        self.extern_modules.contains(name)
+    }
+
+    /// Get the BEAM module name for a Dream extern module name.
+    /// Returns the mapped name if #[name = "..."] was used, otherwise the original name.
+    pub fn get_beam_module_name(&self, dream_name: &str) -> Option<&String> {
+        self.extern_module_names.get(dream_name)
+    }
+
+    /// Get all extern module name mappings (for code generation).
+    pub fn get_extern_module_names(&self) -> &HashMap<String, String> {
+        &self.extern_module_names
+    }
+
+    /// Register an extern function import: `use jason::encode;`
+    /// Maps local name "encode" -> ("jason", "encode")
+    pub fn add_extern_import(&mut self, local_name: String, module: String, function: String) {
+        self.extern_imports.insert(local_name, (module, function));
+    }
+
+    /// Check if a name is an imported extern function.
+    pub fn get_extern_import(&self, name: &str) -> Option<&(String, String)> {
+        self.extern_imports.get(name)
     }
 }
 
@@ -1242,6 +1282,10 @@ impl TypeChecker {
                     // Collect external function signatures from .dreamt stubs
                     self.collect_extern_mod(extern_mod, &extern_mod.name);
                 }
+                Item::Use(use_decl) => {
+                    // Check if this is an import from an extern module
+                    self.collect_use_decl(use_decl);
+                }
                 Item::TypeAlias(alias) => {
                     // Store type alias with its type parameters for generic alias support
                     let ty = self.ast_type_to_ty(&alias.ty);
@@ -1261,7 +1305,30 @@ impl TypeChecker {
     }
 
     /// Recursively collect external function signatures from an extern mod.
+    /// Also extracts #[name = "..."] attribute for module name mapping.
     fn collect_extern_mod(&mut self, extern_mod: &ExternMod, module_path: &str) {
+        // Extract #[name = "BeamModuleName"] attribute if present
+        let beam_module_name = extern_mod
+            .attrs
+            .iter()
+            .find_map(|attr| {
+                if attr.name == "name" {
+                    if let AttributeArgs::Eq(value) = &attr.args {
+                        return Some(value.clone());
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| module_path.to_string());
+
+        // Store the Dream name -> BEAM name mapping
+        self.env
+            .extern_module_names
+            .insert(module_path.to_string(), beam_module_name.clone());
+
+        // Register this as a known extern module
+        self.env.extern_modules.insert(module_path.to_string());
+
         for item in &extern_mod.items {
             match item {
                 ExternItem::Mod(nested) => {
@@ -1291,6 +1358,76 @@ impl TypeChecker {
                 ExternItem::Type(_) => {
                     // TODO: Handle opaque type declarations
                     // For now, we skip them - they're just markers
+                }
+            }
+        }
+    }
+
+    /// Known Dream stdlib modules that should NOT be treated as extern modules.
+    /// These modules live under the dream:: namespace and have their own implementations.
+    const STDLIB_MODULES: &'static [&'static str] = &[
+        "io", "list", "enumerable", "iterator", "option", "result",
+        "string", "map", "file", "timer", "display", "convert",
+        "process", "genserver", "supervisor", "application",
+    ];
+
+    /// Check if a module name is a Dream stdlib module.
+    fn is_stdlib_module(name: &str) -> bool {
+        Self::STDLIB_MODULES.contains(&name)
+    }
+
+    /// Collect extern imports from a use declaration.
+    /// Handles `use jason::encode;` and `use jason::{encode, decode};`
+    /// Note: Dream stdlib modules take priority over extern modules with the same name.
+    fn collect_use_decl(&mut self, use_decl: &UseDecl) {
+        match &use_decl.tree {
+            UseTree::Path { module, name, rename } => {
+                // Check if the module path refers to an extern module
+                // e.g., `use jason::encode;` where `jason` is an extern module
+                if module.segments.len() >= 1 && module.prefix == PathPrefix::None {
+                    let first_segment = &module.segments[0];
+                    // Skip if this is a Dream stdlib module - those are handled differently
+                    if Self::is_stdlib_module(first_segment) {
+                        return;
+                    }
+                    if self.env.is_extern_module(first_segment) {
+                        // This is an import from an extern module
+                        let local_name = rename.clone().unwrap_or_else(|| name.clone());
+                        self.env.add_extern_import(local_name, first_segment.clone(), name.clone());
+                    }
+                }
+            }
+            UseTree::Group { module, items } => {
+                // Check if the module path refers to an extern module
+                // e.g., `use jason::{encode, decode};`
+                if module.segments.len() >= 1 && module.prefix == PathPrefix::None {
+                    let first_segment = &module.segments[0];
+                    // Skip if this is a Dream stdlib module - those are handled differently
+                    if Self::is_stdlib_module(first_segment) {
+                        return;
+                    }
+                    if self.env.is_extern_module(first_segment) {
+                        // This is a group import from an extern module
+                        for item in items {
+                            let local_name = item.rename.clone().unwrap_or_else(|| item.name.clone());
+                            self.env.add_extern_import(local_name, first_segment.clone(), item.name.clone());
+                        }
+                    }
+                }
+            }
+            UseTree::Glob { module } => {
+                // Glob imports from extern modules aren't supported yet
+                // e.g., `use jason::*;` - we'd need to know all functions in the extern module
+                if module.segments.len() >= 1 && module.prefix == PathPrefix::None {
+                    let first_segment = &module.segments[0];
+                    // Skip if this is a Dream stdlib module
+                    if Self::is_stdlib_module(first_segment) {
+                        return;
+                    }
+                    if self.env.is_extern_module(first_segment) {
+                        // TODO: Could iterate over all registered extern functions for this module
+                        // and add them all as imports
+                    }
                 }
             }
         }
@@ -1624,7 +1761,8 @@ impl TypeChecker {
         match expr {
             // Literals
             Expr::Int(_) => Ok(Ty::Int),
-            Expr::String(_) => Ok(Ty::String),
+            Expr::String(_) => Ok(Ty::String),  // Binary string (double quotes)
+            Expr::Charlist(_) => Ok(Ty::String), // Charlist (single quotes) - same type for now
             Expr::StringInterpolation(parts) => {
                 // Type check each expression part (any type is allowed)
                 for part in parts {
@@ -2202,6 +2340,33 @@ impl TypeChecker {
 
                     // Apply substitutions to return type
                     Ok(self.apply_substitutions(&instantiated.ret))
+                } else if let Some((module, func_name)) = self.env.get_extern_import(name).cloned() {
+                    // This is an imported extern function: `use jason::encode; encode(data)`
+                    let arity = args.len();
+                    if let Some(info) = self.env.get_extern_function(&module, &func_name, arity).cloned() {
+                        let instantiated = self.instantiate_function(&info);
+
+                        // Check argument types
+                        for (arg, (_, param_ty)) in args.iter().zip(instantiated.params.iter()) {
+                            let arg_ty = self.infer_expr(arg)?;
+                            if self.unify(&arg_ty, param_ty).is_err()
+                                && !self.types_compatible(&arg_ty, param_ty)
+                            {
+                                self.error(TypeError::with_help(
+                                    format!("type mismatch in call to '{}'", name),
+                                    format!("expected {}, found {}", param_ty, arg_ty),
+                                ));
+                            }
+                        }
+
+                        return Ok(self.apply_substitutions(&instantiated.ret));
+                    }
+
+                    // Unknown extern function - treat as any
+                    for arg in args {
+                        self.infer_expr(arg)?;
+                    }
+                    Ok(Ty::Any)
                 } else {
                     // Unknown function - could be external
                     for arg in args {
@@ -2216,6 +2381,37 @@ impl TypeChecker {
                     let module = &segments[0];
                     let func_name = &segments[1];
                     let qualified_name = format!("{}::{}", module, func_name);
+
+                    // Check if this is a call to an extern module
+                    if self.env.is_extern_module(module) {
+                        // Look up extern function signature
+                        let arity = args.len();
+                        if let Some(info) = self.env.get_extern_function(module, func_name, arity).cloned() {
+                            // Instantiate generic function
+                            let instantiated = self.instantiate_function(&info);
+
+                            // Check argument types
+                            for (arg, (_, param_ty)) in args.iter().zip(instantiated.params.iter()) {
+                                let arg_ty = self.infer_expr(arg)?;
+                                if self.unify(&arg_ty, param_ty).is_err()
+                                    && !self.types_compatible(&arg_ty, param_ty)
+                                {
+                                    self.error(TypeError::with_help(
+                                        format!("type mismatch in call to '{}::{}'", module, func_name),
+                                        format!("expected {}, found {}", param_ty, arg_ty),
+                                    ));
+                                }
+                            }
+
+                            return Ok(self.apply_substitutions(&instantiated.ret));
+                        }
+
+                        // Unknown extern function - treat as any
+                        for arg in args {
+                            self.infer_expr(arg)?;
+                        }
+                        return Ok(Ty::Any);
+                    }
 
                     if let Some(info) = self.env.get_function(&qualified_name).cloned() {
                         // Instantiate generic function
@@ -2645,7 +2841,7 @@ impl TypeChecker {
 
             // Literals that don't have finite alternatives - treat as wildcard for exhaustiveness
             // (we'll use NonExhaustive for the type itself)
-            Pattern::Int(_) | Pattern::String(_) | Pattern::Atom(_) => {
+            Pattern::Int(_) | Pattern::String(_) | Pattern::Charlist(_) | Pattern::Atom(_) => {
                 DeconstructedPat::wildcard(ty.clone())
             }
 
@@ -2990,8 +3186,68 @@ impl TypeChecker {
     fn annotate_expr(&mut self, expr: &Expr) -> Expr {
         match expr {
             Expr::Call { func, type_args, args, .. } => {
-                let annotated_func = Box::new(self.annotate_expr(func));
                 let annotated_args: Vec<Expr> = args.iter().map(|a| self.annotate_expr(a)).collect();
+
+                // Check if this is a call to an extern module: module::func(args)
+                if let Expr::Path { segments } = func.as_ref() {
+                    if segments.len() == 2 {
+                        let module = &segments[0];
+                        let func_name = &segments[1];
+
+                        if self.env.is_extern_module(module) {
+                            // Transform to ExternCall with Result wrapping if needed
+                            let arity = args.len();
+                            if let Some(info) = self.env.get_extern_function(module, func_name, arity).cloned() {
+                                // Check for Result<T, E> return type
+                                if let Ty::Named { name, args: type_args, .. } = &info.ret {
+                                    if name == "Result" && type_args.len() == 2 {
+                                        let is_unit_ok = matches!(&type_args[0], Ty::Unit);
+                                        return self.transform_extern_to_result(module, func_name, annotated_args, is_unit_ok);
+                                    }
+                                    if name == "Option" && type_args.len() == 1 {
+                                        return self.transform_extern_to_option(module, func_name, annotated_args);
+                                    }
+                                }
+                            }
+
+                            // Plain extern call without Result/Option transformation
+                            return Expr::ExternCall {
+                                module: module.clone(),
+                                function: func_name.clone(),
+                                args: annotated_args,
+                            };
+                        }
+                    }
+                }
+
+                // Check if this is an imported extern function: `use jason::encode; encode(data)`
+                if let Expr::Ident(name) = func.as_ref() {
+                    if let Some((module, func_name)) = self.env.get_extern_import(name).cloned() {
+                        // Transform to ExternCall with Result wrapping if needed
+                        let arity = args.len();
+                        if let Some(info) = self.env.get_extern_function(&module, &func_name, arity).cloned() {
+                            // Check for Result<T, E> return type
+                            if let Ty::Named { name: type_name, args: type_args, .. } = &info.ret {
+                                if type_name == "Result" && type_args.len() == 2 {
+                                    let is_unit_ok = matches!(&type_args[0], Ty::Unit);
+                                    return self.transform_extern_to_result(&module, &func_name, annotated_args, is_unit_ok);
+                                }
+                                if type_name == "Option" && type_args.len() == 1 {
+                                    return self.transform_extern_to_option(&module, &func_name, annotated_args);
+                                }
+                            }
+                        }
+
+                        // Plain extern call without Result/Option transformation
+                        return Expr::ExternCall {
+                            module,
+                            function: func_name,
+                            args: annotated_args,
+                        };
+                    }
+                }
+
+                let annotated_func = Box::new(self.annotate_expr(func));
 
                 // If explicit type_args provided, no need to infer
                 if !type_args.is_empty() {
@@ -3158,7 +3414,7 @@ impl TypeChecker {
             Expr::Return(e) => Expr::Return(e.as_ref().map(|e| Box::new(self.annotate_expr(e)))),
 
             // Simple expressions that don't need annotation
-            Expr::Int(_) | Expr::String(_) | Expr::Atom(_)
+            Expr::Int(_) | Expr::String(_) | Expr::Charlist(_) | Expr::Atom(_)
             | Expr::Bool(_) | Expr::Unit | Expr::Ident(_) | Expr::Path { .. } => expr.clone(),
 
             Expr::StringInterpolation(parts) => {
@@ -3399,6 +3655,70 @@ pub fn check_modules(modules: &[Module]) -> Vec<(String, TypeResult<Module>)> {
     }
 
     results
+}
+
+/// Result of type checking with additional metadata.
+pub struct TypeCheckResult {
+    /// Type check results per module: (module_name, result)
+    pub modules: Vec<(String, TypeResult<Module>)>,
+    /// Extern module name mappings (Dream name -> BEAM name)
+    pub extern_module_names: HashMap<String, String>,
+}
+
+/// Type check multiple modules and return results with extern module name mappings.
+/// This is the preferred entry point when you need access to bindings metadata.
+pub fn check_modules_with_metadata(modules: &[Module]) -> TypeCheckResult {
+    let mut checker = TypeChecker::new();
+
+    // First pass: collect all type definitions from ALL modules
+    for module in modules {
+        let _ = checker.collect_types(module);
+    }
+
+    // Second pass: collect all function signatures from ALL modules
+    for module in modules {
+        let _ = checker.collect_functions(module);
+    }
+
+    // Third pass: type check each module's function bodies
+    let mut results = Vec::new();
+    for module in modules {
+        // Clear errors before checking each module
+        checker.errors.clear();
+        // Set current module for local function resolution
+        checker.current_module = Some(module.name.clone());
+
+        // Validate trait implementations for this module
+        for item in &module.items {
+            if let Item::TraitImpl(impl_def) = item {
+                checker.validate_trait_impl(impl_def);
+            }
+        }
+
+        for item in &module.items {
+            if let Item::Function(func) = item {
+                let _ = checker.check_function(func);
+            }
+            if let Item::Impl(impl_block) = item {
+                let _ = checker.check_impl_block(impl_block);
+            }
+        }
+
+        // Collect result for this module
+        let result = if let Some(err) = checker.errors.first() {
+            Err(err.clone())
+        } else {
+            // Fourth pass: annotate the AST with inferred type args
+            let annotated = checker.annotate_module(module);
+            Ok(annotated)
+        };
+        results.push((module.name.clone(), result));
+    }
+
+    TypeCheckResult {
+        modules: results,
+        extern_module_names: checker.env.extern_module_names.clone(),
+    }
 }
 
 // =============================================================================
@@ -3688,6 +4008,7 @@ impl MethodResolver {
             // Leaf expressions - no children to resolve
             Expr::Int(_)
             | Expr::String(_)
+            | Expr::Charlist(_)
             | Expr::Atom(_)
             | Expr::Bool(_)
             | Expr::Ident(_)
@@ -3702,6 +4023,7 @@ impl MethodResolver {
     fn infer_expr_type(&self, expr: &Expr) -> Ty {
         match expr {
             Expr::String(_) => Ty::String,
+            Expr::Charlist(_) => Ty::String,
             Expr::StringInterpolation(_) => Ty::String,
             Expr::Int(_) => Ty::Int,
             Expr::Bool(_) => Ty::Bool,

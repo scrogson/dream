@@ -50,6 +50,6 @@ fn compile_routes() -> any {
     let r2 = ("/api/users", users, []);
     let r3 = (:_, not_found, []);
     let routes = :lists::append([r1], :lists::append([r2], [r3]));
-    let host_routes = (:_, routes);
-    :cowboy_router::compile([host_routes])
+
+    :cowboy_router::compile([(:_, routes)])
 }

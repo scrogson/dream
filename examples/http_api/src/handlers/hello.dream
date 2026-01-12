@@ -1,5 +1,8 @@
 // Handler for GET /api/hello
 
+// Import bindings - jason is manual, cowboy_req is auto-generated
+use bindings::jason;
+
 /// Convert a string (charlist) to binary for JSON encoding
 fn to_binary(s: string) -> any {
     :erlang::iolist_to_binary([s])
@@ -9,15 +12,17 @@ pub fn init(req: any, state: any) -> (atom, any, any) {
     // Build a map for JSON response
     let message = to_binary("Hello from Dream!");
     let data = :maps::put(:message, message, :maps::new());
-    match :"Elixir.Jason"::encode(data) {
-        (:ok, json) => {
+
+    // jason::encode uses manual bindings, cowboy_req::reply uses auto-generated
+    match jason::encode(data) {
+        Ok(json) => {
             let headers = :maps::put("content-type", "application/json", :maps::new());
-            let req2 = :cowboy_req::reply(200, headers, json, req);
+            let req2 = cowboy_req::reply(200, headers, json, req);
             (:ok, req2, state)
         },
-        _ => {
+        Err(_) => {
             let headers = :maps::put("content-type", "text/plain", :maps::new());
-            let req2 = :cowboy_req::reply(500, headers, "JSON encoding error", req);
+            let req2 = cowboy_req::reply(500, headers, "JSON encoding error", req);
             (:ok, req2, state)
         }
     }

@@ -78,6 +78,8 @@ pub struct ModuleLoader {
     package_name: Option<String>,
     /// Source directory root for relative path calculation.
     src_root: Option<PathBuf>,
+    /// Additional directories to search for bindings (e.g., _build/bindings/).
+    bindings_dirs: Vec<PathBuf>,
 }
 
 impl ModuleLoader {
@@ -89,6 +91,7 @@ impl ModuleLoader {
             loading: Vec::new(),
             package_name: None,
             src_root: None,
+            bindings_dirs: Vec::new(),
         }
     }
 
@@ -102,14 +105,39 @@ impl ModuleLoader {
             loading: Vec::new(),
             package_name: Some(package_name),
             src_root: Some(src_root),
+            bindings_dirs: Vec::new(),
+        }
+    }
+
+    /// Add a directory to search for bindings (e.g., _build/bindings/).
+    /// Files in bindings directories can use .dream or .dreamt extensions.
+    pub fn add_bindings_dir(&mut self, dir: PathBuf) {
+        if dir.exists() {
+            self.bindings_dirs.push(dir);
         }
     }
 
     /// Derive the full module name from a file path.
     /// For Rust-style projects: `src/users/auth.dream` -> `my_app::users::auth`
     /// For lib.dream at src root: `src/lib.dream` -> `my_app`
+    /// For bindings files: `_build/bindings/cowboy.dreamt` -> `cowboy`
     /// For standalone files (no package): uses just the filename stem
     fn derive_module_name(&self, path: &Path) -> String {
+        // Check if this is a bindings file - use just the filename
+        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        for bindings_dir in &self.bindings_dirs {
+            if let Ok(canonical_bindings) = bindings_dir.canonicalize() {
+                if canonical_path.starts_with(&canonical_bindings) {
+                    // This is a bindings file - use just the filename as module name
+                    return path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                }
+            }
+        }
+
         // If no package context, fall back to filename-based naming
         let (package, src_root) = match (&self.package_name, &self.src_root) {
             (Some(pkg), Some(root)) => (pkg.clone(), root.clone()),
@@ -133,8 +161,6 @@ impl ModuleLoader {
             }
         };
 
-        // Try to get canonical paths for comparison
-        let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         let canonical_root = src_root.canonicalize().unwrap_or(src_root);
 
         // Get the path relative to src root
@@ -172,22 +198,50 @@ impl ModuleLoader {
 
     /// Resolve module path for a mod declaration.
     /// Looks for `<dir>/<name>.dream` or `<dir>/<name>/mod.dream`.
+    /// Also searches in bindings directories for .dream and .dreamt files.
     pub fn resolve_module_path(&self, name: &str, from: &Path) -> LoadResult<PathBuf> {
         let parent = from.parent().unwrap_or(Path::new("."));
+        let mut searched = Vec::new();
 
-        // Try <dir>/<name>.dream
+        // Try <dir>/<name>.dream (local)
         let file_path = parent.join(format!("{}.dream", name));
         if file_path.exists() {
             return Ok(file_path);
         }
+        searched.push(file_path);
 
-        // Try <dir>/<name>/mod.dream
+        // Try <dir>/<name>/mod.dream (local subdirectory)
         let dir_path = parent.join(name).join("mod.dream");
         if dir_path.exists() {
             return Ok(dir_path);
         }
+        searched.push(dir_path);
 
-        Err(LoadError::module_not_found(name, &[file_path, dir_path]))
+        // Search in bindings directories
+        for bindings_dir in &self.bindings_dirs {
+            // Try <bindings>/<name>.dream
+            let binding_path = bindings_dir.join(format!("{}.dream", name));
+            if binding_path.exists() {
+                return Ok(binding_path);
+            }
+            searched.push(binding_path);
+
+            // Try <bindings>/<name>.dreamt (generated bindings)
+            let dreamt_path = bindings_dir.join(format!("{}.dreamt", name));
+            if dreamt_path.exists() {
+                return Ok(dreamt_path);
+            }
+            searched.push(dreamt_path);
+
+            // Try <bindings>/<name>/mod.dream
+            let binding_mod_path = bindings_dir.join(name).join("mod.dream");
+            if binding_mod_path.exists() {
+                return Ok(binding_mod_path);
+            }
+            searched.push(binding_mod_path);
+        }
+
+        Err(LoadError::module_not_found(name, &searched))
     }
 
     /// Load a module and all its dependencies.
@@ -398,8 +452,11 @@ impl ModuleLoader {
 
             if path.is_dir() {
                 Self::find_dream_files_recursive(&path, files)?;
-            } else if path.extension().and_then(|s| s.to_str()) == Some("dream") {
-                files.push(path);
+            } else if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                // Support both .dream and .dreamt (generated bindings)
+                if ext == "dream" || ext == "dreamt" {
+                    files.push(path);
+                }
             }
         }
 

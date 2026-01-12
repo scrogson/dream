@@ -27,4 +27,4 @@ pub use lexer::Lexer;
 pub use loader::{LoadError, LoadResult, ModuleLoader};
 pub use parser::Parser;
 pub use token::Token;
-pub use typeck::{check_module, check_modules, resolve_stdlib_methods};
+pub use typeck::{check_module, check_modules, check_modules_with_metadata, resolve_stdlib_methods, TypeCheckResult};

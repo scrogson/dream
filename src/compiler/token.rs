@@ -231,17 +231,27 @@ pub enum Token {
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Int(i64),
 
-    /// String literal - stores RAW content (quotes stripped, escapes NOT processed).
+    /// Binary string literal (double quotes) - Elixir-style.
+    /// Stores RAW content (quotes stripped, escapes NOT processed).
     /// The parser will:
     /// 1. Check for interpolation (`{expr}` syntax)
     /// 2. If found: parse as InterpolatedString
-    /// 3. If not: process escapes and create Expr::String
+    /// 3. If not: process escapes and create Expr::Binary
     #[regex(r#""([^"\\]|\\.)*""#, |lex| {
         let s = lex.slice();
         // Strip quotes but keep raw content for interpolation detection
         Some(s[1..s.len()-1].to_string())
     })]
     String(String),
+
+    /// Charlist literal (single quotes) - Elixir-style.
+    /// Produces a list of integers (codepoints).
+    #[regex(r#"'([^'\\]|\\.)*'"#, |lex| {
+        let s = lex.slice();
+        // Strip quotes but keep raw content
+        Some(s[1..s.len()-1].to_string())
+    }, priority = 2)]
+    Charlist(String),
 
     // Simple atoms: :ok, :error, :my_atom
     #[regex(r":[a-z_][a-z0-9_]*", |lex| Some(lex.slice()[1..].to_string()))]
@@ -395,6 +405,7 @@ impl std::fmt::Display for Token {
             Token::Type => write!(f, "type"),
             Token::Int(n) => write!(f, "{}", n),
             Token::String(s) => write!(f, "\"{}\"", s),
+            Token::Charlist(s) => write!(f, "'{}'", s),
             Token::Atom(a) => write!(f, ":{}", a),
             Token::QuotedAtom(a) => write!(f, ":'{}'", a),
             Token::Ident(s) => write!(f, "{}", s),

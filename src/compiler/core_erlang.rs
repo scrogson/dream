@@ -133,6 +133,9 @@ pub struct CoreErlangEmitter {
     cross_module_inlining_source: Option<String>,
     /// Compile options for conditional compilation (test mode, features).
     compile_options: CompileOptions,
+    /// Maps Dream extern module name -> BEAM module name
+    /// Used for #[name = "Elixir.Enum"] attribute support
+    extern_module_names: HashMap<String, String>,
 }
 
 impl CoreErlangEmitter {
@@ -160,6 +163,7 @@ impl CoreErlangEmitter {
             cross_module_monomorphizations: HashSet::new(),
             cross_module_inlining_source: None,
             compile_options: CompileOptions::new(),
+            extern_module_names: HashMap::new(),
         }
     }
 
@@ -211,6 +215,12 @@ impl CoreErlangEmitter {
             compile_options: options,
             ..Self::new()
         }
+    }
+
+    /// Set the extern module name mappings (Dream name -> BEAM name).
+    /// Used for #[name = "Elixir.Enum"] attribute support.
+    pub fn set_extern_module_names(&mut self, mappings: HashMap<String, String>) {
+        self.extern_module_names = mappings;
     }
 
     /// Register this module's generic functions in the shared registry.
@@ -2300,7 +2310,16 @@ impl CoreErlangEmitter {
             }
 
             Expr::String(s) => {
-                // Core Erlang strings are lists of integers
+                // Binary string (double quotes) - emit as Erlang binary
+                // Use list_to_binary to convert char codes to binary
+                self.emit("call 'erlang':'list_to_binary'([");
+                let chars: Vec<String> = s.chars().map(|c| (c as u32).to_string()).collect();
+                self.emit(&chars.join(", "));
+                self.emit("])");
+            }
+
+            Expr::Charlist(s) => {
+                // Charlist (single quotes) - emit as list of integers
                 self.emit("[");
                 let chars: Vec<String> = s.chars().map(|c| (c as u32).to_string()).collect();
                 self.emit(&chars.join(", "));
@@ -3142,7 +3161,13 @@ impl CoreErlangEmitter {
 
             Expr::ExternCall { module, function, args } => {
                 // External function call: :erlang::abs(x) → call 'erlang':'abs'(X)
-                self.emit(&format!("call '{}':'{}'(", module, function));
+                // Use mapped BEAM module name if #[name = "..."] attribute was used
+                let beam_module = self
+                    .extern_module_names
+                    .get(module)
+                    .map(|s| s.as_str())
+                    .unwrap_or(module);
+                self.emit(&format!("call '{}':'{}'(", beam_module, function));
                 self.emit_args(args)?;
                 self.emit(")");
             }
@@ -3470,7 +3495,20 @@ impl CoreErlangEmitter {
             }
 
             Pattern::String(s) => {
-                // String pattern as list of chars
+                // Binary string pattern - emit as binary literal syntax
+                // Core Erlang binary literals use: #{Seg1, Seg2, ...}#
+                // Each segment is: #<Value>(Size, Unit, Type, Flags)
+                self.emit("#{");
+                let chars: Vec<String> = s
+                    .chars()
+                    .map(|c| format!("#<{}>(8, 1, 'integer', ['unsigned', 'big'])", c as u32))
+                    .collect();
+                self.emit(&chars.join(", "));
+                self.emit("}#");
+            }
+
+            Pattern::Charlist(s) => {
+                // Charlist pattern - match as list of chars
                 self.emit("[");
                 let chars: Vec<String> = s.chars().map(|c| (c as u32).to_string()).collect();
                 self.emit(&chars.join(", "));
@@ -3717,17 +3755,19 @@ pub fn emit_core_erlang_with_typecheck(source: &str, typecheck: bool) -> CoreErl
         .parse_module()
         .map_err(|e| CoreErlangError::new(format!("Parse error: {}", e.message)))?;
 
-    let module = if typecheck {
-        use crate::compiler::typeck::check_modules;
-        // Type check and annotate the module
-        let results = check_modules(&[module]);
-        let (_, result) = results.into_iter().next().unwrap();
-        result.map_err(|e| CoreErlangError::new(format!("Type error: {}", e.message)))?
+    let (module, extern_module_names) = if typecheck {
+        use crate::compiler::typeck::check_modules_with_metadata;
+        // Type check and annotate the module, extract extern module name mappings
+        let result = check_modules_with_metadata(&[module]);
+        let (_, type_result) = result.modules.into_iter().next().unwrap();
+        let module = type_result.map_err(|e| CoreErlangError::new(format!("Type error: {}", e.message)))?;
+        (module, result.extern_module_names)
     } else {
-        module
+        (module, HashMap::new())
     };
 
     let mut emitter = CoreErlangEmitter::new();
+    emitter.set_extern_module_names(extern_module_names);
     emitter.emit_module(&module)
 }
 
@@ -3963,5 +4003,180 @@ mod tests {
         // The Result should have proper tuple construction before unwrap_or is called
         assert!(result.contains("{'ok'"), "missing {{'ok', ...}} in:\n{}", result);
         assert!(result.contains("{'error'"), "missing {{'error', ...}} in:\n{}", result);
+    }
+
+    #[test]
+    fn test_extern_mod_name_attribute() {
+        // Test that #[name = "Elixir.Jason"] attribute maps module names in extern calls
+        let source = r#"
+            mod test {
+                #[name = "Elixir.Jason"]
+                extern mod jason {
+                    fn encode(input: any) -> Result<string, any>;
+                    fn decode(input: string) -> Result<any, any>;
+                }
+
+                pub fn encode_data(data: any) -> Result<string, any> {
+                    :jason::encode(data)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // The extern call should use 'Elixir.Jason' instead of 'jason'
+        assert!(
+            result.contains("call 'Elixir.Jason':'encode'"),
+            "Expected call 'Elixir.Jason':'encode', but got:\n{}",
+            result
+        );
+        // Should NOT contain 'jason' as the module name
+        assert!(
+            !result.contains("call 'jason':'encode'"),
+            "Should not have call 'jason':'encode', but got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_extern_mod_without_name_attribute() {
+        // Test that extern mods without #[name] use the Dream module name
+        let source = r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(n: int) -> int;
+                }
+
+                pub fn absolute(n: int) -> int {
+                    :erlang::abs(n)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // Without #[name] attribute, should use 'erlang' as-is
+        assert!(
+            result.contains("call 'erlang':'abs'"),
+            "Expected call 'erlang':'abs', but got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_qualified_call_syntax_for_extern_module() {
+        // Test that module::func() syntax (without colon prefix) works for extern modules
+        let source = r#"
+            mod test {
+                #[name = "Elixir.Jason"]
+                extern mod jason {
+                    fn encode(input: any) -> Result<string, any>;
+                }
+
+                pub fn encode_data(data: any) -> Result<string, any> {
+                    // Using qualified call syntax without colon prefix
+                    jason::encode(data)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // The extern call should use 'Elixir.Jason' (from #[name] attribute)
+        assert!(
+            result.contains("call 'Elixir.Jason':'encode'"),
+            "Expected call 'Elixir.Jason':'encode', but got:\n{}",
+            result
+        );
+        // Should NOT contain 'jason' as the module name
+        assert!(
+            !result.contains("call 'jason':'encode'"),
+            "Should not have call 'jason':'encode', but got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_qualified_call_syntax_without_name_attribute() {
+        // Test that module::func() syntax works for extern modules without #[name]
+        let source = r#"
+            mod test {
+                extern mod erlang {
+                    fn abs(n: int) -> int;
+                }
+
+                pub fn absolute(n: int) -> int {
+                    // Using qualified call syntax without colon prefix
+                    erlang::abs(n)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // Should use 'erlang' as the module name
+        assert!(
+            result.contains("call 'erlang':'abs'"),
+            "Expected call 'erlang':'abs', but got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_imported_extern_function() {
+        // Test that `use jason::encode; encode(data)` works
+        let source = r#"
+            mod test {
+                #[name = "Elixir.Jason"]
+                extern mod jason {
+                    fn encode(input: any) -> Result<string, any>;
+                }
+
+                use jason::encode;
+
+                pub fn encode_data(data: any) -> Result<string, any> {
+                    // Using imported function name without module prefix
+                    encode(data)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // The extern call should use 'Elixir.Jason' (from #[name] attribute)
+        assert!(
+            result.contains("call 'Elixir.Jason':'encode'"),
+            "Expected call 'Elixir.Jason':'encode', but got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_imported_extern_function_with_rename() {
+        // Test that `use jason::encode as json_encode; json_encode(data)` works
+        let source = r#"
+            mod test {
+                #[name = "Elixir.Jason"]
+                extern mod jason {
+                    fn encode(input: any) -> any;
+                }
+
+                use jason::encode as json_encode;
+
+                pub fn encode_data(data: any) -> any {
+                    // Using renamed import
+                    json_encode(data)
+                }
+            }
+        "#;
+
+        let result = emit_core_erlang_with_typecheck(source, true).unwrap();
+
+        // The extern call should use 'Elixir.Jason' with original function name 'encode'
+        assert!(
+            result.contains("call 'Elixir.Jason':'encode'"),
+            "Expected call 'Elixir.Jason':'encode', but got:\n{}",
+            result
+        );
     }
 }

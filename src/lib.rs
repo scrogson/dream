@@ -11,6 +11,7 @@
 //! - Receive with timeout
 //! - Cooperative scheduling with reduction budgets
 
+pub mod bindgen;
 pub mod compiler;
 pub mod config;
 pub mod deps;

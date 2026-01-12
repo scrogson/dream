@@ -376,7 +376,7 @@ impl<'source> Parser<'source> {
         }
 
         if self.check(&Token::Extern) {
-            self.parse_extern_mod()
+            self.parse_extern_mod(attrs)
         } else if self.check(&Token::Fn) {
             Ok(Item::Function(self.parse_function(is_pub, attrs)?))
         } else if self.check(&Token::Struct) {
@@ -431,7 +431,8 @@ impl<'source> Parser<'source> {
 
     /// Parse an external module declaration: `extern mod erlang { ... }`
     /// Used in .dreamt files to declare types for FFI modules.
-    fn parse_extern_mod(&mut self) -> ParseResult<Item> {
+    /// Supports `#[name = "Actual.Module.Name"]` attribute for module name mapping.
+    fn parse_extern_mod(&mut self, attrs: Vec<Attribute>) -> ParseResult<Item> {
         self.expect(&Token::Extern)?;
         self.expect(&Token::Mod)?;
         let name = self.expect_ident()?;
@@ -443,11 +444,15 @@ impl<'source> Parser<'source> {
         }
         self.expect(&Token::RBrace)?;
 
-        Ok(Item::ExternMod(ExternMod { name, items }))
+        Ok(Item::ExternMod(ExternMod { attrs, name, items }))
     }
 
     /// Parse an item inside an extern mod block.
+    /// Supports attributes on nested modules and functions.
     fn parse_extern_item(&mut self) -> ParseResult<ExternItem> {
+        // Parse any attributes before the item
+        let attrs = self.parse_attributes()?;
+
         if self.check(&Token::Mod) {
             // Nested module: `mod socket { ... }`
             self.expect(&Token::Mod)?;
@@ -460,9 +465,10 @@ impl<'source> Parser<'source> {
             }
             self.expect(&Token::RBrace)?;
 
-            Ok(ExternItem::Mod(ExternMod { name, items }))
+            Ok(ExternItem::Mod(ExternMod { attrs, name, items }))
         } else if self.check(&Token::Type) {
             // Opaque type: `type Socket;` or `type Map<K, V>;`
+            // Note: attrs parsed but not stored on ExternType (could be added if needed)
             self.expect(&Token::Type)?;
             let name = self.expect_type_ident()?;
             let type_params = if self.check(&Token::Lt) {
@@ -507,6 +513,7 @@ impl<'source> Parser<'source> {
             self.expect(&Token::Semi)?;
 
             Ok(ExternItem::Function(ExternFn {
+                attrs,
                 name,
                 type_params,
                 params,
@@ -1020,6 +1027,10 @@ impl<'source> Parser<'source> {
                     type_args: vec![],
                 },
                 Pattern::String(_) => Type::Named {
+                    name: "string".to_string(),
+                    type_args: vec![],
+                },
+                Pattern::Charlist(_) => Type::Named {
                     name: "string".to_string(),
                     type_args: vec![],
                 },
@@ -1627,9 +1638,16 @@ impl<'source> Parser<'source> {
                 let ast_parts = self.parse_string_interpolation_parts(parts)?;
                 return Ok(Expr::StringInterpolation(ast_parts));
             } else {
-                // Plain string - process escapes
+                // Plain binary string - process escapes
                 return Ok(Expr::String(process_escapes(&raw)));
             }
+        }
+
+        // Charlist (single-quoted string) - Elixir-style
+        if let Some(Token::Charlist(raw)) = self.peek().cloned() {
+            self.advance();
+            // Process escapes for charlist
+            return Ok(Expr::Charlist(process_escapes(&raw)));
         }
 
         // Check for atom or quoted atom (for extern calls or literal atoms)
@@ -2199,6 +2217,11 @@ impl<'source> Parser<'source> {
             self.advance();
             // Patterns don't support interpolation - just process escapes
             return Ok(Pattern::String(process_escapes(&raw)));
+        }
+
+        if let Some(Token::Charlist(raw)) = self.peek().cloned() {
+            self.advance();
+            return Ok(Pattern::Charlist(process_escapes(&raw)));
         }
 
         if let Some(Token::Atom(a)) = self.peek().cloned() {

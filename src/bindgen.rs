@@ -353,16 +353,18 @@ fn parse_param_list(s: &str, type_var_map: &HashMap<String, ErlangType>, registr
             // Check for "Name :: Type" annotation
             if let Some(pos) = t.find("::") {
                 let param_name = t[..pos].trim();
+                // Sanitize param name (removes " | undefined" etc.)
+                let param_name = sanitize_param_name(param_name);
                 let type_str = t[pos + 2..].trim();
                 let mut ty = parse_type(type_str);
                 ty = resolve_type_vars(&ty, type_var_map);
                 ty = resolve_type_refs(&ty, registry);
-                (param_name.to_lowercase(), ty)
+                (param_name, ty)
             } else {
                 // Just a type variable or type name
                 let param_name = if t.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                     // Type variable - use lowercase version as name
-                    t.to_lowercase()
+                    sanitize_param_name(&t.to_lowercase())
                 } else {
                     format!("arg{}", i)
                 };
@@ -373,6 +375,33 @@ fn parse_param_list(s: &str, type_var_map: &HashMap<String, ErlangType>, registr
             }
         })
         .collect()
+}
+
+/// Sanitize a parameter name to be a valid Dream identifier.
+/// Handles Erlang union types in param names like "Req | undefined".
+fn sanitize_param_name(name: &str) -> String {
+    // Strip union type suffixes (e.g., "Req | undefined" -> "Req")
+    let name = if let Some(pos) = name.find('|') {
+        name[..pos].trim()
+    } else {
+        name
+    };
+
+    // Convert to lowercase for Dream convention
+    let name = name.to_lowercase();
+
+    // Replace any invalid characters with underscores
+    let name: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+
+    // Ensure it doesn't start with a digit
+    if name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(true) {
+        format!("arg_{}", name)
+    } else {
+        name
+    }
 }
 
 /// Parse type constraints from 'when' clause.
@@ -921,6 +950,66 @@ fn is_dream_keyword(name: &str) -> bool {
     )
 }
 
+/// Sanitize a module name to be a valid Dream identifier.
+/// Handles Elixir modules (Elixir.Foo.Bar -> foo_bar) and other special cases.
+fn sanitize_module_name(name: &str) -> String {
+    // Handle Elixir modules: Elixir.Foo.Bar -> foo_bar
+    if name.starts_with("Elixir.") {
+        let without_prefix = &name[7..]; // Remove "Elixir."
+        return without_prefix
+            .split('.')
+            .map(|s| s.to_lowercase())
+            .collect::<Vec<_>>()
+            .join("_");
+    }
+
+    // Handle quoted atom names: 'Module.Name' -> module_name
+    let name = name.trim_matches('\'');
+
+    // Handle other dotted names
+    if name.contains('.') {
+        let sanitized = name
+            .split('.')
+            .map(|s| s.to_lowercase())
+            .collect::<Vec<_>>()
+            .join("_");
+        return sanitize_identifier(&sanitized);
+    }
+
+    // Regular name - just ensure it's a valid identifier
+    sanitize_identifier(name)
+}
+
+/// Ensure a string is a valid Dream identifier.
+fn sanitize_identifier(name: &str) -> String {
+    let mut result = String::new();
+
+    for (i, c) in name.chars().enumerate() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            // First char can't be a digit
+            if i == 0 && c.is_ascii_digit() {
+                result.push('_');
+            }
+            result.push(c.to_ascii_lowercase());
+        } else if c == '-' || c == '.' {
+            result.push('_');
+        }
+        // Skip other invalid characters
+    }
+
+    // Handle empty result
+    if result.is_empty() {
+        return "module_".to_string();
+    }
+
+    // Handle keywords by appending underscore
+    if is_dream_keyword(&result) {
+        result.push('_');
+    }
+
+    result
+}
+
 /// Generate .dreamt output from parsed module info.
 fn generate_dreamt(modules: &HashMap<String, ModuleInfo>) -> String {
     let mut output = String::new();
@@ -936,13 +1025,16 @@ fn generate_dreamt(modules: &HashMap<String, ModuleInfo>) -> String {
             continue;
         }
 
-        let safe_name = if is_dream_keyword(module_name) {
-            format!("{}_", module_name)
-        } else {
-            module_name.clone()
-        };
+        // Sanitize the module name to be a valid Dream identifier
+        let safe_name = sanitize_module_name(module_name);
 
         output.push_str(&format!("// Erlang module: {}\n", module_name));
+
+        // Generate #[name = "..."] attribute if the sanitized name differs from original
+        if safe_name != *module_name {
+            output.push_str(&format!("#[name = \"{}\"]\n", module_name));
+        }
+
         output.push_str(&format!("extern mod {} {{\n", safe_name));
 
         for spec in &info.specs {
@@ -1157,5 +1249,81 @@ mod tests {
     fn test_option_type_to_dream() {
         let ty = ErlangType::Option(Box::new(ErlangType::Named("string".into())));
         assert_eq!(erlang_type_to_dream(&ty), "Option<string>");
+    }
+
+    #[test]
+    fn test_sanitize_elixir_module_name() {
+        // Elixir.Jason -> jason
+        assert_eq!(sanitize_module_name("Elixir.Jason"), "jason");
+        // Elixir.Jason.Encoder -> jason_encoder
+        assert_eq!(sanitize_module_name("Elixir.Jason.Encoder"), "jason_encoder");
+        // Elixir.Phoenix.Controller -> phoenix_controller
+        assert_eq!(sanitize_module_name("Elixir.Phoenix.Controller"), "phoenix_controller");
+    }
+
+    #[test]
+    fn test_sanitize_regular_module_name() {
+        // Regular Erlang modules unchanged
+        assert_eq!(sanitize_module_name("lists"), "lists");
+        assert_eq!(sanitize_module_name("erlang"), "erlang");
+        assert_eq!(sanitize_module_name("file"), "file");
+    }
+
+    #[test]
+    fn test_sanitize_keyword_module_name() {
+        // Keywords get underscore suffix
+        assert_eq!(sanitize_module_name("string"), "string_");
+        assert_eq!(sanitize_module_name("binary"), "binary_");
+    }
+
+    #[test]
+    fn test_sanitize_dotted_module_name() {
+        // Other dotted names
+        assert_eq!(sanitize_module_name("foo.bar"), "foo_bar");
+        assert_eq!(sanitize_module_name("cowboy_req"), "cowboy_req");
+    }
+
+    #[test]
+    fn test_generate_name_attribute() {
+        // Test that #[name = "..."] is generated when names differ
+        let mut modules = HashMap::new();
+        modules.insert("Elixir.Jason".to_string(), ModuleInfo {
+            specs: vec![ErlangSpec {
+                name: "encode".to_string(),
+                params: vec![("input".to_string(), ErlangType::Any)],
+                return_type: ErlangType::Any,
+            }],
+        });
+
+        let output = generate_dreamt(&modules);
+
+        // Should contain #[name = "Elixir.Jason"]
+        assert!(output.contains("#[name = \"Elixir.Jason\"]"),
+            "Expected #[name = \"Elixir.Jason\"], got:\n{}", output);
+        // Should use sanitized name 'jason'
+        assert!(output.contains("extern mod jason"),
+            "Expected 'extern mod jason', got:\n{}", output);
+    }
+
+    #[test]
+    fn test_no_name_attribute_for_simple_modules() {
+        // Test that #[name = "..."] is NOT generated when names match
+        let mut modules = HashMap::new();
+        modules.insert("lists".to_string(), ModuleInfo {
+            specs: vec![ErlangSpec {
+                name: "reverse".to_string(),
+                params: vec![("list".to_string(), ErlangType::List(Box::new(ErlangType::Any)))],
+                return_type: ErlangType::List(Box::new(ErlangType::Any)),
+            }],
+        });
+
+        let output = generate_dreamt(&modules);
+
+        // Should NOT contain #[name = "lists"]
+        assert!(!output.contains("#[name ="),
+            "Should not have #[name = ...] for simple module, got:\n{}", output);
+        // Should use simple name
+        assert!(output.contains("extern mod lists"),
+            "Expected 'extern mod lists', got:\n{}", output);
     }
 }

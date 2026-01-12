@@ -322,8 +322,11 @@ pub struct TypeAlias {
 
 /// External module declaration for FFI type stubs.
 /// Declares types for functions in external Erlang/Elixir/Gleam modules.
+/// Supports `#[name = "Actual.Module.Name"]` attribute for module name mapping.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternMod {
+    /// Attributes (e.g., `#[name = "Elixir.Enum"]`)
+    pub attrs: Vec<Attribute>,
     pub name: String,
     pub items: Vec<ExternItem>,
 }
@@ -340,8 +343,11 @@ pub enum ExternItem {
 }
 
 /// External function declaration (signature only, no body).
+/// Supports `#[name = "actual_fn_name"]` attribute for function name mapping.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternFn {
+    /// Attributes (e.g., `#[name = "actual_name"]`)
+    pub attrs: Vec<Attribute>,
     pub name: String,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<(String, Type)>,
@@ -518,8 +524,12 @@ pub enum StringPart {
 pub enum Expr {
     /// Integer literal.
     Int(i64),
-    /// String literal.
+    /// Binary string literal (double quotes) - UTF-8 encoded binary.
+    /// This is the Elixir-style string that most BEAM libraries expect.
     String(String),
+    /// Charlist literal (single quotes) - list of integer codepoints.
+    /// This is the Erlang-style string for compatibility.
+    Charlist(String),
     /// Interpolated string: `"Hello {name}!"`.
     StringInterpolation(Vec<StringPart>),
     /// Atom literal (e.g., `:ok`).
@@ -718,8 +728,10 @@ pub enum Pattern {
     Ident(String),
     /// Integer literal pattern.
     Int(i64),
-    /// String literal pattern.
+    /// Binary string literal pattern (double quotes).
     String(String),
+    /// Charlist literal pattern (single quotes).
+    Charlist(String),
     /// Atom literal pattern.
     Atom(String),
     /// Boolean literal pattern.
