@@ -28,6 +28,11 @@ pub fn is_test(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| attr.name == "test")
 }
 
+/// Check if an item has the `#[macro]` attribute.
+pub fn is_macro(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| attr.name == "macro")
+}
+
 /// Check if an item has `#[cfg(test)]` attribute.
 pub fn is_cfg_test(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {

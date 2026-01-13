@@ -9,9 +9,10 @@ use clap::{Parser, Subcommand};
 
 use dream::{
     compiler::{
-        cfg, check_modules_with_metadata, expand_derives, resolve_stdlib_methods, CompilerError,
-        CoreErlangEmitter, GenericFunctionRegistry, Item, Module, ModuleContext, ModuleLoader,
-        Parser as DreamParser, SharedGenericRegistry,
+        cfg, check_modules_with_metadata, expand_derives_with_registry, is_macro,
+        resolve_stdlib_methods, CompilerError, CoreErlangEmitter, GenericFunctionRegistry, Item,
+        MacroRegistry, Module, ModuleContext, ModuleLoader, Parser as DreamParser,
+        SharedGenericRegistry,
     },
     config::{generate_dream_toml, generate_main_dream, ApplicationConfig, CompileOptions, ProjectConfig},
     deps::DepsManager,
@@ -557,21 +558,6 @@ fn compile_modules_with_registry(
     // Use annotated modules for code generation
     let mut modules = annotated_modules;
 
-    // Expand derive macros (e.g., #[derive(Debug, Clone)])
-    for module in &mut modules {
-        if let Err(errors) = expand_derives(module) {
-            for err in errors {
-                eprintln!("Derive error: {}", err.message);
-            }
-            return ExitCode::from(1);
-        }
-    }
-
-    // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
-    for module in &mut modules {
-        resolve_stdlib_methods(module);
-    }
-
     // Create a shared registry for cross-module generic functions
     // Start with external (stdlib) generics if available
     let generic_registry: SharedGenericRegistry = external_registry
@@ -602,6 +588,79 @@ fn compile_modules_with_registry(
     } else {
         std::collections::HashSet::new()
     };
+
+    // Create macro registry for user-defined derives
+    let mut macro_registry = MacroRegistry::with_paths(vec![build_dir.to_path_buf()]);
+
+    // Identify and compile macro modules first
+    let macro_module_names: Vec<String> = modules
+        .iter()
+        .filter(|m| has_macro_functions(m))
+        .map(|m| m.name.clone())
+        .collect();
+
+    if !macro_module_names.is_empty() {
+        // Compile macro modules to BEAM first so they can be used by other modules
+        for module_name in &macro_module_names {
+            if let Some(module) = modules.iter().find(|m| &m.name == module_name) {
+                // Clone and expand only built-in derives for macro modules
+                let mut macro_module = module.clone();
+                if let Err(errors) = expand_derives_with_registry(&mut macro_module, &mut MacroRegistry::new()) {
+                    for err in errors {
+                        eprintln!("Derive error in macro module {}: {}", module_name, err.message);
+                    }
+                    return ExitCode::from(1);
+                }
+
+                // Resolve stdlib methods
+                resolve_stdlib_methods(&mut macro_module);
+
+                // Compile to BEAM
+                match compile_module_to_beam(
+                    &macro_module,
+                    build_dir,
+                    &generic_registry,
+                    &extern_module_names,
+                    package_name,
+                    &local_module_names,
+                ) {
+                    Ok(_) => {
+                        // Get the BEAM module name
+                        let beam_module_name = if module.name.starts_with("dream::") {
+                            module.name.clone()
+                        } else {
+                            format!("dream::{}", module.name)
+                        };
+                        println!("  Compiled macro module {}.beam", beam_module_name);
+
+                        // Register macros from this module
+                        for func_name in get_macro_functions(module) {
+                            macro_registry.register(&func_name, &beam_module_name, &func_name);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error compiling macro module {}: {}", module_name, e);
+                        return ExitCode::from(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // Expand derive macros (e.g., #[derive(Debug, Clone)]) with macro registry
+    for module in &mut modules {
+        if let Err(errors) = expand_derives_with_registry(module, &mut macro_registry) {
+            for err in errors {
+                eprintln!("Derive error: {}", err.message);
+            }
+            return ExitCode::from(1);
+        }
+    }
+
+    // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
+    for module in &mut modules {
+        resolve_stdlib_methods(module);
+    }
 
     // Compile each module to Core Erlang
     let mut core_files = Vec::new();
@@ -803,21 +862,6 @@ fn compile_modules_with_registry_and_options(
     // Use annotated modules for code generation
     let mut modules = annotated_modules;
 
-    // Expand derive macros (e.g., #[derive(Debug, Clone)])
-    for module in &mut modules {
-        if let Err(errors) = expand_derives(module) {
-            for err in errors {
-                eprintln!("Derive error: {}", err.message);
-            }
-            return ExitCode::from(1);
-        }
-    }
-
-    // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
-    for module in &mut modules {
-        resolve_stdlib_methods(module);
-    }
-
     // Create a shared registry for cross-module generic functions
     // Start with external (stdlib) generics if available
     let generic_registry: SharedGenericRegistry = external_registry
@@ -848,6 +892,79 @@ fn compile_modules_with_registry_and_options(
     } else {
         std::collections::HashSet::new()
     };
+
+    // Create macro registry for user-defined derives
+    let mut macro_registry = MacroRegistry::with_paths(vec![build_dir.to_path_buf()]);
+
+    // Identify and compile macro modules first
+    let macro_module_names: Vec<String> = modules
+        .iter()
+        .filter(|m| has_macro_functions(m))
+        .map(|m| m.name.clone())
+        .collect();
+
+    if !macro_module_names.is_empty() {
+        // Compile macro modules to BEAM first so they can be used by other modules
+        for module_name in &macro_module_names {
+            if let Some(module) = modules.iter().find(|m| &m.name == module_name) {
+                // Clone and expand only built-in derives for macro modules
+                let mut macro_module = module.clone();
+                if let Err(errors) = expand_derives_with_registry(&mut macro_module, &mut MacroRegistry::new()) {
+                    for err in errors {
+                        eprintln!("Derive error in macro module {}: {}", module_name, err.message);
+                    }
+                    return ExitCode::from(1);
+                }
+
+                // Resolve stdlib methods
+                resolve_stdlib_methods(&mut macro_module);
+
+                // Compile to BEAM
+                match compile_module_to_beam(
+                    &macro_module,
+                    build_dir,
+                    &generic_registry,
+                    &extern_module_names,
+                    package_name,
+                    &local_module_names,
+                ) {
+                    Ok(_) => {
+                        // Get the BEAM module name
+                        let beam_module_name = if module.name.starts_with("dream::") {
+                            module.name.clone()
+                        } else {
+                            format!("dream::{}", module.name)
+                        };
+                        println!("  Compiled macro module {}.beam", beam_module_name);
+
+                        // Register macros from this module
+                        for func_name in get_macro_functions(module) {
+                            macro_registry.register(&func_name, &beam_module_name, &func_name);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error compiling macro module {}: {}", module_name, e);
+                        return ExitCode::from(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // Expand derive macros (e.g., #[derive(Debug, Clone)]) with macro registry
+    for module in &mut modules {
+        if let Err(errors) = expand_derives_with_registry(module, &mut macro_registry) {
+            for err in errors {
+                eprintln!("Derive error: {}", err.message);
+            }
+            return ExitCode::from(1);
+        }
+    }
+
+    // Resolve stdlib method calls (e.g., s.trim() -> string::trim(s))
+    for module in &mut modules {
+        resolve_stdlib_methods(module);
+    }
 
     // Compile each module to Core Erlang (with incremental compilation)
     let mut core_files = Vec::new();
@@ -1710,6 +1827,95 @@ fn command_exists(cmd: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Check if a module contains any macro functions (functions with `#[macro]` attribute).
+fn has_macro_functions(module: &Module) -> bool {
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if is_macro(&func.attrs) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Get macro function info from a module: Vec<(function_name, derive_name)>.
+/// By convention, the derive name is the function name.
+fn get_macro_functions(module: &Module) -> Vec<String> {
+    let mut macros = Vec::new();
+    for item in &module.items {
+        if let Item::Function(func) = item {
+            if is_macro(&func.attrs) {
+                macros.push(func.name.clone());
+            }
+        }
+    }
+    macros
+}
+
+/// Compile a single module to BEAM (for macro modules).
+/// Returns the path to the compiled .beam file on success.
+fn compile_module_to_beam(
+    module: &Module,
+    build_dir: &Path,
+    generic_registry: &SharedGenericRegistry,
+    extern_module_names: &std::collections::HashMap<String, String>,
+    package_name: Option<&str>,
+    local_module_names: &std::collections::HashSet<String>,
+) -> Result<PathBuf, String> {
+    // Create module-specific context for path resolution
+    let module_context = match package_name {
+        Some(pkg) => ModuleContext::for_module(pkg, &module.name)
+            .with_local_modules(local_module_names.clone()),
+        None => ModuleContext::default(),
+    };
+
+    let mut emitter = CoreErlangEmitter::with_registry_and_context(
+        generic_registry.clone(),
+        module_context,
+    );
+    emitter.set_extern_module_names(extern_module_names.clone());
+
+    let core_erlang = emitter.emit_module(module)
+        .map_err(|e| format!("Compile error in {}: {}", module.name, e))?;
+
+    // Register this module's generic functions
+    {
+        let mut registry = generic_registry.write().unwrap();
+        emitter.register_generics(&mut registry);
+    }
+
+    // All Dream modules are prefixed with dream::
+    let beam_module_name = if module.name.starts_with("dream::") {
+        module.name.clone()
+    } else {
+        format!("dream::{}", module.name)
+    };
+
+    let core_file = build_dir.join(format!("{}.core", &beam_module_name));
+    fs::write(&core_file, &core_erlang)
+        .map_err(|e| format!("Error writing {}: {}", core_file.display(), e))?;
+
+    // Compile to BEAM using erlc
+    let status = Command::new("erlc")
+        .arg("+from_core")
+        .arg("-o")
+        .arg(build_dir)
+        .arg(&core_file)
+        .status()
+        .map_err(|e| format!("Error running erlc: {}", e))?;
+
+    if !status.success() {
+        return Err(format!("erlc failed for {}", beam_module_name));
+    }
+
+    // Clean up .core file
+    let _ = fs::remove_file(&core_file);
+
+    let beam_file = build_dir.join(format!("{}.beam", &beam_module_name));
+    Ok(beam_file)
 }
 
 /// Check if a module needs recompilation.

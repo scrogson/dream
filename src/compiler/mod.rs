@@ -19,7 +19,7 @@ mod token;
 pub mod typeck;
 
 pub use ast::*;
-pub use cfg::{is_test, should_include};
+pub use cfg::{is_macro, is_test, should_include};
 pub use codegen::{compile, compile_file, Codegen, CodegenError, CodegenResult};
 pub use core_erlang::{
     emit_core_erlang, CoreErlangEmitter, CoreErlangError, GenericFunctionRegistry,
