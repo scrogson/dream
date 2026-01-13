@@ -71,18 +71,16 @@ Loop = fun Loop() ->
                             io:format("~s~nerr:unknown command~n", [<<0, "MACRO_RESULT", 0>>]),
                             Loop();
                         Rest ->
-                            % Parse expand:Module:Function:AstTerm
                             case string:split(Rest, ":", all) of
                                 [ModStr, FunStr | AstParts] ->
                                     try
                                         Mod = list_to_atom(ModStr),
                                         Fun = list_to_atom(FunStr),
-                                        % Rejoin AST parts (in case term contains colons)
                                         AstStr = lists:flatten(lists:join(":", AstParts)),
                                         {ok, Tokens, _} = erl_scan:string(AstStr ++ "."),
                                         {ok, Ast} = erl_parse:parse_term(Tokens),
                                         Result = Mod:Fun(Ast),
-                                        io:format("~s~nok:~p~n", [<<0, "MACRO_RESULT", 0>>, Result]),
+                                        io:format("~s~nok:~w~n", [<<0, "MACRO_RESULT", 0>>, Result]),
                                         Loop()
                                     catch
                                         Class:Reason:Stack ->
@@ -261,8 +259,24 @@ impl MacroExpander {
             let _ = writeln!(stdin, "quit");
             let _ = stdin.flush();
         }
+        // Drop stdin to signal EOF to the process
         self.beam_stdin.take();
+        self.result_rx.take();
+
         if let Some(ref mut child) = self.beam_process {
+            // Try to wait with a short timeout, then kill if necessary
+            for _ in 0..10 {
+                match child.try_wait() {
+                    Ok(Some(_)) => break, // Process exited
+                    Ok(None) => {
+                        // Still running, wait a bit
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Err(_) => break,
+                }
+            }
+            // If still running, force kill
+            let _ = child.kill();
             let _ = child.wait();
         }
         self.beam_process.take();
@@ -305,5 +319,59 @@ mod tests {
         assert!(expander.is_running());
         expander.shutdown();
         assert!(!expander.is_running());
+    }
+
+    // Integration test with a real macro - run with: cargo test test_macro_expand_simple --ignored
+    #[test]
+    #[ignore]
+    fn test_macro_expand_simple() {
+        use crate::compiler::ast_serde;
+        use crate::compiler::ast::*;
+
+        // Path to the compiled test_macro.beam
+        let beam_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures");
+
+        let mut expander = MacroExpander::new(vec![beam_path]);
+        expander.ensure_running().expect("Failed to start BEAM");
+
+        // Create a simple struct definition
+        let struct_def = StructDef {
+            is_pub: true,
+            name: "Point".to_string(),
+            type_params: vec![],
+            fields: vec![
+                ("x".to_string(), Type::Int),
+                ("y".to_string(), Type::Int),
+            ],
+            attrs: vec![],
+        };
+
+        // Serialize to Erlang term
+        let ast_term = ast_serde::struct_def_to_erlang_term(&struct_def);
+        println!("Input term: {}", ast_term);
+
+        // Call the macro
+        let result = expander.expand_macro("test_macro", "simple_derive", &ast_term);
+        println!("Result: {:?}", result);
+
+        assert!(result.is_ok(), "Macro call failed: {:?}", result.err());
+
+        let result_str = result.unwrap();
+        println!("Result term: {}", result_str);
+
+        // Parse the result
+        let term = ast_serde::parse_term(&result_str).expect("Failed to parse result");
+        println!("Parsed term: {:?}", term);
+
+        // Convert to ImplBlock
+        let impl_block = ast_serde::term_to_impl_block(&term).expect("Failed to convert to impl");
+        println!("ImplBlock: {:?}", impl_block);
+
+        assert_eq!(impl_block.type_name, "Point");
+        assert_eq!(impl_block.methods.len(), 1);
+        assert_eq!(impl_block.methods[0].name, "type_name");
+
+        expander.shutdown();
     }
 }

@@ -717,40 +717,93 @@ impl<'a> TermParser<'a> {
     fn parse_binary_string(&mut self) -> TermParseResult<Term> {
         self.expect('<')?;
         self.expect('<')?;
-        self.expect('"')?;
 
-        let mut content = String::new();
+        self.skip_whitespace();
 
-        loop {
-            match self.peek() {
-                Some('"') => {
-                    self.advance();
+        // Check if it's a quoted string or byte list
+        if self.peek() == Some('"') {
+            // Quoted string format: <<"hello">>
+            self.advance();
+            let mut content = String::new();
+
+            loop {
+                match self.peek() {
+                    Some('"') => {
+                        self.advance();
+                        break;
+                    }
+                    Some('\\') => {
+                        self.advance();
+                        match self.peek() {
+                            Some('"') => { self.advance(); content.push('"'); }
+                            Some('\\') => { self.advance(); content.push('\\'); }
+                            Some('n') => { self.advance(); content.push('\n'); }
+                            Some('r') => { self.advance(); content.push('\r'); }
+                            Some('t') => { self.advance(); content.push('\t'); }
+                            Some(c) => { self.advance(); content.push(c); }
+                            None => return Err(TermParseError::new("unexpected end in escape", self.pos)),
+                        }
+                    }
+                    Some(c) => {
+                        self.advance();
+                        content.push(c);
+                    }
+                    None => return Err(TermParseError::new("unclosed binary string", self.pos)),
+                }
+            }
+
+            self.expect('>')?;
+            self.expect('>')?;
+
+            Ok(Term::String(content))
+        } else if self.peek() == Some('>') {
+            // Empty binary: <<>>
+            self.expect('>')?;
+            self.expect('>')?;
+            Ok(Term::String(String::new()))
+        } else {
+            // Byte list format: <<80,111,105,110,116>>
+            let mut bytes = Vec::new();
+
+            loop {
+                self.skip_whitespace();
+
+                if self.peek() == Some('>') {
                     break;
                 }
-                Some('\\') => {
-                    self.advance();
-                    match self.peek() {
-                        Some('"') => { self.advance(); content.push('"'); }
-                        Some('\\') => { self.advance(); content.push('\\'); }
-                        Some('n') => { self.advance(); content.push('\n'); }
-                        Some('r') => { self.advance(); content.push('\r'); }
-                        Some('t') => { self.advance(); content.push('\t'); }
-                        Some(c) => { self.advance(); content.push(c); }
-                        None => return Err(TermParseError::new("unexpected end in escape", self.pos)),
+
+                // Parse a byte value
+                let start = self.pos;
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_digit() {
+                        self.advance();
+                    } else {
+                        break;
                     }
                 }
-                Some(c) => {
-                    self.advance();
-                    content.push(c);
+                let num_str = &self.input[start..self.pos];
+                if num_str.is_empty() {
+                    return Err(TermParseError::new("expected byte value in binary", self.pos));
                 }
-                None => return Err(TermParseError::new("unclosed binary string", self.pos)),
+                let byte: u8 = num_str.parse()
+                    .map_err(|_| TermParseError::new(format!("invalid byte: {}", num_str), start))?;
+                bytes.push(byte);
+
+                self.skip_whitespace();
+                if self.peek() == Some(',') {
+                    self.advance();
+                }
             }
+
+            self.expect('>')?;
+            self.expect('>')?;
+
+            // Convert bytes to string
+            let content = String::from_utf8(bytes)
+                .map_err(|_| TermParseError::new("invalid UTF-8 in binary", self.pos))?;
+
+            Ok(Term::String(content))
         }
-
-        self.expect('>')?;
-        self.expect('>')?;
-
-        Ok(Term::String(content))
     }
 
     fn parse_charlist(&mut self) -> TermParseResult<Term> {
