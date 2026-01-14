@@ -1,0 +1,63 @@
+// Example: Simple user-defined derive macro using quote/unquote
+//
+// This demonstrates the cleaner quote/unquote syntax for writing macros.
+// The macro generates a `type_name()` method that returns the struct's name.
+
+mod simple_derive {
+    /// A simple macro that generates a type_name method.
+    ///
+    /// Input AST: {struct, Name, Fields, TypeParams}
+    /// Output: impl block with type_name() -> string method
+    #[macro]
+    pub fn type_info(ast: any) -> any {
+        // Extract the struct name from the AST
+        let name = :erlang::element(2, ast);
+
+        // Convert to string for the return value
+        let name_str = :erlang::atom_to_binary(name);
+
+        // Create AST node for the string literal
+        let name_ast = (:string, name_str);
+
+        // Use quote with unquote (#) to generate the impl block
+        // #name interpolates the type name (as an atom)
+        // #name_ast interpolates the string literal AST
+        quote {
+            impl #name {
+                fn type_name(self) -> string {
+                    #name_ast
+                }
+            }
+        }
+    }
+}
+
+// Example usage:
+mod example {
+    use crate::simple_derive::type_info;
+
+    #[derive(type_info)]
+    pub struct Rectangle {
+        width: int,
+        height: int,
+    }
+
+    #[derive(type_info)]
+    pub struct Circle {
+        radius: int,
+    }
+
+    pub fn main() -> string {
+        let rect = Rectangle { width: 10, height: 5 };
+        let circ = Circle { radius: 7 };
+
+        // Returns "Rectangle"
+        let rect_name = rect.type_name();
+
+        // Returns "Circle"
+        let circ_name = circ.type_name();
+
+        // Concatenate the names
+        :erlang::iolist_to_binary([rect_name, <<" and ">>, circ_name])
+    }
+}

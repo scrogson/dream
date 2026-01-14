@@ -1,0 +1,80 @@
+// Example: User-defined Debug derive macro
+//
+// This demonstrates how to write a custom derive macro in Dream using
+// the quote/unquote system. The macro generates a `debug()` method
+// that returns a string representation of a struct.
+//
+// Note: Dream has a built-in Debug derive, but this example shows
+// how you could implement your own.
+
+mod debug_derive {
+    /// A macro that generates a debug method for structs.
+    ///
+    /// Input AST format: {struct, Name, [{FieldName, Type}, ...], TypeParams}
+    /// Output AST format: {impl, Name, [Methods]}
+    #[macro]
+    pub fn my_debug(ast: any) -> any {
+        // Extract the struct name from the AST tuple
+        // ast is {struct, Name, Fields, TypeParams}
+        let name = :erlang::element(2, ast);
+        let fields = :erlang::element(3, ast);
+
+        // Build the format string: "StructName { field1: ~p, field2: ~p }"
+        let field_names = :lists::map(fn (field: any) -> any {
+            :erlang::element(1, field)
+        }, fields);
+
+        let format_parts = :lists::map(fn (fname: any) -> any {
+            let fname_str = :erlang::atom_to_binary(fname);
+            :erlang::iolist_to_binary([fname_str, <<": ~p">>])
+        }, field_names);
+
+        let name_str = :erlang::atom_to_binary(name);
+        let fields_str = :erlang::iolist_to_binary(:lists::join(<<", ">>, format_parts));
+        let format_string = :erlang::iolist_to_binary([name_str, <<" { ">>, fields_str, <<" }">>]);
+
+        // Build the field access expressions for format arguments
+        // Each field becomes: self.field_name
+        let field_exprs = :lists::map(fn (fname: any) -> any {
+            (:field_access, (:ident, :self), fname)
+        }, field_names);
+
+        // Create the format call AST
+        let format_call = (:extern_call, :io_lib, :format, [
+            (:charlist, format_string),
+            (:list, field_exprs)
+        ]);
+
+        // Wrap in iolist_to_binary for string result
+        let body_expr = (:extern_call, :erlang, :iolist_to_binary, [format_call]);
+
+        // Create the string type AST
+        let string_type = (:type, :string);
+
+        // Build the debug function AST
+        let debug_fn = (:function, :debug, [],
+            [({(:ident, :self), (:type, :any)}],
+            string_type,
+            {[], body_expr});
+
+        // Return impl block
+        (:impl, name, [debug_fn])
+    }
+}
+
+// Example usage:
+mod example {
+    use crate::debug_derive::my_debug;
+
+    #[derive(my_debug)]
+    pub struct Point {
+        x: int,
+        y: int,
+    }
+
+    pub fn main() -> string {
+        let p = Point { x: 10, y: 20 };
+        // Should return "Point { x: 10, y: 20 }"
+        p.debug()
+    }
+}
