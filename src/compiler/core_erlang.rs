@@ -2782,14 +2782,40 @@ impl CoreErlangEmitter {
                                 }
                             } else {
                                 // Non-generic cross-module call
-                                self.emit(&format!(
-                                    "call '{}':'{}'",
-                                    Self::beam_module_name(&segments[0].to_lowercase()),
-                                    segments[1]
-                                ));
-                                self.emit("(");
-                                self.emit_args(args)?;
-                                self.emit(")");
+                                // Check if first segment is an imported type
+                                if let Some((module, _original_name)) = self.imports.get(first) {
+                                    // Imported type impl method call: User::new() where User is imported
+                                    // Becomes: call 'dream::module':'Type_method'(args)
+                                    let mangled_name = format!("{}_{}", first, second);
+                                    self.emit(&format!(
+                                        "call '{}':'{}'",
+                                        Self::beam_module_name(&module.to_lowercase()),
+                                        mangled_name
+                                    ));
+                                    self.emit("(");
+                                    self.emit_args(args)?;
+                                    self.emit(")");
+                                } else if let Some(beam_module) = self.extern_module_names.get(first) {
+                                    // Extern module call: jason::encode() where jason is extern mod
+                                    // Uses the BEAM module name from #[name = "..."] attribute
+                                    self.emit(&format!(
+                                        "call '{}':'{}'",
+                                        beam_module,
+                                        second
+                                    ));
+                                    self.emit("(");
+                                    self.emit_args(args)?;
+                                    self.emit(")");
+                                } else {
+                                    self.emit(&format!(
+                                        "call '{}':'{}'",
+                                        Self::beam_module_name(&segments[0].to_lowercase()),
+                                        segments[1]
+                                    ));
+                                    self.emit("(");
+                                    self.emit_args(args)?;
+                                    self.emit(")");
+                                }
                             }
                         }
                     }
