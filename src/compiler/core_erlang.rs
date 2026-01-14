@@ -2376,6 +2376,20 @@ impl CoreErlangEmitter {
         Ok(())
     }
 
+    /// Emit a map key expression.
+    /// For atoms, emit directly without module resolution.
+    fn emit_map_key(&mut self, expr: &Expr) -> CoreErlangResult<()> {
+        match expr {
+            Expr::Atom(a) => {
+                // Emit atom directly - don't resolve as module reference
+                self.emit(&format!("'{}'", a));
+                Ok(())
+            }
+            // For all other expressions, use normal emission
+            _ => self.emit_expr(expr),
+        }
+    }
+
     /// Emit an expression.
     fn emit_expr(&mut self, expr: &Expr) -> CoreErlangResult<()> {
         match expr {
@@ -2961,7 +2975,8 @@ impl CoreErlangEmitter {
                         if i > 0 {
                             self.emit(",");
                         }
-                        self.emit_expr(key)?;
+                        // Emit map keys directly (atoms shouldn't be resolved as module names)
+                        self.emit_map_key(key)?;
                         self.emit("=>");
                         self.emit_expr(value)?;
                     }
