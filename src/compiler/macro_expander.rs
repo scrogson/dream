@@ -23,23 +23,71 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
+use crate::compiler::lexer::Span;
+
 /// Error type for macro expansion failures.
 #[derive(Debug)]
 pub struct MacroError {
     pub message: String,
+    /// Optional span in the source where the error occurred.
+    pub span: Option<Span>,
+    /// Optional file path where the error occurred.
+    pub file: Option<PathBuf>,
+    /// Optional macro name that failed.
+    pub macro_name: Option<String>,
 }
 
 impl MacroError {
+    /// Create a new macro error without location information.
     pub fn new(msg: impl Into<String>) -> Self {
         MacroError {
             message: msg.into(),
+            span: None,
+            file: None,
+            macro_name: None,
         }
+    }
+
+    /// Create a macro error with source location.
+    pub fn with_span(msg: impl Into<String>, span: Span) -> Self {
+        MacroError {
+            message: msg.into(),
+            span: Some(span),
+            file: None,
+            macro_name: None,
+        }
+    }
+
+    /// Add file path information to the error.
+    pub fn in_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.file = Some(path.into());
+        self
+    }
+
+    /// Add macro name information to the error.
+    pub fn in_macro(mut self, name: impl Into<String>) -> Self {
+        self.macro_name = Some(name.into());
+        self
     }
 }
 
 impl std::fmt::Display for MacroError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Macro error: {}", self.message)
+        write!(f, "Macro error")?;
+
+        if let Some(ref name) = self.macro_name {
+            write!(f, " in `{}`", name)?;
+        }
+
+        if let Some(ref file) = self.file {
+            write!(f, " ({})", file.display())?;
+        }
+
+        if let Some(ref span) = self.span {
+            write!(f, " at {}..{}", span.start, span.end)?;
+        }
+
+        write!(f, ": {}", self.message)
     }
 }
 
@@ -302,6 +350,23 @@ mod tests {
     fn test_macro_error_display() {
         let err = MacroError::new("test error");
         assert_eq!(format!("{}", err), "Macro error: test error");
+    }
+
+    #[test]
+    fn test_macro_error_with_span() {
+        let err = MacroError::with_span("type mismatch", 10..25);
+        assert_eq!(format!("{}", err), "Macro error at 10..25: type mismatch");
+    }
+
+    #[test]
+    fn test_macro_error_with_full_context() {
+        let err = MacroError::with_span("expected struct", 100..150)
+            .in_file("src/lib.dream")
+            .in_macro("my_derive");
+        assert_eq!(
+            format!("{}", err),
+            "Macro error in `my_derive` (src/lib.dream) at 100..150: expected struct"
+        );
     }
 
     #[test]
