@@ -653,6 +653,244 @@ pub fn item_to_derive_input(item: &Item) -> Option<String> {
 }
 
 // =============================================================================
+// TokenStream Serialization (for proc_macro input)
+// =============================================================================
+
+/// Convert an Item to TokenStream format.
+/// This is the lexical representation of the item as a list of tokens.
+///
+/// Format: List of token tuples matching proc_macro::TokenTree
+/// - `{ident, name}` - Identifier
+/// - `{type_ident, name}` - Type identifier (PascalCase)
+/// - `{int, value}` - Integer literal
+/// - `{string, value}` - String literal
+/// - `{atom, name}` - Atom literal
+/// - `{punct, chars}` - Punctuation
+/// - `{keyword, name}` - Keyword
+/// - `{group, delimiter, tokens}` - Delimited group
+pub fn item_to_token_stream(item: &Item) -> Option<String> {
+    match item {
+        Item::Struct(s) => Some(struct_to_token_stream(s)),
+        Item::Enum(e) => Some(enum_to_token_stream(e)),
+        _ => None,
+    }
+}
+
+/// Convert a struct definition to TokenStream format.
+pub fn struct_to_token_stream(s: &StructDef) -> String {
+    let mut tokens = Vec::new();
+
+    // pub keyword (if public - we assume pub for derive targets)
+    tokens.push("{keyword, pub}".to_string());
+
+    // struct keyword
+    tokens.push("{keyword, struct}".to_string());
+
+    // Struct name
+    tokens.push(format!("{{type_ident, '{}'}}", escape_atom(&s.name)));
+
+    // Type parameters
+    if !s.type_params.is_empty() {
+        let params: Vec<String> = s.type_params.iter()
+            .enumerate()
+            .flat_map(|(i, tp)| {
+                let mut param_tokens = Vec::new();
+                if i > 0 {
+                    param_tokens.push("{punct, \",\"}".to_string());
+                }
+                param_tokens.push(format!("{{type_ident, '{}'}}", escape_atom(&tp.name)));
+                // Add bounds if present
+                for (j, bound) in tp.bounds.iter().enumerate() {
+                    if j == 0 {
+                        param_tokens.push("{punct, \":\"}".to_string());
+                    } else {
+                        param_tokens.push("{punct, \"+\"}".to_string());
+                    }
+                    param_tokens.push(format!("{{type_ident, '{}'}}", escape_atom(bound)));
+                }
+                param_tokens
+            })
+            .collect();
+        tokens.push(format!("{{group, angle, [{}]}}", params.join(", ")));
+    }
+
+    // Fields group
+    let fields: Vec<String> = s.fields.iter()
+        .enumerate()
+        .flat_map(|(i, (name, ty))| {
+            let mut field_tokens = Vec::new();
+            if i > 0 {
+                field_tokens.push("{punct, \",\"}".to_string());
+            }
+            field_tokens.push(format!("{{ident, '{}'}}", escape_atom(name)));
+            field_tokens.push("{punct, \":\"}".to_string());
+            field_tokens.extend(type_to_tokens(ty));
+            field_tokens
+        })
+        .collect();
+
+    tokens.push(format!("{{group, brace, [{}]}}", fields.join(", ")));
+
+    format!("[{}]", tokens.join(", "))
+}
+
+/// Convert an enum definition to TokenStream format.
+pub fn enum_to_token_stream(e: &EnumDef) -> String {
+    let mut tokens = Vec::new();
+
+    // pub keyword
+    tokens.push("{keyword, pub}".to_string());
+
+    // enum keyword
+    tokens.push("{keyword, enum}".to_string());
+
+    // Enum name
+    tokens.push(format!("{{type_ident, '{}'}}", escape_atom(&e.name)));
+
+    // Type parameters
+    if !e.type_params.is_empty() {
+        let params: Vec<String> = e.type_params.iter()
+            .enumerate()
+            .flat_map(|(i, tp)| {
+                let mut param_tokens = Vec::new();
+                if i > 0 {
+                    param_tokens.push("{punct, \",\"}".to_string());
+                }
+                param_tokens.push(format!("{{type_ident, '{}'}}", escape_atom(&tp.name)));
+                param_tokens
+            })
+            .collect();
+        tokens.push(format!("{{group, angle, [{}]}}", params.join(", ")));
+    }
+
+    // Variants group
+    let variants: Vec<String> = e.variants.iter()
+        .enumerate()
+        .flat_map(|(i, v)| {
+            let mut variant_tokens = Vec::new();
+            if i > 0 {
+                variant_tokens.push("{punct, \",\"}".to_string());
+            }
+            variant_tokens.push(format!("{{type_ident, '{}'}}", escape_atom(&v.name)));
+
+            match &v.kind {
+                VariantKind::Unit => {}
+                VariantKind::Tuple(types) => {
+                    let type_tokens: Vec<String> = types.iter()
+                        .enumerate()
+                        .flat_map(|(j, ty)| {
+                            let mut toks = Vec::new();
+                            if j > 0 {
+                                toks.push("{punct, \",\"}".to_string());
+                            }
+                            toks.extend(type_to_tokens(ty));
+                            toks
+                        })
+                        .collect();
+                    variant_tokens.push(format!("{{group, paren, [{}]}}", type_tokens.join(", ")));
+                }
+                VariantKind::Struct(fields) => {
+                    let field_tokens: Vec<String> = fields.iter()
+                        .enumerate()
+                        .flat_map(|(j, (name, ty))| {
+                            let mut ftoks = Vec::new();
+                            if j > 0 {
+                                ftoks.push("{punct, \",\"}".to_string());
+                            }
+                            ftoks.push(format!("{{ident, '{}'}}", escape_atom(name)));
+                            ftoks.push("{punct, \":\"}".to_string());
+                            ftoks.extend(type_to_tokens(ty));
+                            ftoks
+                        })
+                        .collect();
+                    variant_tokens.push(format!("{{group, brace, [{}]}}", field_tokens.join(", ")));
+                }
+            }
+            variant_tokens
+        })
+        .collect();
+
+    tokens.push(format!("{{group, brace, [{}]}}", variants.join(", ")));
+
+    format!("[{}]", tokens.join(", "))
+}
+
+/// Convert a Type to token representation.
+fn type_to_tokens(ty: &Type) -> Vec<String> {
+    match ty {
+        Type::Int => vec!["{keyword, int}".to_string()],
+        Type::Float => vec!["{keyword, float}".to_string()],
+        Type::String => vec!["{keyword, string}".to_string()],
+        Type::Atom => vec!["{keyword, atom}".to_string()],
+        Type::Bool => vec!["{keyword, bool}".to_string()],
+        Type::Unit => vec!["{punct, \"()\"}".to_string()],
+        Type::Pid => vec!["{keyword, pid}".to_string()],
+        Type::Ref => vec!["{keyword, ref}".to_string()],
+        Type::Binary => vec!["{keyword, binary}".to_string()],
+        Type::Any => vec!["{keyword, any}".to_string()],
+        Type::Map => vec!["{keyword, map}".to_string()],
+        Type::Named { name, type_args } => {
+            let mut tokens = vec![format!("{{type_ident, '{}'}}", escape_atom(name))];
+            if !type_args.is_empty() {
+                let args: Vec<String> = type_args.iter()
+                    .enumerate()
+                    .flat_map(|(i, t)| {
+                        let mut arg_toks = Vec::new();
+                        if i > 0 {
+                            arg_toks.push("{punct, \",\"}".to_string());
+                        }
+                        arg_toks.extend(type_to_tokens(t));
+                        arg_toks
+                    })
+                    .collect();
+                tokens.push(format!("{{group, angle, [{}]}}", args.join(", ")));
+            }
+            tokens
+        }
+        Type::List(inner) => {
+            let mut tokens = vec!["{punct, \"[\"}".to_string()];
+            tokens.extend(type_to_tokens(inner));
+            tokens.push("{punct, \"]\"}".to_string());
+            tokens
+        }
+        Type::Tuple(types) => {
+            let inner: Vec<String> = types.iter()
+                .enumerate()
+                .flat_map(|(i, t)| {
+                    let mut toks = Vec::new();
+                    if i > 0 {
+                        toks.push("{punct, \",\"}".to_string());
+                    }
+                    toks.extend(type_to_tokens(t));
+                    toks
+                })
+                .collect();
+            vec![format!("{{group, paren, [{}]}}", inner.join(", "))]
+        }
+        Type::TypeVar(name) => vec![format!("{{type_ident, '{}'}}", escape_atom(name))],
+        Type::Fn { params, ret } => {
+            let mut tokens = vec!["{keyword, fn}".to_string()];
+            let param_tokens: Vec<String> = params.iter()
+                .enumerate()
+                .flat_map(|(i, t)| {
+                    let mut toks = Vec::new();
+                    if i > 0 {
+                        toks.push("{punct, \",\"}".to_string());
+                    }
+                    toks.extend(type_to_tokens(t));
+                    toks
+                })
+                .collect();
+            tokens.push(format!("{{group, paren, [{}]}}", param_tokens.join(", ")));
+            tokens.push("{punct, \"->\"}".to_string());
+            tokens.extend(type_to_tokens(ret));
+            tokens
+        }
+        _ => vec!["{keyword, any}".to_string()], // Fallback for unsupported types
+    }
+}
+
+// =============================================================================
 // Erlang Term to AST (Deserialization)
 // =============================================================================
 
@@ -1889,5 +2127,75 @@ mod tests {
         let term = parse_term(&term_str).unwrap();
         let result = term_to_type(&term).unwrap();
         assert_eq!(result, original);
+    }
+
+    // =============================================================================
+    // TokenStream Serialization Tests
+    // =============================================================================
+
+    #[test]
+    fn test_struct_to_token_stream() {
+        let s = StructDef {
+            is_pub: true,
+            name: "User".to_string(),
+            type_params: vec![],
+            fields: vec![
+                ("id".to_string(), Type::Int),
+                ("name".to_string(), Type::String),
+            ],
+            attrs: vec![],
+        };
+        let tokens = struct_to_token_stream(&s);
+        // Should contain keyword pub, keyword struct, type_ident User, and a group with fields
+        assert!(tokens.contains("{keyword, pub}"));
+        assert!(tokens.contains("{keyword, struct}"));
+        assert!(tokens.contains("{type_ident, 'User'}"));
+        assert!(tokens.contains("{ident, 'id'}"));
+        assert!(tokens.contains("{ident, 'name'}"));
+        assert!(tokens.contains("{keyword, int}"));
+        assert!(tokens.contains("{keyword, string}"));
+    }
+
+    #[test]
+    fn test_struct_with_generics_to_token_stream() {
+        let s = StructDef {
+            is_pub: true,
+            name: "Container".to_string(),
+            type_params: vec![
+                TypeParam { name: "T".to_string(), bounds: vec![] },
+            ],
+            fields: vec![
+                ("value".to_string(), Type::TypeVar("T".to_string())),
+            ],
+            attrs: vec![],
+        };
+        let tokens = struct_to_token_stream(&s);
+        // Should contain the type parameter
+        assert!(tokens.contains("{type_ident, 'Container'}"));
+        assert!(tokens.contains("{type_ident, 'T'}"));
+        assert!(tokens.contains("group, angle"));
+    }
+
+    #[test]
+    fn test_enum_to_token_stream() {
+        let e = EnumDef {
+            is_pub: true,
+            name: "Option".to_string(),
+            type_params: vec![
+                TypeParam { name: "T".to_string(), bounds: vec![] },
+            ],
+            variants: vec![
+                EnumVariant { name: "Some".to_string(), kind: VariantKind::Tuple(vec![Type::TypeVar("T".to_string())]) },
+                EnumVariant { name: "None".to_string(), kind: VariantKind::Unit },
+            ],
+            attrs: vec![],
+        };
+        let tokens = enum_to_token_stream(&e);
+        // Should contain keyword enum, type_ident Option, variants
+        assert!(tokens.contains("{keyword, pub}"));
+        assert!(tokens.contains("{keyword, enum}"));
+        assert!(tokens.contains("{type_ident, 'Option'}"));
+        assert!(tokens.contains("{type_ident, 'Some'}"));
+        assert!(tokens.contains("{type_ident, 'None'}"));
     }
 }
