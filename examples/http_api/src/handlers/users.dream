@@ -6,13 +6,9 @@ use crate::models::user::User;
 use serde::serialize::serialize_value;
 
 pub fn init(req: any, state: any) -> (atom, any, any) {
-    // Create users using the User struct
-    let user1 = User::new(1, "Alice");
-    let user2 = User::new(2, "Bob");
-    let user3 = User::new(3, "Charlie");
-
-    // Create response data - serialize_value handles the list of structs automatically
-    let users = [user1, user2, user3];
+    // Create users using a for comprehension
+    let user_data = [(1, "Alice"), (2, "Bob"), (3, "Charlie")];
+    let users = for (id, name) <- user_data { User::new(id, name) };
     let data = {users: serialize_value(users)};
 
     // Encode to JSON using Jason (data is already serialized by serialize_value)

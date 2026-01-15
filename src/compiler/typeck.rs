@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::compiler::ast::{
     self, AttributeArgs, BinOp, Block, EnumPatternFields, EnumVariantArgs, Expr, ExternItem,
-    ExternMod, Function, ImplBlock, Item, MatchArm, Module, PathPrefix, Pattern, Stmt, StringPart,
-    TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
+    ExternMod, ForClause, Function, ImplBlock, Item, MatchArm, Module, PathPrefix, Pattern, Stmt,
+    StringPart, TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
 };
 use crate::compiler::error::{TypeError, TypeResult};
 
@@ -2289,6 +2289,60 @@ impl TypeChecker {
             Expr::UnquoteFieldAccess { .. } => Ok(Ty::Any),
             Expr::QuoteItem(_) => Ok(Ty::Any),
             Expr::QuoteRepetition { .. } => Ok(Ty::Any),
+
+            // For loop expressions
+            Expr::For {
+                clauses,
+                body,
+                is_comprehension,
+            } => {
+                // Create a new scope for the for loop body
+                let mut scope = self.env.clone();
+                std::mem::swap(&mut self.env, &mut scope);
+
+                // Process each clause - bind generator patterns, check filter expressions
+                for clause in clauses {
+                    match clause {
+                        ForClause::Generator { pattern, source, .. } => {
+                            // Infer the source type
+                            let source_ty = self.infer_expr(source)?;
+
+                            // Get element type from source (list or iterator)
+                            let elem_ty = match &source_ty {
+                                Ty::List(elem) => (**elem).clone(),
+                                _ => Ty::Any, // Allow iterating over unknown types
+                            };
+
+                            // Bind pattern variables with element type
+                            self.bind_pattern(pattern, &elem_ty)?;
+                        }
+                        ForClause::When(expr) => {
+                            // Check filter expression is bool
+                            let filter_ty = self.infer_expr(expr)?;
+                            if !self.types_compatible(&filter_ty, &Ty::Bool) {
+                                self.error(TypeError::with_help(
+                                    "for loop filter must be bool",
+                                    format!("found {}", filter_ty),
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Check body expression with pattern bindings in scope
+                let body_ty = self.infer_expr(body)?;
+
+                // Restore original scope
+                std::mem::swap(&mut self.env, &mut scope);
+
+                if *is_comprehension {
+                    // List comprehension returns a list of the body type
+                    Ok(Ty::List(Box::new(body_ty)))
+                } else {
+                    // Side-effect loop returns atom (:ok)
+                    Ok(Ty::Atom)
+                }
+            }
         }
     }
 
@@ -3537,6 +3591,34 @@ impl TypeChecker {
                 pattern: Box::new(self.annotate_expr(pattern)),
                 separator: separator.clone(),
             },
+
+            // For loop - annotate clauses and body
+            Expr::For {
+                clauses,
+                body,
+                is_comprehension,
+            } => {
+                let annotated_clauses = clauses
+                    .iter()
+                    .map(|clause| match clause {
+                        ForClause::Generator {
+                            pattern,
+                            source,
+                            style,
+                        } => ForClause::Generator {
+                            pattern: pattern.clone(),
+                            source: self.annotate_expr(source),
+                            style: *style,
+                        },
+                        ForClause::When(expr) => ForClause::When(self.annotate_expr(expr)),
+                    })
+                    .collect();
+                Expr::For {
+                    clauses: annotated_clauses,
+                    body: Box::new(self.annotate_expr(body)),
+                    is_comprehension: *is_comprehension,
+                }
+            }
         }
     }
 
@@ -4159,6 +4241,25 @@ impl MethodResolver {
 
             // QuoteItem - items don't have expressions to resolve in this context
             Expr::QuoteItem(_) => {}
+
+            // For loop - resolve clauses and body
+            Expr::For {
+                clauses,
+                body,
+                ..
+            } => {
+                for clause in clauses {
+                    match clause {
+                        ForClause::Generator { source, .. } => {
+                            self.resolve_expr(source);
+                        }
+                        ForClause::When(expr) => {
+                            self.resolve_expr(expr);
+                        }
+                    }
+                }
+                self.resolve_expr(body);
+            }
         }
     }
 

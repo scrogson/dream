@@ -216,6 +216,8 @@ pub enum Token {
     Trait,
     #[token("for")]
     For,
+    #[token("in")]
+    In,
     #[token("when")]
     When,
     #[token("true")]
@@ -319,6 +321,8 @@ pub enum Token {
     OrOr,
     #[token("->")]
     Arrow,
+    #[token("<-")]
+    LArrow,
     #[token("=>")]
     FatArrow,
     #[token("|>")]
@@ -403,6 +407,7 @@ impl std::fmt::Display for Token {
             Token::Impl => write!(f, "impl"),
             Token::Trait => write!(f, "trait"),
             Token::For => write!(f, "for"),
+            Token::In => write!(f, "in"),
             Token::When => write!(f, "when"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
@@ -433,6 +438,7 @@ impl std::fmt::Display for Token {
             Token::AndAnd => write!(f, "&&"),
             Token::OrOr => write!(f, "||"),
             Token::Arrow => write!(f, "->"),
+            Token::LArrow => write!(f, "<-"),
             Token::FatArrow => write!(f, "=>"),
             Token::PipeRight => write!(f, "|>"),
             Token::ColonColon => write!(f, "::"),

@@ -48,9 +48,9 @@ pub type SharedGenericRegistry = Arc<RwLock<GenericFunctionRegistry>>;
 
 use crate::compiler::ast::{
     BinOp, BitEndianness, BitSegmentType, BitSignedness, BitStringSegment, Block,
-    EnumPatternFields, EnumVariant, EnumVariantArgs, Expr, Function, Item, MatchArm, Module,
-    ModuleContext, ModulePath, PathPrefix, Pattern, Stmt, StringPart, TraitDef, TraitImpl, Type,
-    UnaryOp, UseDecl, UseTree, VariantKind,
+    EnumPatternFields, EnumVariant, EnumVariantArgs, Expr, ForClause, Function, Item, MatchArm,
+    Module, ModuleContext, ModulePath, PathPrefix, Pattern, Stmt, StringPart, TraitDef, TraitImpl,
+    Type, UnaryOp, UseDecl, UseTree, VariantKind,
 };
 
 /// Core Erlang emitter error.
@@ -3464,6 +3464,15 @@ impl CoreErlangEmitter {
                 self.emit_quoted_item(item)?;
             }
 
+            // For loop expression
+            Expr::For {
+                clauses,
+                body,
+                is_comprehension,
+            } => {
+                self.emit_for_expr(clauses, body, *is_comprehension)?;
+            }
+
             // Unquote outside of quote is an error
             Expr::Unquote(_) | Expr::UnquoteSplice(_) | Expr::UnquoteAtom(_) | Expr::UnquoteFieldAccess { .. } | Expr::QuoteRepetition { .. } => {
                 return Err(CoreErlangError::new(
@@ -4262,6 +4271,395 @@ impl CoreErlangEmitter {
         Ok(())
     }
 
+    /// Emit a for loop expression.
+    ///
+    /// Side-effect loop (`for x in list { body }`):
+    ///   Generates a recursive letrec that iterates through the list.
+    ///
+    /// List comprehension (`for x <- list { expr }`):
+    ///   Uses :lists:map, :lists:flatmap, or :lists:filtermap depending on the clauses.
+    fn emit_for_expr(
+        &mut self,
+        clauses: &[ForClause],
+        body: &Expr,
+        is_comprehension: bool,
+    ) -> CoreErlangResult<()> {
+        // Extract generators and filters
+        let mut generators = Vec::new();
+        let mut filters = Vec::new();
+
+        for clause in clauses {
+            match clause {
+                ForClause::Generator {
+                    pattern,
+                    source,
+                    style: _,
+                } => {
+                    generators.push((pattern, source));
+                }
+                ForClause::When(expr) => {
+                    filters.push(expr);
+                }
+            }
+        }
+
+        if is_comprehension {
+            self.emit_for_comprehension(&generators, &filters, body)?;
+        } else {
+            self.emit_for_side_effect(&generators, body)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit a list comprehension using :lists functions.
+    fn emit_for_comprehension(
+        &mut self,
+        generators: &[(&Pattern, &Expr)],
+        filters: &[&Expr],
+        body: &Expr,
+    ) -> CoreErlangResult<()> {
+        if generators.is_empty() {
+            return Err(CoreErlangError::new(
+                "for comprehension requires at least one generator",
+            ));
+        }
+
+        // Single generator case
+        if generators.len() == 1 {
+            let (pattern, source) = generators[0];
+
+            if filters.is_empty() {
+                // Simple map: for x <- list { expr }
+                // In Core Erlang, fun must be let-bound before use in call
+                // let <F> = fun (X) -> case X of <Pattern> -> Body end in call 'lists':'map'(F, List)
+                let fun_var = self.fresh_var();
+
+                self.emit(&format!("let <{fun_var}> ="));
+                self.indent += 1;
+                self.newline();
+
+                // For simple identifier patterns, emit directly
+                // For complex patterns (tuple, etc.), use case destructuring
+                if let Pattern::Ident(name) = pattern {
+                    self.emit("fun (");
+                    self.emit(&Self::var_name(name));
+                    self.emit(") -> ");
+                    self.emit_expr(body)?;
+                } else {
+                    // Complex pattern - use case to destructure
+                    self.emit("fun (__for_arg_0) ->");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("case __for_arg_0 of");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("<");
+                    self.emit_pattern(pattern)?;
+                    self.emit("> when 'true' ->");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit_expr(body)?;
+                    self.indent -= 1;
+                    self.indent -= 1;
+                    self.newline();
+                    self.emit("end");
+                    self.indent -= 1;
+                }
+
+                self.indent -= 1;
+                self.newline();
+                self.emit(&format!("in call 'lists':'map'({fun_var}, "));
+                self.emit_expr(source)?;
+                self.emit(")");
+            } else {
+                // Filter + map: for x <- list, when cond { expr }
+                // let <F> = fun (X) -> case Cond of ... end in call 'lists':'filtermap'(F, List)
+                let fun_var = self.fresh_var();
+
+                self.emit(&format!("let <{fun_var}> ="));
+                self.indent += 1;
+                self.newline();
+
+                // For simple identifier patterns, emit directly
+                // For complex patterns (tuple, etc.), use case destructuring
+                if let Pattern::Ident(name) = pattern {
+                    self.emit("fun (");
+                    self.emit(&Self::var_name(name));
+                    self.emit(") ->");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("case ");
+                } else {
+                    // Complex pattern - use case to destructure first
+                    self.emit("fun (__for_arg_0) ->");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("case __for_arg_0 of");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("<");
+                    self.emit_pattern(pattern)?;
+                    self.emit("> when 'true' ->");
+                    self.indent += 1;
+                    self.newline();
+                    self.emit("case ");
+                }
+
+                // Emit combined filter condition (all filters must be true)
+                if filters.len() == 1 {
+                    self.emit_expr(filters[0])?;
+                } else {
+                    // Multiple filters: cond1 andalso cond2 andalso ...
+                    for (i, filter) in filters.iter().enumerate() {
+                        if i > 0 {
+                            self.emit(" andalso ");
+                        }
+                        self.emit_expr(filter)?;
+                    }
+                }
+
+                self.emit(" of");
+                self.indent += 1;
+                self.newline();
+                self.emit("<'true'> when 'true' -> {'true', ");
+                self.emit_expr(body)?;
+                self.emit("}");
+                self.newline();
+                self.emit("<'false'> when 'true' -> 'false'");
+                self.indent -= 1;
+                self.newline();
+                self.emit("end");
+
+                // Close additional scopes for complex patterns
+                if !matches!(pattern, Pattern::Ident(_)) {
+                    self.indent -= 1;
+                    self.indent -= 1;
+                    self.newline();
+                    self.emit("end");
+                }
+
+                self.indent -= 1;
+                self.indent -= 1;
+                self.newline();
+                self.emit(&format!("in call 'lists':'filtermap'({fun_var}, "));
+                self.emit_expr(source)?;
+                self.emit(")");
+            }
+        } else {
+            // Multiple generators: nested flatmap
+            // for x <- xs, y <- ys { expr }
+            // call 'lists':'flatmap'(fun (X) ->
+            //     call 'lists':'map'(fun (Y) -> Body end, Ys)
+            // end, Xs)
+            self.emit_nested_generators(generators, filters, body, 0)?;
+        }
+
+        Ok(())
+    }
+
+    /// Emit nested generators using flatmap/map.
+    fn emit_nested_generators(
+        &mut self,
+        generators: &[(&Pattern, &Expr)],
+        filters: &[&Expr],
+        body: &Expr,
+        depth: usize,
+    ) -> CoreErlangResult<()> {
+        if depth >= generators.len() {
+            // Base case: emit body with filter if present
+            if filters.is_empty() {
+                self.emit("[");
+                self.emit_expr(body)?;
+                self.emit("]");
+            } else {
+                // case filter of true -> [body] | false -> [] end
+                self.emit("case ");
+                if filters.len() == 1 {
+                    self.emit_expr(filters[0])?;
+                } else {
+                    for (i, filter) in filters.iter().enumerate() {
+                        if i > 0 {
+                            self.emit(" andalso ");
+                        }
+                        self.emit_expr(filter)?;
+                    }
+                }
+                self.emit(" of <'true'> when 'true' -> [");
+                self.emit_expr(body)?;
+                self.emit("] <'false'> when 'true' -> [] end");
+            }
+            return Ok(());
+        }
+
+        let (pattern, source) = generators[depth];
+        let is_last = depth == generators.len() - 1;
+        let fun_var = self.fresh_var();
+
+        // Emit: let <F> = fun (...) -> ... in call 'lists':'map'(F, Source)
+        self.emit(&format!("let <{fun_var}> ="));
+        self.indent += 1;
+        self.newline();
+
+        // Handle simple vs complex patterns
+        if let Pattern::Ident(name) = pattern {
+            self.emit("fun (");
+            self.emit(&Self::var_name(name));
+            self.emit(") ->");
+            self.indent += 1;
+            self.newline();
+            self.emit_nested_generators(generators, filters, body, depth + 1)?;
+            self.indent -= 1;
+        } else {
+            // Complex pattern - use case to destructure
+            let arg_name = format!("__for_arg_{}", depth);
+            self.emit(&format!("fun ({arg_name}) ->"));
+            self.indent += 1;
+            self.newline();
+            self.emit(&format!("case {arg_name} of"));
+            self.indent += 1;
+            self.newline();
+            self.emit("<");
+            self.emit_pattern(pattern)?;
+            self.emit("> when 'true' ->");
+            self.indent += 1;
+            self.newline();
+            self.emit_nested_generators(generators, filters, body, depth + 1)?;
+            self.indent -= 1;
+            self.indent -= 1;
+            self.newline();
+            self.emit("end");
+            self.indent -= 1;
+        }
+
+        self.indent -= 1;
+        self.newline();
+
+        if is_last {
+            // Last generator: use map
+            self.emit(&format!("in call 'lists':'map'({fun_var}, "));
+        } else {
+            // Not last: use flatmap
+            self.emit(&format!("in call 'lists':'flatmap'({fun_var}, "));
+        }
+        self.emit_expr(source)?;
+        self.emit(")");
+
+        Ok(())
+    }
+
+    /// Emit a side-effect for loop using letrec.
+    fn emit_for_side_effect(
+        &mut self,
+        generators: &[(&Pattern, &Expr)],
+        body: &Expr,
+    ) -> CoreErlangResult<()> {
+        if generators.is_empty() {
+            return Err(CoreErlangError::new(
+                "for loop requires at least one generator",
+            ));
+        }
+
+        // For simplicity, only handle single generator for now
+        if generators.len() != 1 {
+            return Err(CoreErlangError::new(
+                "for loops with multiple generators are not yet supported (use comprehension syntax)",
+            ));
+        }
+
+        let (pattern, source) = generators[0];
+        let loop_var = self.fresh_var();
+        let list_var = self.fresh_var();
+        let head_var = self.fresh_var();
+        let tail_var = self.fresh_var();
+
+        // ( letrec
+        //     'loop'/1 = fun (List) ->
+        //         case List of
+        //             <[]> when 'true' -> 'ok'
+        //             <[H|T]> when 'true' ->
+        //                 do <body with pattern bound to H>
+        //                 apply 'loop'/1(T)
+        //         end
+        // in apply 'loop'/1(Source)
+        // -| ['letrec_goto'] )
+
+        self.emit("( letrec");
+        self.indent += 1;
+        self.newline();
+
+        // 'loop'/1 = fun (List) ->
+        self.emit(&format!("'{loop_var}'/1 = fun ({list_var}) ->"));
+        self.indent += 1;
+        self.newline();
+
+        // case List of
+        self.emit(&format!("case {list_var} of"));
+        self.indent += 1;
+        self.newline();
+
+        // <[]> when 'true' -> 'ok'
+        self.emit("<[]> when 'true' -> 'ok'");
+        self.newline();
+
+        // <[H|T]> when 'true' ->
+        self.emit(&format!("<[{head_var}|{tail_var}]> when 'true' ->"));
+        self.indent += 1;
+        self.newline();
+
+        // Bind pattern to head_var using let or case
+        // For simple variable pattern, use let
+        // For complex patterns, use case
+        match pattern {
+            Pattern::Ident(name) => {
+                // let <Name> = Head in do Body apply 'loop'/1(Tail)
+                let erlang_name = Self::var_name(name);
+                self.emit(&format!("let <{erlang_name}> = {head_var}"));
+                self.newline();
+                self.emit("in ( do ");
+                self.emit_expr(body)?;
+                self.newline();
+                self.emit(&format!("apply '{loop_var}'/1({tail_var}) )"));
+            }
+            _ => {
+                // case Head of <Pattern> when 'true' -> do Body apply 'loop'/1(Tail) end
+                self.emit(&format!("case {head_var} of"));
+                self.indent += 1;
+                self.newline();
+                self.emit("<");
+                self.emit_pattern(pattern)?;
+                self.emit("> when 'true' ->");
+                self.indent += 1;
+                self.newline();
+                self.emit("( do ");
+                self.emit_expr(body)?;
+                self.newline();
+                self.emit(&format!("apply '{loop_var}'/1({tail_var}) )"));
+                self.indent -= 1;
+                self.indent -= 1;
+                self.newline();
+                self.emit("end");
+            }
+        }
+
+        self.indent -= 1;
+        self.indent -= 1;
+        self.newline();
+        self.emit("end");
+        self.indent -= 1;
+        self.newline();
+
+        // in apply 'loop'/1(Source)
+        self.emit(&format!("in apply '{loop_var}'/1("));
+        self.emit_expr(source)?;
+        self.emit(")");
+        self.indent -= 1;
+        self.newline();
+        self.emit("-| ['letrec_goto'] )");
+
+        Ok(())
+    }
+
     /// Emit receive using Core Erlang primops.
     ///
     /// Core Erlang doesn't have a simple `receive...end` construct.
@@ -4520,6 +4918,7 @@ impl CoreErlangEmitter {
             }
 
             Pattern::Tuple(elements) => {
+                // Core Erlang uses {} for tuple patterns
                 self.emit("{");
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {

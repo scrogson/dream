@@ -1306,6 +1306,7 @@ impl<'source> Parser<'source> {
                 | Expr::Match { .. }
                 | Expr::Block(_)
                 | Expr::Receive { .. }
+                | Expr::For { .. }
                 | Expr::QuoteRepetition { .. }
         )
     }
@@ -2167,6 +2168,11 @@ impl<'source> Parser<'source> {
             return self.parse_receive_expr();
         }
 
+        // For loop expression
+        if self.check(&Token::For) {
+            return self.parse_for_expr();
+        }
+
         // Spawn expression
         if self.check(&Token::Spawn) {
             return self.parse_spawn_expr();
@@ -2502,6 +2508,94 @@ impl<'source> Parser<'source> {
 
         self.expect(&Token::RBrace)?;
         Ok(Expr::Receive { arms, timeout })
+    }
+
+    /// Parse a for loop expression.
+    /// Side-effect loop: `for x in iter { body }`
+    /// List comprehension: `for x <- list, y <- list2, when cond { expr }`
+    fn parse_for_expr(&mut self) -> ParseResult<Expr> {
+        self.expect(&Token::For)?;
+
+        let mut clauses = Vec::new();
+        let mut is_comprehension = false;
+
+        // Parse first clause (required generator)
+        let first_clause = self.parse_for_clause()?;
+        if matches!(
+            &first_clause,
+            ForClause::Generator {
+                style: GeneratorStyle::Arrow,
+                ..
+            }
+        ) {
+            is_comprehension = true;
+        }
+        clauses.push(first_clause);
+
+        // Parse additional clauses (separated by commas)
+        while self.check(&Token::Comma) {
+            self.advance();
+            clauses.push(self.parse_for_clause()?);
+        }
+
+        // Parse body
+        let body = if is_comprehension {
+            // Comprehension: expression in braces
+            self.expect(&Token::LBrace)?;
+            let expr = self.parse_expr()?;
+            self.expect(&Token::RBrace)?;
+            Box::new(expr)
+        } else {
+            // Side-effect loop: block
+            let block = self.parse_block()?;
+            Box::new(Expr::Block(block))
+        };
+
+        Ok(Expr::For {
+            clauses,
+            body,
+            is_comprehension,
+        })
+    }
+
+    /// Parse a single clause in a for loop.
+    /// Either a generator (pattern in/into source) or a filter (when expr).
+    fn parse_for_clause(&mut self) -> ParseResult<ForClause> {
+        // Check for 'when' filter clause first
+        if self.check(&Token::When) {
+            self.advance();
+            let condition = self.parse_expr()?;
+            return Ok(ForClause::When(condition));
+        }
+
+        // Otherwise parse a generator
+        let pattern = self.parse_pattern()?;
+
+        if self.check(&Token::In) {
+            // for x in iter style
+            self.advance();
+            let source = self.parse_expr()?;
+            Ok(ForClause::Generator {
+                pattern,
+                source,
+                style: GeneratorStyle::In,
+            })
+        } else if self.check(&Token::LArrow) {
+            // for x <- list style
+            self.advance();
+            let source = self.parse_expr()?;
+            Ok(ForClause::Generator {
+                pattern,
+                source,
+                style: GeneratorStyle::Arrow,
+            })
+        } else {
+            let span = self.current_span();
+            Err(ParseError::new(
+                "expected 'in' or '<-' after pattern in for clause",
+                span,
+            ))
+        }
     }
 
     /// Parse a spawn expression.
@@ -5652,6 +5746,178 @@ mod repl_edit {
                 assert!(pairs.is_empty());
             } else {
                 panic!("expected empty map literal, got {:?}", f.body.expr);
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_for_in_loop() {
+        // Test side-effect loop: for x in list { body }
+        let source = r#"
+            mod test {
+                fn iterate(items: [int]) {
+                    for x in items {
+                        :io::format("~p~n", [x])
+                    }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = first_user_item(&module) {
+            if let Some(Expr::For {
+                clauses,
+                is_comprehension,
+                ..
+            }) = f.body.expr.as_deref()
+            {
+                assert_eq!(clauses.len(), 1);
+                assert!(!is_comprehension);
+                if let ForClause::Generator {
+                    pattern: Pattern::Ident(name),
+                    style: GeneratorStyle::In,
+                    ..
+                } = &clauses[0]
+                {
+                    assert_eq!(name, "x");
+                } else {
+                    panic!("expected generator with In style");
+                }
+            } else {
+                panic!("expected for loop");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_for_comprehension() {
+        // Test list comprehension: for x <- list { expr }
+        let source = r#"
+            mod test {
+                fn double_all(items: [int]) -> [int] {
+                    for x <- items { x * 2 }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = first_user_item(&module) {
+            if let Some(Expr::For {
+                clauses,
+                is_comprehension,
+                body,
+            }) = f.body.expr.as_deref()
+            {
+                assert_eq!(clauses.len(), 1);
+                assert!(is_comprehension);
+                if let ForClause::Generator {
+                    pattern: Pattern::Ident(name),
+                    style: GeneratorStyle::Arrow,
+                    ..
+                } = &clauses[0]
+                {
+                    assert_eq!(name, "x");
+                } else {
+                    panic!("expected generator with Arrow style");
+                }
+                // Check body is a binary expression
+                if let Expr::Binary { op: BinOp::Mul, .. } = body.as_ref() {
+                    // ok
+                } else {
+                    panic!("expected multiplication in body");
+                }
+            } else {
+                panic!("expected for comprehension");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_for_comprehension_with_filter() {
+        // Test comprehension with when filter
+        let source = r#"
+            mod test {
+                fn evens(items: [int]) -> [int] {
+                    for x <- items, when x % 2 == 0 { x }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = first_user_item(&module) {
+            if let Some(Expr::For {
+                clauses,
+                is_comprehension,
+                ..
+            }) = f.body.expr.as_deref()
+            {
+                assert_eq!(clauses.len(), 2);
+                assert!(is_comprehension);
+                // First clause is generator
+                if let ForClause::Generator { .. } = &clauses[0] {
+                    // ok
+                } else {
+                    panic!("expected generator");
+                }
+                // Second clause is when filter
+                if let ForClause::When(_) = &clauses[1] {
+                    // ok
+                } else {
+                    panic!("expected when filter");
+                }
+            } else {
+                panic!("expected for comprehension");
+            }
+        } else {
+            panic!("expected function");
+        }
+    }
+
+    #[test]
+    fn test_parse_for_multiple_generators() {
+        // Test comprehension with multiple generators (cartesian product)
+        let source = r#"
+            mod test {
+                fn pairs(xs: [int], ys: [int]) -> [(int, int)] {
+                    for x <- xs, y <- ys { (x, y) }
+                }
+            }
+        "#;
+        let mut parser = Parser::new(source);
+        let module = parser.parse_module().unwrap();
+
+        if let Item::Function(f) = first_user_item(&module) {
+            if let Some(Expr::For {
+                clauses,
+                is_comprehension,
+                ..
+            }) = f.body.expr.as_deref()
+            {
+                assert_eq!(clauses.len(), 2);
+                assert!(is_comprehension);
+                // Both clauses should be generators
+                for clause in clauses {
+                    if let ForClause::Generator {
+                        style: GeneratorStyle::Arrow,
+                        ..
+                    } = clause
+                    {
+                        // ok
+                    } else {
+                        panic!("expected arrow generator");
+                    }
+                }
+            } else {
+                panic!("expected for comprehension");
             }
         } else {
             panic!("expected function");

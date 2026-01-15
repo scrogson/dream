@@ -684,6 +684,17 @@ pub enum Expr {
     /// Map literal: `%{key => value, ...}`.
     /// Creates an Erlang map at runtime.
     MapLiteral(Vec<(Expr, Expr)>),
+    /// For loop expression - handles both styles.
+    /// Side-effect loop: `for x in iter { body }` returns `:ok`.
+    /// List comprehension: `for x <- list, when cond { expr }` returns `[T]`.
+    For {
+        /// Clauses: generators (pattern <- expr) and filters (when expr)
+        clauses: Vec<ForClause>,
+        /// Loop body expression
+        body: Box<Expr>,
+        /// Whether this is a comprehension (returns list) or side-effect loop (returns :ok)
+        is_comprehension: bool,
+    },
 }
 
 /// A match arm.
@@ -692,6 +703,28 @@ pub struct MatchArm {
     pub pattern: Pattern,
     pub guard: Option<Box<Expr>>,
     pub body: Expr,
+}
+
+/// A clause in a for loop expression.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ForClause {
+    /// Generator: pattern <- source or pattern in source
+    Generator {
+        pattern: Pattern,
+        source: Expr,
+        style: GeneratorStyle,
+    },
+    /// Filter: when expr (guard condition)
+    When(Expr),
+}
+
+/// Style of generator in a for loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratorStyle {
+    /// `for x in iter` - side-effect loop style
+    In,
+    /// `for x <- list` - comprehension style
+    Arrow,
 }
 
 /// Binary operators.

@@ -277,6 +277,7 @@ pub fn expr_to_erlang_term(expr: &Expr) -> String {
         }
         Expr::BitString(_) => "{bitstring}".to_string(), // Simplified
         Expr::StringInterpolation(_) => "{string_interpolation}".to_string(), // Simplified
+        Expr::For { .. } => "{for}".to_string(), // Simplified
     }
 }
 

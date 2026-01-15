@@ -1468,6 +1468,13 @@ impl Codegen {
                     "quote/unquote expressions should be expanded before codegen",
                 ))
             }
+
+            // For loop - not yet implemented for WASM target
+            Expr::For { .. } => {
+                Err(CodegenError::new(
+                    "for loops are not yet implemented for WASM target",
+                ))
+            }
         }
     }
 
