@@ -2429,8 +2429,15 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse an if expression.
+    /// Supports both regular `if cond { ... }` and `if let pattern = expr { ... }`.
     fn parse_if_expr(&mut self) -> ParseResult<Expr> {
         self.expect(&Token::If)?;
+
+        // Check for `if let` pattern matching
+        if self.check(&Token::Let) {
+            return self.parse_if_let_expr();
+        }
+
         let cond = self.parse_expr()?;
         let then_block = self.parse_block()?;
 
@@ -2454,6 +2461,51 @@ impl<'source> Parser<'source> {
             cond: Box::new(cond),
             then_block,
             else_block,
+        })
+    }
+
+    /// Parse an `if let` expression.
+    /// Desugars `if let pattern = expr { then } else { else }` into a match expression.
+    fn parse_if_let_expr(&mut self) -> ParseResult<Expr> {
+        self.expect(&Token::Let)?;
+        let pattern = self.parse_pattern()?;
+        self.expect(&Token::Eq)?;
+        let expr = self.parse_expr()?;
+        let then_block = self.parse_block()?;
+
+        // Build the match arm for the pattern
+        let then_arm = MatchArm {
+            pattern,
+            guard: None,
+            body: Expr::Block(then_block),
+        };
+
+        // Build the else arm (wildcard pattern)
+        let else_arm = if self.check(&Token::Else) {
+            self.advance();
+            let else_body = if self.check(&Token::If) {
+                // else if - recursively parse
+                self.parse_if_expr()?
+            } else {
+                Expr::Block(self.parse_block()?)
+            };
+            MatchArm {
+                pattern: Pattern::Wildcard,
+                guard: None,
+                body: else_body,
+            }
+        } else {
+            // No else block - return unit (empty tuple)
+            MatchArm {
+                pattern: Pattern::Wildcard,
+                guard: None,
+                body: Expr::Tuple(vec![]),
+            }
+        };
+
+        Ok(Expr::Match {
+            expr: Box::new(expr),
+            arms: vec![then_arm, else_arm],
         })
     }
 
