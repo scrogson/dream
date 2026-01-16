@@ -1078,14 +1078,14 @@ impl TypeChecker {
                     "int" => Ty::Int,
                     "float" => Ty::Float,
                     "bool" => Ty::Bool,
-                    // CamelCase compound types (preferred)
-                    "String" | "string" => Ty::String,
-                    "Atom" | "atom" => Ty::Atom,
-                    "Pid" | "pid" => Ty::Pid,
-                    "Ref" | "ref" => Ty::Ref,
-                    "Binary" | "binary" => Ty::Binary,
-                    "Map" | "map" => Ty::RawMap,
-                    "Any" | "any" => Ty::Any,
+                    // CamelCase compound types
+                    "String" => Ty::String,
+                    "Atom" => Ty::Atom,
+                    "Pid" => Ty::Pid,
+                    "Ref" => Ty::Ref,
+                    "Binary" => Ty::Binary,
+                    "Map" => Ty::RawMap,
+                    "Any" => Ty::Any,
                     "IoList" => Ty::List(Box::new(Ty::Union(vec![
                         Ty::Int,      // byte
                         Ty::Binary,   // binary
@@ -4409,13 +4409,13 @@ impl MethodResolver {
                     "int" => Ty::Int,
                     "float" => Ty::Float,
                     "bool" => Ty::Bool,
-                    "String" | "string" => Ty::String,
-                    "Atom" | "atom" => Ty::Atom,
-                    "Pid" | "pid" => Ty::Pid,
-                    "Ref" | "ref" => Ty::Ref,
-                    "Binary" | "binary" => Ty::Binary,
-                    "Map" | "map" => Ty::RawMap,
-                    "Any" | "any" => Ty::Any,
+                    "String" => Ty::String,
+                    "Atom" => Ty::Atom,
+                    "Pid" => Ty::Pid,
+                    "Ref" => Ty::Ref,
+                    "Binary" => Ty::Binary,
+                    "Map" => Ty::RawMap,
+                    "Any" => Ty::Any,
                     "IoList" => Ty::List(Box::new(Ty::Union(vec![
                         Ty::Int,
                         Ty::Binary,
@@ -4659,10 +4659,10 @@ mod tests {
         let result = parse_and_check(r#"
             mod test {
                 extern mod file {
-                    fn read_file(path: string) -> Result<binary, atom>;
+                    fn read_file(path: String) -> Result<Binary, Atom>;
                 }
 
-                fn test() -> Result<binary, atom> {
+                fn test() -> Result<Binary, Atom> {
                     :file::read_file("test.txt")
                 }
             }
@@ -4676,10 +4676,10 @@ mod tests {
         let result = parse_and_check(r#"
             mod test {
                 extern mod file {
-                    fn read_file(path: string) -> Result<binary, atom>;
+                    fn read_file(path: String) -> Result<Binary, Atom>;
                 }
 
-                fn test() -> binary {
+                fn test() -> Binary {
                     :file::read_file("test.txt").unwrap()
                 }
             }

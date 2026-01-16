@@ -43,7 +43,7 @@ extern mod lists {
     fn rmerge3(arg0: [any], arg1: [any], arg2: [any]) -> [any];
     fn merge(list1: [any], list2: [any]) -> [any];
     fn rmerge(arg0: [any], arg1: [any]) -> [any];
-    fn concat(things: [any]) -> string;
+    fn concat(things: [any]) -> String;
     fn flatten(deeplist: [any]) -> [any];
     fn flatten(deeplist: [any], tail: [any]) -> [any];
     fn flatlength(deeplist: [any]) -> int;
@@ -83,7 +83,7 @@ extern mod lists {
     fn partition(pred: any, list_: [any]) -> ([any], [any]);
     fn filtermap(fun: any, list1: [any]) -> [any];
     fn zf(arg0: any, arg1: [any]) -> [any];
-    fn foreach(fun: any, list_: [any]) -> atom;
+    fn foreach(fun: any, list_: [any]) -> Atom;
     fn mapfoldl(fun: fn(any, any) -> (any, any), acc0: any, list1: [any]) -> ([any], any);
     fn mapfoldr(fun: fn(any, any) -> (any, any), acc0: any, list1: [any]) -> ([any], any);
     fn takewhile(pred: any, list1: [any]) -> [any];

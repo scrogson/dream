@@ -1,13 +1,13 @@
 mod test {
     extern mod file {
-        fn read_file(path: string) -> Result<binary, atom>;
+        fn read_file(path: String) -> Result<Binary, Atom>;
     }
 
-    pub fn read_file(path: string) -> Result<binary, atom> {
+    pub fn read_file(path: String) -> Result<Binary, Atom> {
         :file::read_file(path)
     }
 
-    pub fn read_with_default(path: string) -> binary {
+    pub fn read_with_default(path: String) -> Binary {
         :file::read_file(path).unwrap_or(<<"default">>)
     }
 }

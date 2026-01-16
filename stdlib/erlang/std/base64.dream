@@ -5,30 +5,30 @@
 
 #[name = "base64"]
 extern mod base64 {
-    /// Encode binary to base64.
-    fn encode(data: any) -> binary;
+    /// Encode Binary to base64.
+    fn encode(data: Any) -> Binary;
 
     /// Encode to base64 with options.
-    fn encode(data: any, opts: map) -> binary;
+    fn encode(data: Any, opts: Map) -> Binary;
 
     /// Encode to base64 iolist.
-    fn encode_to_string(data: any) -> [int];
+    fn encode_to_string(data: Any) -> [int];
 
-    /// Decode base64 to binary.
-    fn decode(base64: any) -> binary;
+    /// Decode base64 to Binary.
+    fn decode(base64: Any) -> Binary;
 
     /// Decode base64 with options.
-    fn decode(base64: any, opts: map) -> binary;
+    fn decode(base64: Any, opts: Map) -> Binary;
 
     /// Decode base64 to string.
-    fn decode_to_string(base64: any) -> [int];
+    fn decode_to_string(base64: Any) -> [int];
 
     /// MIME encode (with line breaks).
-    fn mime_decode(base64: any) -> binary;
+    fn mime_decode(base64: Any) -> Binary;
 
     /// MIME decode with options.
-    fn mime_decode(base64: any, opts: map) -> binary;
+    fn mime_decode(base64: Any, opts: Map) -> Binary;
 
     /// MIME decode to string.
-    fn mime_decode_to_string(base64: any) -> [int];
+    fn mime_decode_to_string(base64: Any) -> [int];
 }

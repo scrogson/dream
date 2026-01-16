@@ -6,47 +6,47 @@
 #[name = "unicode"]
 extern mod unicode {
     /// Convert binary to character list.
-    fn characters_to_list(data: any) -> any;
+    fn characters_to_list(data: Any) -> Any;
 
     /// Convert binary with encoding.
-    fn characters_to_list(data: any, encoding: atom) -> any;
+    fn characters_to_list(data: Any, encoding: Atom) -> Any;
 
     /// Convert to binary.
-    fn characters_to_binary(data: any) -> any;
+    fn characters_to_binary(data: Any) -> Any;
 
     /// Convert to binary with in/out encodings.
-    fn characters_to_binary(data: any, in_encoding: atom) -> any;
+    fn characters_to_binary(data: Any, in_encoding: Atom) -> Any;
 
     /// Convert with explicit in/out encodings.
-    fn characters_to_binary(data: any, in_encoding: atom, out_encoding: atom) -> any;
+    fn characters_to_binary(data: Any, in_encoding: Atom, out_encoding: Atom) -> Any;
 
     /// Convert to NFD normalized form.
-    fn characters_to_nfd_list(data: any) -> any;
+    fn characters_to_nfd_list(data: Any) -> Any;
 
     /// Convert to NFD binary.
-    fn characters_to_nfd_binary(data: any) -> any;
+    fn characters_to_nfd_binary(data: Any) -> Any;
 
     /// Convert to NFC normalized form.
-    fn characters_to_nfc_list(data: any) -> any;
+    fn characters_to_nfc_list(data: Any) -> Any;
 
     /// Convert to NFC binary.
-    fn characters_to_nfc_binary(data: any) -> any;
+    fn characters_to_nfc_binary(data: Any) -> Any;
 
     /// Convert to NFKD normalized form.
-    fn characters_to_nfkd_list(data: any) -> any;
+    fn characters_to_nfkd_list(data: Any) -> Any;
 
     /// Convert to NFKD binary.
-    fn characters_to_nfkd_binary(data: any) -> any;
+    fn characters_to_nfkd_binary(data: Any) -> Any;
 
     /// Convert to NFKC normalized form.
-    fn characters_to_nfkc_list(data: any) -> any;
+    fn characters_to_nfkc_list(data: Any) -> Any;
 
     /// Convert to NFKC binary.
-    fn characters_to_nfkc_binary(data: any) -> any;
+    fn characters_to_nfkc_binary(data: Any) -> Any;
 
     /// Get BOM (byte order mark).
-    fn bom_to_encoding(data: binary) -> (atom, int);
+    fn bom_to_encoding(data: Binary) -> (Atom, int);
 
     /// Create encoding BOM.
-    fn encoding_to_bom(encoding: atom) -> binary;
+    fn encoding_to_bom(encoding: Atom) -> Binary;
 }

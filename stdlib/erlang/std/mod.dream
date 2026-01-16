@@ -21,7 +21,7 @@ mod filelib;
 mod filename;
 
 // Strings and Binaries
-mod bin;
+mod binary;
 mod string;
 mod unicode;
 mod base64;

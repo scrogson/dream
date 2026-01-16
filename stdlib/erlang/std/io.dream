@@ -8,89 +8,89 @@ extern mod io {
     // ============== Output ==============
 
     /// Write a formatted string to standard output.
-    fn format(format: any, args: [any]) -> atom;
+    fn format(format: Any, args: [Any]) -> atom;
 
     /// Write a formatted string to a device.
-    fn format(device: any, format: any, args: [any]) -> atom;
+    fn format(device: Any, format: Any, args: [Any]) -> atom;
 
     /// Write formatted output and return result.
-    fn fwrite(format: any, args: [any]) -> Result<atom, any>;
+    fn fwrite(format: Any, args: [Any]) -> Result<Atom, Any>;
 
     /// Write formatted output to a device and return result.
-    fn fwrite(device: any, format: any, args: [any]) -> Result<atom, any>;
+    fn fwrite(device: Any, format: Any, args: [Any]) -> Result<Atom, Any>;
 
     /// Write a term to standard output.
-    fn put_chars(chars: any) -> atom;
+    fn put_chars(chars: Any) -> atom;
 
     /// Write a term to a device.
-    fn put_chars(device: any, chars: any) -> atom;
+    fn put_chars(device: Any, chars: Any) -> atom;
 
     /// Write a newline.
     fn nl() -> atom;
 
     /// Write a newline to a device.
-    fn nl(device: any) -> atom;
+    fn nl(device: Any) -> atom;
 
     // ============== Input ==============
 
     /// Read a line from standard input.
-    fn get_line(prompt: any) -> any;
+    fn get_line(prompt: Any) -> Any;
 
     /// Read a line from a device.
-    fn get_line(device: any, prompt: any) -> any;
+    fn get_line(device: Any, prompt: Any) -> Any;
 
     /// Read characters from standard input.
-    fn get_chars(prompt: any, count: int) -> any;
+    fn get_chars(prompt: Any, count: int) -> Any;
 
     /// Read characters from a device.
-    fn get_chars(device: any, prompt: any, count: int) -> any;
+    fn get_chars(device: Any, prompt: Any, count: int) -> Any;
 
     /// Read and parse Erlang terms.
-    fn read(prompt: any) -> any;
+    fn read(prompt: Any) -> Any;
 
     /// Read and parse Erlang terms from a device.
-    fn read(device: any, prompt: any) -> any;
+    fn read(device: Any, prompt: Any) -> Any;
 
     /// Scan input according to format.
-    fn fread(prompt: any, format: any) -> any;
+    fn fread(prompt: Any, format: Any) -> Any;
 
     /// Scan input from device according to format.
-    fn fread(device: any, prompt: any, format: any) -> any;
+    fn fread(device: Any, prompt: Any, format: Any) -> Any;
 
     // ============== Device Management ==============
 
     /// Get the current column position.
-    fn columns() -> Result<int, atom>;
+    fn columns() -> Result<int, Atom>;
 
     /// Get the column position for a device.
-    fn columns(device: any) -> Result<int, atom>;
+    fn columns(device: Any) -> Result<int, Atom>;
 
     /// Get the number of rows.
-    fn rows() -> Result<int, atom>;
+    fn rows() -> Result<int, Atom>;
 
     /// Get the number of rows for a device.
-    fn rows(device: any) -> Result<int, atom>;
+    fn rows(device: Any) -> Result<int, Atom>;
 
     /// Check if device supports ANSI escape codes.
-    fn getopts(device: any) -> [any];
+    fn getopts(device: Any) -> [Any];
 
     /// Set device options.
-    fn setopts(opts: [any]) -> Result<atom, any>;
+    fn setopts(opts: [Any]) -> Result<Atom, Any>;
 
     /// Set device options for a specific device.
-    fn setopts(device: any, opts: [any]) -> Result<atom, any>;
+    fn setopts(device: Any, opts: [Any]) -> Result<Atom, Any>;
 
     // ============== Requests ==============
 
     /// Send a request to the I/O server.
-    fn request(request: any) -> any;
+    fn request(request: Any) -> Any;
 
     /// Send a request to a specific I/O server.
-    fn request(device: any, request: any) -> any;
+    fn request(device: Any, request: Any) -> Any;
 
     /// Parse control sequences in a format string.
-    fn scan_erl_form(prompt: any) -> any;
+    fn scan_erl_form(prompt: Any) -> Any;
 
     /// Parse control sequences from a device.
-    fn scan_erl_form(device: any, prompt: any) -> any;
+    fn scan_erl_form(device: Any, prompt: Any) -> Any;
 }

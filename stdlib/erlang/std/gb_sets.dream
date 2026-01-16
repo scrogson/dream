@@ -6,110 +6,110 @@
 #[name = "gb_sets"]
 extern mod gb_sets {
     /// Create an empty set.
-    fn empty() -> any;
+    fn empty() -> Any;
 
     /// Create a new empty set (alias for empty).
-    fn new() -> any;
+    fn new() -> Any;
 
     /// Create a singleton set.
-    fn singleton(elem: any) -> any;
+    fn singleton(elem: Any) -> Any;
 
     /// Check if set is empty.
-    fn is_empty(set: any) -> bool;
+    fn is_empty(set: Any) -> bool;
 
     /// Check if term is a gb_set.
-    fn is_set(term: any) -> bool;
+    fn is_set(term: Any) -> bool;
 
     /// Check if element is a member.
-    fn is_member(elem: any, set: any) -> bool;
+    fn is_member(elem: Any, set: Any) -> bool;
 
     /// Check if element is a member (alias).
-    fn is_element(elem: any, set: any) -> bool;
+    fn is_element(elem: Any, set: Any) -> bool;
 
     /// Get the number of elements.
-    fn size(set: any) -> int;
+    fn size(set: Any) -> int;
 
     /// Add an element (error if exists).
-    fn add(elem: any, set: any) -> any;
+    fn add(elem: Any, set: Any) -> Any;
 
     /// Add an element (alias for add).
-    fn add_element(elem: any, set: any) -> any;
+    fn add_element(elem: Any, set: Any) -> Any;
 
     /// Insert an element (allow duplicates).
-    fn insert(elem: any, set: any) -> any;
+    fn insert(elem: Any, set: Any) -> Any;
 
     /// Delete an element (error if not found).
-    fn delete(elem: any, set: any) -> any;
+    fn delete(elem: Any, set: Any) -> Any;
 
     /// Delete an element if present.
-    fn delete_any(elem: any, set: any) -> any;
+    fn delete_any(elem: Any, set: Any) -> Any;
 
     /// Delete an element (alias).
-    fn del_element(elem: any, set: any) -> any;
+    fn del_element(elem: Any, set: Any) -> Any;
 
     /// Take an element (delete and return).
-    fn take_any(elem: any, set: any) -> any;
+    fn take_any(elem: Any, set: Any) -> Any;
 
     /// Get the smallest element.
-    fn smallest(set: any) -> any;
+    fn smallest(set: Any) -> Any;
 
     /// Get the largest element.
-    fn largest(set: any) -> any;
+    fn largest(set: Any) -> Any;
 
     /// Take the smallest element.
-    fn take_smallest(set: any) -> (any, any);
+    fn take_smallest(set: Any) -> (Any, Any);
 
     /// Take the largest element.
-    fn take_largest(set: any) -> (any, any);
+    fn take_largest(set: Any) -> (Any, Any);
 
     /// Union of two sets.
-    fn union(set1: any, set2: any) -> any;
+    fn union(set1: Any, set2: Any) -> Any;
 
     /// Union of a list of sets.
-    fn union(set_list: [any]) -> any;
+    fn union(set_list: [Any]) -> Any;
 
     /// Intersection of two sets.
-    fn intersection(set1: any, set2: any) -> any;
+    fn intersection(set1: Any, set2: Any) -> Any;
 
     /// Intersection of a list of sets.
-    fn intersection(set_list: [any]) -> any;
+    fn intersection(set_list: [Any]) -> Any;
 
     /// Subtract set2 from set1.
-    fn subtract(set1: any, set2: any) -> any;
+    fn subtract(set1: Any, set2: Any) -> Any;
 
     /// Check if set1 is a subset of set2.
-    fn is_subset(set1: any, set2: any) -> bool;
+    fn is_subset(set1: Any, set2: Any) -> bool;
 
     /// Check if two sets are disjoint.
-    fn is_disjoint(set1: any, set2: any) -> bool;
+    fn is_disjoint(set1: Any, set2: Any) -> bool;
 
     /// Check if two sets are equal.
-    fn is_equal(set1: any, set2: any) -> bool;
+    fn is_equal(set1: Any, set2: Any) -> bool;
 
     /// Convert set to list.
-    fn to_list(set: any) -> [any];
+    fn to_list(set: Any) -> [Any];
 
     /// Create set from list.
-    fn from_list(list: [any]) -> any;
+    fn from_list(list: [Any]) -> Any;
 
     /// Create set from ordset (ordered list).
-    fn from_ordset(list: [any]) -> any;
+    fn from_ordset(list: [Any]) -> Any;
 
     /// Balance the tree.
-    fn balance(set: any) -> any;
+    fn balance(set: Any) -> Any;
 
     /// Filter elements.
-    fn filter(pred: fn(any) -> bool, set: any) -> any;
+    fn filter(pred: fn(Any) -> bool, set: Any) -> Any;
 
     /// Fold over elements.
-    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, set: any) -> Acc;
+    fn fold<Acc>(fun: fn(Any, Acc) -> Acc, acc: Acc, set: Any) -> Acc;
 
     /// Get an iterator.
-    fn iterator(set: any) -> any;
+    fn iterator(set: Any) -> Any;
 
     /// Get an iterator from a specific element.
-    fn iterator_from(elem: any, set: any) -> any;
+    fn iterator_from(elem: Any, set: Any) -> Any;
 
     /// Get next from iterator.
-    fn next(iter: any) -> any;
+    fn next(iter: Any) -> Any;
 }

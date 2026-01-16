@@ -3266,14 +3266,6 @@ impl<'source> Parser<'source> {
             }
         }
 
-        // Binary as type (lowercase identifier for backward compatibility)
-        if let Some(Token::Ident(s)) = self.peek() {
-            if s == "binary" {
-                self.advance();
-                return Ok(Type::Binary);
-            }
-        }
-
         // Named type (uppercase identifier) with optional type arguments
         if let Some(Token::TypeIdent(name)) = self.peek().cloned() {
             self.advance();

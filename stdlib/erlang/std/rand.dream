@@ -12,47 +12,47 @@ extern mod rand {
     fn uniform(n: int) -> int;
 
     /// Get a random float, returning new state.
-    fn uniform_s(state: any) -> (float, any);
+    fn uniform_s(state: Any) -> (float, Any);
 
     /// Get a random integer, returning new state.
-    fn uniform_s(n: int, state: any) -> (int, any);
+    fn uniform_s(n: int, state: Any) -> (int, Any);
 
     /// Get random bytes.
-    fn bytes(n: int) -> binary;
+    fn bytes(n: int) -> Binary;
 
     /// Get random bytes with state.
-    fn bytes_s(n: int, state: any) -> (binary, any);
+    fn bytes_s(n: int, state: Any) -> (Binary, Any);
 
     /// Seed the generator.
-    fn seed(alg: atom) -> any;
+    fn seed(alg: Atom) -> Any;
 
     /// Seed with explicit values.
-    fn seed(alg: atom, seed: any) -> any;
+    fn seed(alg: Atom, seed: Any) -> Any;
 
     /// Seed with exported state.
-    fn seed(exported_seed: any) -> any;
+    fn seed(exported_seed: Any) -> Any;
 
     /// Export current state.
-    fn export_seed() -> any;
+    fn export_seed() -> Any;
 
     /// Export state with algorithm.
-    fn export_seed_s(state: any) -> any;
+    fn export_seed_s(state: Any) -> Any;
 
     /// Jump the generator forward.
-    fn jump() -> any;
+    fn jump() -> Any;
 
     /// Jump with state.
-    fn jump(state: any) -> any;
+    fn jump(state: Any) -> Any;
 
     /// Normal distribution (mean 0, stddev 1).
     fn normal() -> float;
 
     /// Normal distribution with state.
-    fn normal_s(state: any) -> (float, any);
+    fn normal_s(state: Any) -> (float, Any);
 
     /// Normal distribution with mean and variance.
     fn normal(mean: float, variance: float) -> float;
 
     /// Normal distribution with parameters and state.
-    fn normal_s(mean: float, variance: float, state: any) -> (float, any);
+    fn normal_s(mean: float, variance: float, state: Any) -> (float, Any);
 }

@@ -3,11 +3,11 @@
 
 // Erlang module: io
 extern mod io {
-    fn printable_range() -> atom;
-    fn put_chars(chardata: any) -> atom;
-    fn put_chars(iodevice: any, chardata: any) -> atom;
-    fn nl() -> atom;
-    fn nl(iodevice: any) -> atom;
+    fn printable_range() -> Atom;
+    fn put_chars(chardata: any) -> Atom;
+    fn put_chars(iodevice: any, chardata: any) -> Atom;
+    fn nl() -> Atom;
+    fn nl(iodevice: any) -> Atom;
     fn columns() -> Result<int, atom>;
     fn columns(iodevice: any) -> Result<int, atom>;
     fn rows() -> Result<int, atom>;
@@ -20,20 +20,20 @@ extern mod io {
     fn getopts(iodevice: any) -> any;
     fn setopts(opts: [any]) -> Result<(), any>;
     fn setopts(iodevice: any, opts: [any]) -> Result<(), any>;
-    fn write(term: any) -> atom;
-    fn write(iodevice: any, term: any) -> atom;
+    fn write(term: any) -> Atom;
+    fn write(iodevice: any, term: any) -> Atom;
     fn read(prompt: any) -> any;
     fn read(iodevice: any, prompt: any) -> any;
     fn read(iodevice: any, prompt: any, startlocation: any) -> any;
     fn read(iodevice: any, prompt: any, startlocation: any, options: any) -> any;
-    fn fwrite(format: any) -> atom;
-    fn fwrite(format: any, data: [any]) -> atom;
-    fn fwrite(iodevice: any, format: any, data: [any]) -> atom;
+    fn fwrite(format: any) -> Atom;
+    fn fwrite(format: any, data: [any]) -> Atom;
+    fn fwrite(iodevice: any, format: any, data: [any]) -> Atom;
     fn fread(prompt: any, format: any) -> any;
     fn fread(iodevice: any, prompt: any, format: any) -> any;
-    fn format(format: any) -> atom;
-    fn format(format: any, data: [any]) -> atom;
-    fn format(iodevice: any, format: any, data: [any]) -> atom;
+    fn format(format: any) -> Atom;
+    fn format(format: any, data: [any]) -> Atom;
+    fn format(iodevice: any, format: any, data: [any]) -> Atom;
     fn scan_erl_exprs(prompt: any) -> any;
     fn scan_erl_exprs(device: any, prompt: any) -> any;
     fn scan_erl_exprs(device: any, prompt: any, startlocation: any) -> any;

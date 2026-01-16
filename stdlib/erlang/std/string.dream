@@ -8,132 +8,132 @@ extern mod string {
     // ============== Case Conversion ==============
 
     /// Convert to lowercase.
-    fn lowercase(string: any) -> any;
+    fn lowercase(string: Any) -> Any;
 
     /// Convert to uppercase.
-    fn uppercase(string: any) -> any;
+    fn uppercase(string: Any) -> Any;
 
     /// Convert to titlecase.
-    fn titlecase(string: any) -> any;
+    fn titlecase(string: Any) -> Any;
 
     /// Case-fold for comparison.
-    fn casefold(string: any) -> any;
+    fn casefold(string: Any) -> Any;
 
     // ============== Trimming ==============
 
     /// Trim whitespace from both ends.
-    fn trim(string: any) -> any;
+    fn trim(string: Any) -> Any;
 
     /// Trim specified characters from both ends.
-    fn trim(string: any, dir: atom) -> any;
+    fn trim(string: Any, dir: atom) -> Any;
 
     /// Trim with direction and characters.
-    fn trim(string: any, dir: atom, chars: any) -> any;
+    fn trim(string: Any, dir: atom, chars: Any) -> Any;
 
     /// Chomp trailing newline.
-    fn chomp(string: any) -> any;
+    fn chomp(string: Any) -> Any;
 
     // ============== Padding ==============
 
     /// Pad to length (default left).
-    fn pad(string: any, length: int) -> any;
+    fn pad(string: Any, length: int) -> Any;
 
     /// Pad with direction.
-    fn pad(string: any, length: int, dir: atom) -> any;
+    fn pad(string: Any, length: int, dir: atom) -> Any;
 
     /// Pad with direction and character.
-    fn pad(string: any, length: int, dir: atom, char: any) -> any;
+    fn pad(string: Any, length: int, dir: atom, char: Any) -> Any;
 
     // ============== Searching ==============
 
     /// Find substring.
-    fn find(string: any, search_pattern: any) -> any;
+    fn find(string: Any, search_pattern: Any) -> Any;
 
     /// Find with direction.
-    fn find(string: any, search_pattern: any, dir: atom) -> any;
+    fn find(string: Any, search_pattern: Any, dir: atom) -> Any;
 
     /// Get prefix.
-    fn prefix(string: any, prefix: any) -> any;
+    fn prefix(string: Any, prefix: Any) -> Any;
 
     /// Check if string starts with prefix.
-    fn is_prefix(prefix: any, string: any) -> bool;
+    fn is_prefix(prefix: Any, string: Any) -> bool;
 
     // ============== Splitting/Joining ==============
 
     /// Split string.
-    fn split(string: any, search_pattern: any) -> [any];
+    fn split(string: Any, search_pattern: Any) -> [Any];
 
     /// Split with direction.
-    fn split(string: any, search_pattern: any, where: atom) -> [any];
+    fn split(string: Any, search_pattern: Any, where: atom) -> [Any];
 
     /// Lexemes (split by whitespace).
-    fn lexemes(string: any, separators: any) -> [any];
+    fn lexemes(string: Any, separators: Any) -> [Any];
 
     /// Join strings.
-    fn join(strings: [any], separator: any) -> any;
+    fn join(strings: [Any], separator: Any) -> Any;
 
     // ============== Replacement ==============
 
     /// Replace substring.
-    fn replace(string: any, search_pattern: any, replacement: any) -> any;
+    fn replace(string: Any, search_pattern: Any, replacement: Any) -> Any;
 
     /// Replace with direction.
-    fn replace(string: any, search_pattern: any, replacement: any, where: atom) -> any;
+    fn replace(string: Any, search_pattern: Any, replacement: Any, where: atom) -> Any;
 
     // ============== Length/Slicing ==============
 
     /// Get string length in grapheme clusters.
-    fn length(string: any) -> int;
+    fn length(string: Any) -> int;
 
     /// Get substring.
-    fn slice(string: any, start: int) -> any;
+    fn slice(string: Any, start: int) -> Any;
 
     /// Get substring with length.
-    fn slice(string: any, start: int, length: any) -> any;
+    fn slice(string: Any, start: int, length: Any) -> Any;
 
     /// Reverse string.
-    fn reverse(string: any) -> any;
+    fn reverse(string: Any) -> Any;
 
     // ============== Comparison ==============
 
     /// Compare strings.
-    fn equal(a: any, b: any) -> bool;
+    fn equal(a: Any, b: Any) -> bool;
 
     /// Compare with case insensitivity option.
-    fn equal(a: any, b: any, ignore_case: bool) -> bool;
+    fn equal(a: Any, b: Any, ignore_case: bool) -> bool;
 
     /// Compare with locale option.
-    fn equal(a: any, b: any, ignore_case: bool, norm: atom) -> bool;
+    fn equal(a: Any, b: Any, ignore_case: bool, norm: atom) -> bool;
 
     // ============== Conversion ==============
 
     /// Convert to float.
-    fn to_float(string: any) -> Result<float, any>;
+    fn to_float(string: Any) -> Result<float, Any>;
 
     /// Convert to integer.
-    fn to_integer(string: any) -> Result<int, any>;
+    fn to_integer(string: Any) -> Result<int, Any>;
 
     /// Convert to integer with base.
-    fn to_integer(string: any, base: int) -> Result<int, any>;
+    fn to_integer(string: Any, base: int) -> Result<int, Any>;
 
     /// Convert graphemes to codepoints.
-    fn to_graphemes(string: any) -> [any];
+    fn to_graphemes(string: Any) -> [Any];
 
     /// Take graphemes.
-    fn take(string: any, characters: any) -> any;
+    fn take(string: Any, characters: Any) -> Any;
 
     /// Take with complement.
-    fn take(string: any, characters: any, complement: bool) -> any;
+    fn take(string: Any, characters: Any, complement: bool) -> Any;
 
     /// Take with complement and direction.
-    fn take(string: any, characters: any, complement: bool, dir: atom) -> any;
+    fn take(string: Any, characters: Any, complement: bool, dir: atom) -> Any;
 
     /// Check if string is empty.
-    fn is_empty(string: any) -> bool;
+    fn is_empty(string: Any) -> bool;
 
     /// Get next grapheme cluster.
-    fn next_grapheme(string: any) -> any;
+    fn next_grapheme(string: Any) -> Any;
 
     /// Get next codepoint.
-    fn next_codepoint(string: any) -> any;
+    fn next_codepoint(string: Any) -> Any;
 }

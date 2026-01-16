@@ -8,80 +8,80 @@ extern mod gen_statem {
     // ============== Starting ==============
 
     /// Start a linked state machine.
-    fn start_link(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start_link(module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start a linked state machine with registered name.
-    fn start_link(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start_link(name: Any, module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked state machine.
-    fn start(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start(module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked state machine with registered name.
-    fn start(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start(name: Any, module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start a monitored state machine.
-    fn start_monitor(module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+    fn start_monitor(module: atom, args: Any, opts: [Any]) -> Result<(Pid, Ref), Any>;
 
     /// Start a monitored state machine with registered name.
-    fn start_monitor(name: any, module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+    fn start_monitor(name: Any, module: atom, args: Any, opts: [Any]) -> Result<(Pid, Ref), Any>;
 
     // ============== Synchronous Calls ==============
 
     /// Make a synchronous call.
-    fn call(server: any, request: any) -> any;
+    fn call(server: Any, request: Any) -> Any;
 
     /// Make a synchronous call with timeout.
-    fn call(server: any, request: any, timeout: any) -> any;
+    fn call(server: Any, request: Any, timeout: Any) -> Any;
 
     // ============== Asynchronous Casts ==============
 
     /// Send an asynchronous event.
-    fn cast(server: any, msg: any) -> atom;
+    fn cast(server: Any, msg: Any) -> atom;
 
     // ============== Replies ==============
 
     /// Send a reply from a callback.
-    fn reply(replies: [any]) -> atom;
+    fn reply(replies: [Any]) -> atom;
 
     /// Send a single reply.
-    fn reply(from: any, reply: any) -> atom;
+    fn reply(from: Any, reply: Any) -> atom;
 
     // ============== Stopping ==============
 
     /// Stop a state machine.
-    fn stop(server: any) -> atom;
+    fn stop(server: Any) -> atom;
 
     /// Stop with a reason.
-    fn stop(server: any, reason: any) -> atom;
+    fn stop(server: Any, reason: Any) -> atom;
 
     /// Stop with reason and timeout.
-    fn stop(server: any, reason: any, timeout: any) -> atom;
+    fn stop(server: Any, reason: Any, timeout: Any) -> atom;
 
     // ============== Request Handling ==============
 
     /// Send a request and get request ID.
-    fn send_request(server: any, request: any) -> any;
+    fn send_request(server: Any, request: Any) -> Any;
 
     /// Wait for response.
-    fn wait_response(request_id: any, timeout: any) -> any;
+    fn wait_response(request_id: Any, timeout: Any) -> Any;
 
     /// Check if message is a response.
-    fn check_response(msg: any, request_id: any) -> any;
+    fn check_response(msg: Any, request_id: Any) -> Any;
 
     /// Receive a response.
-    fn receive_response(request_id: any, timeout: any) -> any;
+    fn receive_response(request_id: Any, timeout: Any) -> Any;
 
     // ============== Request ID Collections ==============
 
     /// Create new request ID collection.
-    fn reqids_new() -> any;
+    fn reqids_new() -> Any;
 
     /// Add request ID to collection.
-    fn reqids_add(request_id: any, label: any, collection: any) -> any;
+    fn reqids_add(request_id: Any, label: Any, collection: Any) -> Any;
 
     /// Get collection size.
-    fn reqids_size(collection: any) -> int;
+    fn reqids_size(collection: Any) -> int;
 
     /// Convert collection to list.
-    fn reqids_to_list(collection: any) -> [any];
+    fn reqids_to_list(collection: Any) -> [Any];
 }

@@ -8,87 +8,87 @@ extern mod gen_server {
     // ============== Starting ==============
 
     /// Start a linked gen_server.
-    fn start_link(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start_link(module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start a linked gen_server with registered name.
-    fn start_link(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start_link(name: Any, module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked gen_server.
-    fn start(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start(module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked gen_server with registered name.
-    fn start(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+    fn start(name: Any, module: atom, args: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start a monitored gen_server.
-    fn start_monitor(module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+    fn start_monitor(module: atom, args: Any, opts: [Any]) -> Result<(Pid, Ref), Any>;
 
     /// Start a monitored gen_server with registered name.
-    fn start_monitor(name: any, module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+    fn start_monitor(name: Any, module: atom, args: Any, opts: [Any]) -> Result<(Pid, Ref), Any>;
 
     // ============== Synchronous Calls ==============
 
     /// Make a synchronous call to a server.
-    fn call(server: any, request: any) -> any;
+    fn call(server: Any, request: Any) -> Any;
 
     /// Make a synchronous call with timeout.
-    fn call(server: any, request: any, timeout: any) -> any;
+    fn call(server: Any, request: Any, timeout: Any) -> Any;
 
     /// Make multiple calls in parallel.
-    fn multi_call(name: atom, request: any) -> ([(atom, any)], [atom]);
+    fn multi_call(name: atom, request: Any) -> ([(Atom, Any)], [Atom]);
 
     /// Make multiple calls with timeout.
-    fn multi_call(nodes: [atom], name: atom, request: any, timeout: int) -> ([(atom, any)], [atom]);
+    fn multi_call(nodes: [Atom], name: atom, request: Any, timeout: int) -> ([(Atom, Any)], [Atom]);
 
     // ============== Asynchronous Casts ==============
 
     /// Send an asynchronous request to a server.
-    fn cast(server: any, request: any) -> atom;
+    fn cast(server: Any, request: Any) -> atom;
 
     /// Cast to multiple nodes.
-    fn abcast(name: atom, request: any) -> atom;
+    fn abcast(name: atom, request: Any) -> atom;
 
     /// Cast to specific nodes.
-    fn abcast(nodes: [atom], name: atom, request: any) -> atom;
+    fn abcast(nodes: [Atom], name: atom, request: Any) -> atom;
 
     // ============== Replies ==============
 
     /// Send a reply to a caller.
-    fn reply(client: any, reply: any) -> atom;
+    fn reply(client: Any, reply: Any) -> atom;
 
     // ============== Stopping ==============
 
     /// Stop a gen_server.
-    fn stop(server: any) -> atom;
+    fn stop(server: Any) -> atom;
 
     /// Stop with a reason.
-    fn stop(server: any, reason: any) -> atom;
+    fn stop(server: Any, reason: Any) -> atom;
 
     /// Stop with reason and timeout.
-    fn stop(server: any, reason: any, timeout: any) -> atom;
+    fn stop(server: Any, reason: Any, timeout: Any) -> atom;
 
     // ============== Info ==============
 
     /// Check if a process is running gen_server code.
-    fn check_response(msg: any, request_id: any) -> any;
+    fn check_response(msg: Any, request_id: Any) -> Any;
 
     /// Wait for a response with timeout.
-    fn wait_response(request_id: any, timeout: any) -> any;
+    fn wait_response(request_id: Any, timeout: Any) -> Any;
 
     /// Receive a response.
-    fn receive_response(request_id: any, timeout: any) -> any;
+    fn receive_response(request_id: Any, timeout: Any) -> Any;
 
     /// Send a request and get a request ID.
-    fn send_request(server: any, request: any) -> any;
+    fn send_request(server: Any, request: Any) -> Any;
 
     /// Send multiple requests.
-    fn reqids_new() -> any;
+    fn reqids_new() -> Any;
 
     /// Add a request ID to a collection.
-    fn reqids_add(request_id: any, label: any, collection: any) -> any;
+    fn reqids_add(request_id: Any, label: Any, collection: Any) -> Any;
 
     /// Get size of request ID collection.
-    fn reqids_size(collection: any) -> int;
+    fn reqids_size(collection: Any) -> int;
 
     /// Convert collection to list.
-    fn reqids_to_list(collection: any) -> [any];
+    fn reqids_to_list(collection: Any) -> [Any];
 }

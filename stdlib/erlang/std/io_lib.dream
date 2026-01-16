@@ -6,92 +6,92 @@
 #[name = "io_lib"]
 extern mod io_lib {
     /// Format a string.
-    fn format(format: any, args: [any]) -> any;
+    fn format(format: Any, args: [Any]) -> Any;
 
     /// Format with options.
-    fn format(format: any, args: [any], opts: [any]) -> any;
+    fn format(format: Any, args: [Any], opts: [Any]) -> Any;
 
     /// Format to limited depth.
-    fn print(term: any) -> any;
+    fn print(term: Any) -> Any;
 
     /// Print with depth limit.
-    fn print(term: any, depth: int) -> any;
+    fn print(term: Any, depth: int) -> Any;
 
     /// Write term.
-    fn write(term: any) -> any;
+    fn write(term: Any) -> Any;
 
     /// Write with options.
-    fn write(term: any, opts: [any]) -> any;
+    fn write(term: Any, opts: [Any]) -> Any;
 
     /// Format integer in base.
-    fn fwrite(format: any, args: [any]) -> any;
+    fn fwrite(format: Any, args: [Any]) -> Any;
 
     /// Write atom.
-    fn write_atom(atom: atom) -> any;
+    fn write_atom(atom: atom) -> Any;
 
     /// Write atom to string.
-    fn write_atom_as_latin1(atom: atom) -> any;
+    fn write_atom_as_latin1(atom: atom) -> Any;
 
     /// Write string.
-    fn write_string(string: any) -> any;
+    fn write_string(string: Any) -> Any;
 
     /// Write string as Latin-1.
-    fn write_string_as_latin1(string: any) -> any;
+    fn write_string_as_latin1(string: Any) -> Any;
 
     /// Write character.
-    fn write_char(char: any) -> any;
+    fn write_char(char: Any) -> Any;
 
     /// Write character as Latin-1.
-    fn write_char_as_latin1(char: any) -> any;
+    fn write_char_as_latin1(char: Any) -> Any;
 
     /// Write with latin1 encoding.
-    fn write_latin1_char(char: any) -> any;
+    fn write_latin1_char(char: Any) -> Any;
 
     /// Indent to column.
-    fn indentation(string: any, start_col: int) -> int;
+    fn indentation(string: Any, start_col: int) -> int;
 
     /// Build text from iolist.
-    fn build_text(iolist: any) -> any;
+    fn build_text(iolist: Any) -> Any;
 
     // ============== Scanning ==============
 
     /// Scan format string.
-    fn fread(format: any, string: any) -> any;
+    fn fread(format: Any, string: Any) -> Any;
 
     /// Scan for integer.
-    fn fread(format: any, string: any, start_line: int) -> any;
+    fn fread(format: Any, string: Any, start_line: int) -> Any;
 
     // ============== Character Properties ==============
 
     /// Check if printable list.
-    fn printable_list(term: any) -> bool;
+    fn printable_list(term: Any) -> bool;
 
     /// Check if printable Latin-1 list.
-    fn printable_latin1_list(term: any) -> bool;
+    fn printable_latin1_list(term: Any) -> bool;
 
     /// Check if printable unicode list.
-    fn printable_unicode_list(term: any) -> bool;
+    fn printable_unicode_list(term: Any) -> bool;
 
     /// Check if printable character.
-    fn char_list(term: any) -> bool;
+    fn char_list(term: Any) -> bool;
 
     /// Check if deep char list.
-    fn deep_char_list(term: any) -> bool;
+    fn deep_char_list(term: Any) -> bool;
 
     /// Check if deep latin1 char list.
-    fn deep_latin1_char_list(term: any) -> bool;
+    fn deep_latin1_char_list(term: Any) -> bool;
 
     /// Check if deep unicode char list.
-    fn deep_unicode_char_list(term: any) -> bool;
+    fn deep_unicode_char_list(term: Any) -> bool;
 
     /// Check if latin1 string.
-    fn latin1_char_list(term: any) -> bool;
+    fn latin1_char_list(term: Any) -> bool;
 
     /// Check if unicode string.
-    fn unicode_char_list(term: any) -> bool;
+    fn unicode_char_list(term: Any) -> bool;
 
     // ============== Conversion ==============
 
     /// Convert number to list.
-    fn nl() -> any;
+    fn nl() -> Any;
 }

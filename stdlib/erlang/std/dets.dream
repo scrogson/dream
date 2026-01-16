@@ -8,112 +8,112 @@ extern mod dets {
     // ============== Opening/Closing ==============
 
     /// Open a table file.
-    fn open_file(name: any) -> Result<any, any>;
+    fn open_file(name: Any) -> Result<Any, Any>;
 
     /// Open a table file with options.
-    fn open_file(name: any, args: [any]) -> Result<any, any>;
+    fn open_file(name: Any, args: [Any]) -> Result<Any, Any>;
 
     /// Close a table.
-    fn close(name: any) -> Result<atom, any>;
+    fn close(name: Any) -> Result<Atom, Any>;
 
     /// Check if table is open.
-    fn info(name: any) -> [(atom, any)];
+    fn info(name: Any) -> [(Atom, Any)];
 
     /// Get specific info about a table.
-    fn info(name: any, item: atom) -> any;
+    fn info(name: Any, item: atom) -> Any;
 
     /// List all open tables.
-    fn all() -> [any];
+    fn all() -> [Any];
 
     // ============== Insert/Update ==============
 
     /// Insert objects.
-    fn insert(name: any, objects: any) -> Result<atom, any>;
+    fn insert(name: Any, objects: Any) -> Result<Atom, Any>;
 
     /// Insert new (fail if exists).
-    fn insert_new(name: any, objects: any) -> Result<bool, any>;
+    fn insert_new(name: Any, objects: Any) -> Result<bool, Any>;
 
     /// Update a counter.
-    fn update_counter(name: any, key: any, increment: any) -> Result<int, any>;
+    fn update_counter(name: Any, key: Any, increment: Any) -> Result<int, Any>;
 
     // ============== Lookup/Delete ==============
 
     /// Look up by key.
-    fn lookup(name: any, key: any) -> Result<[any], any>;
+    fn lookup(name: Any, key: Any) -> Result<[Any], Any>;
 
     /// Check if key is member.
-    fn member(name: any, key: any) -> Result<bool, any>;
+    fn member(name: Any, key: Any) -> Result<bool, Any>;
 
     /// Delete by key.
-    fn delete(name: any, key: any) -> Result<atom, any>;
+    fn delete(name: Any, key: Any) -> Result<Atom, Any>;
 
     /// Delete all objects.
-    fn delete_all_objects(name: any) -> Result<atom, any>;
+    fn delete_all_objects(name: Any) -> Result<Atom, Any>;
 
     /// Delete specific object.
-    fn delete_object(name: any, object: any) -> Result<atom, any>;
+    fn delete_object(name: Any, object: Any) -> Result<Atom, Any>;
 
     // ============== Iteration ==============
 
     /// Get first key.
-    fn first(name: any) -> any;
+    fn first(name: Any) -> Any;
 
     /// Get next key.
-    fn next(name: any, key: any) -> any;
+    fn next(name: Any, key: Any) -> Any;
 
     /// Convert to list.
-    fn to_list(name: any) -> Result<[any], any>;
+    fn to_list(name: Any) -> Result<[Any], Any>;
 
     /// Fold over table.
-    fn foldl<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, name: any) -> Result<Acc, any>;
+    fn foldl<Acc>(fun: fn(Any, Acc) -> Acc, acc: Acc, name: Any) -> Result<Acc, Any>;
 
     /// Traverse table (like foldl but can stop).
-    fn traverse(name: any, fun: fn(any) -> any) -> Result<atom, any>;
+    fn traverse(name: Any, fun: fn(Any) -> Any) -> Result<Atom, Any>;
 
     // ============== Matching ==============
 
     /// Match objects.
     #[name = "match"]
-    fn match_(name: any, pattern: any) -> Result<[any], any>;
+    fn match_(name: Any, pattern: Any) -> Result<[Any], Any>;
 
     /// Match objects returning full tuples.
-    fn match_object(name: any, pattern: any) -> Result<[any], any>;
+    fn match_object(name: Any, pattern: Any) -> Result<[Any], Any>;
 
     /// Delete matching objects.
-    fn match_delete(name: any, pattern: any) -> Result<int, any>;
+    fn match_delete(name: Any, pattern: Any) -> Result<int, Any>;
 
     /// Select with match specification.
-    fn select(name: any, match_spec: [any]) -> Result<[any], any>;
+    fn select(name: Any, match_spec: [Any]) -> Result<[Any], Any>;
 
     /// Select and delete.
-    fn select_delete(name: any, match_spec: [any]) -> Result<int, any>;
+    fn select_delete(name: Any, match_spec: [Any]) -> Result<int, Any>;
 
     // ============== File Operations ==============
 
     /// Sync to disk.
-    fn sync(name: any) -> Result<atom, any>;
+    fn sync(name: Any) -> Result<Atom, Any>;
 
     /// Repair a table.
-    fn repair_continuation(continuation: any, match_spec: [any]) -> any;
+    fn repair_continuation(continuation: Any, match_spec: [Any]) -> Any;
 
     /// Check if name is a dets table.
-    fn is_dets_file(filename: any) -> Result<bool, any>;
+    fn is_dets_file(filename: Any) -> Result<bool, Any>;
 
     /// Safe fixtable for iteration.
-    fn safe_fixtable(name: any, fix: bool) -> atom;
+    fn safe_fixtable(name: Any, fix: bool) -> atom;
 
     /// Insert objects from another table.
-    fn from_ets(name: any, ets_tab: any) -> Result<atom, any>;
+    fn from_ets(name: Any, ets_tab: Any) -> Result<Atom, Any>;
 
     /// Copy to ets table.
-    fn to_ets(name: any, ets_tab: any) -> Result<any, any>;
+    fn to_ets(name: Any, ets_tab: Any) -> Result<Any, Any>;
 
     /// Initialize from bchunk format.
-    fn init_table(name: any, init_fun: fn() -> any) -> Result<atom, any>;
+    fn init_table(name: Any, init_fun: fn() -> Any) -> Result<Atom, Any>;
 
     /// Initialize with options.
-    fn init_table(name: any, init_fun: fn() -> any, opts: [any]) -> Result<atom, any>;
+    fn init_table(name: Any, init_fun: fn() -> Any, opts: [Any]) -> Result<Atom, Any>;
 
     /// Binary chunk operations.
-    fn bchunk(name: any, start: any) -> any;
+    fn bchunk(name: Any, start: Any) -> Any;
 }

@@ -8,65 +8,65 @@ extern mod gen_event {
     // ============== Starting ==============
 
     /// Start a linked event manager.
-    fn start_link() -> Result<pid, any>;
+    fn start_link() -> Result<Pid, Any>;
 
     /// Start a linked event manager with options.
-    fn start_link(opts: [any]) -> Result<pid, any>;
+    fn start_link(opts: [Any]) -> Result<Pid, Any>;
 
     /// Start a linked event manager with registered name.
-    fn start_link(name: any, opts: [any]) -> Result<pid, any>;
+    fn start_link(name: Any, opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked event manager.
-    fn start() -> Result<pid, any>;
+    fn start() -> Result<Pid, Any>;
 
     /// Start an unlinked event manager with options.
-    fn start(opts: [any]) -> Result<pid, any>;
+    fn start(opts: [Any]) -> Result<Pid, Any>;
 
     /// Start an unlinked event manager with registered name.
-    fn start(name: any, opts: [any]) -> Result<pid, any>;
+    fn start(name: Any, opts: [Any]) -> Result<Pid, Any>;
 
     // ============== Handler Management ==============
 
     /// Add an event handler.
-    fn add_handler(manager: any, handler: any, args: any) -> any;
+    fn add_handler(manager: Any, handler: Any, args: Any) -> Any;
 
     /// Add a supervised event handler.
-    fn add_sup_handler(manager: any, handler: any, args: any) -> any;
+    fn add_sup_handler(manager: Any, handler: Any, args: Any) -> Any;
 
     /// Delete an event handler.
-    fn delete_handler(manager: any, handler: any, args: any) -> any;
+    fn delete_handler(manager: Any, handler: Any, args: Any) -> Any;
 
     /// Swap event handlers.
-    fn swap_handler(manager: any, old_handler: (any, any), new_handler: (any, any)) -> any;
+    fn swap_handler(manager: Any, old_handler: (Any, Any), new_handler: (Any, Any)) -> Any;
 
     /// Swap supervised event handlers.
-    fn swap_sup_handler(manager: any, old_handler: (any, any), new_handler: (any, any)) -> any;
+    fn swap_sup_handler(manager: Any, old_handler: (Any, Any), new_handler: (Any, Any)) -> Any;
 
     /// Get list of handlers.
-    fn which_handlers(manager: any) -> [any];
+    fn which_handlers(manager: Any) -> [Any];
 
     // ============== Events ==============
 
     /// Send a synchronous event.
-    fn sync_notify(manager: any, event: any) -> atom;
+    fn sync_notify(manager: Any, event: Any) -> atom;
 
     /// Send an asynchronous event.
-    fn notify(manager: any, event: any) -> atom;
+    fn notify(manager: Any, event: Any) -> atom;
 
     /// Make a call to a specific handler.
-    fn call(manager: any, handler: any, request: any) -> any;
+    fn call(manager: Any, handler: Any, request: Any) -> Any;
 
     /// Make a call with timeout.
-    fn call(manager: any, handler: any, request: any, timeout: any) -> any;
+    fn call(manager: Any, handler: Any, request: Any, timeout: Any) -> Any;
 
     // ============== Stopping ==============
 
     /// Stop the event manager.
-    fn stop(manager: any) -> atom;
+    fn stop(manager: Any) -> atom;
 
     /// Stop with reason.
-    fn stop(manager: any, reason: any) -> atom;
+    fn stop(manager: Any, reason: Any) -> atom;
 
     /// Stop with reason and timeout.
-    fn stop(manager: any, reason: any, timeout: any) -> atom;
+    fn stop(manager: Any, reason: Any, timeout: Any) -> atom;
 }

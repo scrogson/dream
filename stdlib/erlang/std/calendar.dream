@@ -49,13 +49,13 @@ extern mod calendar {
     fn system_time_to_rfc3339(system_time: int) -> [int];
 
     /// Convert to RFC 3339 with options.
-    fn system_time_to_rfc3339(system_time: int, opts: [any]) -> [int];
+    fn system_time_to_rfc3339(system_time: int, opts: [Any]) -> [int];
 
     /// Parse RFC 3339 string.
     fn rfc3339_to_system_time(string: [int]) -> int;
 
     /// Parse RFC 3339 with options.
-    fn rfc3339_to_system_time(string: [int], opts: [any]) -> int;
+    fn rfc3339_to_system_time(string: [int], opts: [Any]) -> int;
 
     // ============== Date Operations ==============
 

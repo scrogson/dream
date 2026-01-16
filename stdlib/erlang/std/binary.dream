@@ -1,0 +1,105 @@
+// Erlang binary module bindings
+//
+// Binary data operations from the Erlang standard library.
+// See: https://www.erlang.org/doc/man/binary.html
+
+#[name = "binary"]
+extern mod binary {
+    // ============== Basic Operations ==============
+
+    /// Get a byte at position (0-indexed).
+    fn at(subject: Binary, pos: int) -> int;
+
+    /// Get the first byte.
+    fn first(subject: Binary) -> int;
+
+    /// Get the last byte.
+    fn last(subject: Binary) -> int;
+
+    /// Get the size in bytes.
+    fn bin_to_list(subject: Binary) -> [int];
+
+    /// Convert Binary to list with start position.
+    fn bin_to_list(subject: Binary, pos_len: (int, int)) -> [int];
+
+    /// Create Binary from list of bytes.
+    fn list_to_bin(byte_list: [int]) -> Binary;
+
+    /// Copy a Binary (useful for sub-Binary to full Binary).
+    fn copy(subject: Binary) -> Binary;
+
+    /// Copy a Binary N times.
+    fn copy(subject: Binary, n: int) -> Binary;
+
+    // ============== Searching ==============
+
+    /// Find pattern in Binary, returns positions.
+    #[name = "match"]
+    fn match_(subject: Binary, pattern: Any) -> Any;
+
+    /// Find pattern with options.
+    #[name = "match"]
+    fn match_with_opts(subject: Binary, pattern: Any, opts: [Any]) -> Any;
+
+    /// Find all occurrences of pattern.
+    fn matches(subject: Binary, pattern: Any) -> [(int, int)];
+
+    /// Find all occurrences with options.
+    fn matches(subject: Binary, pattern: Any, opts: [Any]) -> [(int, int)];
+
+    // ============== Extracting Parts ==============
+
+    /// Extract a part of Binary.
+    fn part(subject: Binary, pos_len: (int, int)) -> Binary;
+
+    /// Extract part with separate position and length.
+    fn part(subject: Binary, pos: int, len: int) -> Binary;
+
+    /// Split Binary at pattern.
+    fn split(subject: Binary, pattern: Any) -> [Binary];
+
+    /// Split Binary with options.
+    fn split(subject: Binary, pattern: Any, opts: [Any]) -> [Binary];
+
+    /// Get longest common prefix of binaries.
+    fn longest_common_prefix(binaries: [Binary]) -> int;
+
+    /// Get longest common suffix of binaries.
+    fn longest_common_suffix(binaries: [Binary]) -> int;
+
+    // ============== Modification ==============
+
+    /// Replace pattern with replacement.
+    fn replace(subject: Binary, pattern: Any, replacement: Binary) -> Binary;
+
+    /// Replace with options.
+    fn replace(subject: Binary, pattern: Any, replacement: Binary, opts: [Any]) -> Binary;
+
+    // ============== Encoding/Decoding ==============
+
+    /// Decode an unsigned integer.
+    fn decode_unsigned(subject: Binary) -> int;
+
+    /// Decode an unsigned integer with endianness.
+    fn decode_unsigned(subject: Binary, endianness: Atom) -> int;
+
+    /// Encode an unsigned integer.
+    fn encode_unsigned(value: int) -> Binary;
+
+    /// Encode an unsigned integer with endianness.
+    fn encode_unsigned(value: int, endianness: Atom) -> Binary;
+
+    /// Decode a hex string to Binary.
+    fn decode_hex(hex_data: Binary) -> Binary;
+
+    /// Encode Binary to hex string.
+    fn encode_hex(data: Binary) -> Binary;
+
+    /// Encode Binary to hex with case option.
+    fn encode_hex(data: Binary, case: Atom) -> Binary;
+
+    // ============== Reference Operations ==============
+
+    /// Get the size of a Binary.
+    fn referenced_byte_size(b: Binary) -> int;
+}

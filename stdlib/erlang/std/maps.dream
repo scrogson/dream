@@ -14,16 +14,16 @@ extern mod maps {
     fn get<K, V>(key: K, m: map, default: V) -> V;
 
     /// Find a value by key, returns {ok, Value} or error.
-    fn find<K, V>(key: K, m: map) -> Result<V, atom>;
+    fn find<K, V>(key: K, m: map) -> Result<V, Atom>;
 
     /// Check if a key exists.
     fn is_key<K>(key: K, m: map) -> bool;
 
     /// Get all keys.
-    fn keys(m: map) -> [any];
+    fn keys(m: map) -> [Any];
 
     /// Get all values.
-    fn values(m: map) -> [any];
+    fn values(m: map) -> [Any];
 
     /// Get the number of key-value pairs.
     fn size(m: map) -> int;
@@ -69,15 +69,15 @@ extern mod maps {
     fn fold<K, V, Acc>(fun: fn(K, V, Acc) -> Acc, acc: Acc, m: map) -> Acc;
 
     /// Apply a function to each key-value pair (for side effects).
-    fn foreach<K, V>(fun: fn(K, V) -> any, m: map) -> atom;
+    fn foreach<K, V>(fun: fn(K, V) -> Any, m: map) -> atom;
 
     /// Filter and map in one pass.
-    fn filtermap<K, V1, V2>(fun: fn(K, V1) -> any, m: map) -> map;
+    fn filtermap<K, V1, V2>(fun: fn(K, V1) -> Any, m: map) -> map;
 
     // ============== Conversion ==============
 
     /// Convert map to list of key-value pairs.
-    fn to_list(m: map) -> [(any, any)];
+    fn to_list(m: map) -> [(Any, Any)];
 
     /// Create map from list of key-value pairs.
     fn from_list<K, V>(list: [(K, V)]) -> map;

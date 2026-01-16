@@ -6,80 +6,80 @@
 #[name = "gb_trees"]
 extern mod gb_trees {
     /// Create an empty tree.
-    fn empty() -> any;
+    fn empty() -> Any;
 
     /// Check if a key is present.
-    fn is_defined(key: any, tree: any) -> bool;
+    fn is_defined(key: Any, tree: Any) -> bool;
 
     /// Check if tree is empty.
-    fn is_empty(tree: any) -> bool;
+    fn is_empty(tree: Any) -> bool;
 
     /// Get the number of nodes.
-    fn size(tree: any) -> int;
+    fn size(tree: Any) -> int;
 
     /// Look up a key, return value or crash.
-    fn get(key: any, tree: any) -> any;
+    fn get(key: Any, tree: Any) -> Any;
 
     /// Look up a key, return {value, Value} or none.
-    fn lookup(key: any, tree: any) -> any;
+    fn lookup(key: Any, tree: Any) -> Any;
 
     /// Insert a new key-value, crash if key exists.
-    fn insert(key: any, value: any, tree: any) -> any;
+    fn insert(key: Any, value: Any, tree: Any) -> Any;
 
     /// Insert or update a key-value.
-    fn enter(key: any, value: any, tree: any) -> any;
+    fn enter(key: Any, value: Any, tree: Any) -> Any;
 
     /// Update an existing key, crash if not found.
-    fn update(key: any, value: any, tree: any) -> any;
+    fn update(key: Any, value: Any, tree: Any) -> Any;
 
     /// Delete a key, crash if not found.
-    fn delete(key: any, tree: any) -> any;
+    fn delete(key: Any, tree: Any) -> Any;
 
     /// Delete a key if it exists.
-    fn delete_any(key: any, tree: any) -> any;
+    fn delete_any(key: Any, tree: Any) -> Any;
 
     /// Take a key-value from tree.
-    fn take(key: any, tree: any) -> (any, any);
+    fn take(key: Any, tree: Any) -> (Any, Any);
 
     /// Take a key-value from tree, return error if not found.
-    fn take_any(key: any, tree: any) -> any;
+    fn take_any(key: Any, tree: Any) -> Any;
 
     /// Get the smallest key.
-    fn smallest(tree: any) -> (any, any);
+    fn smallest(tree: Any) -> (Any, Any);
 
     /// Get the largest key.
-    fn largest(tree: any) -> (any, any);
+    fn largest(tree: Any) -> (Any, Any);
 
     /// Take the smallest key-value.
-    fn take_smallest(tree: any) -> (any, any, any);
+    fn take_smallest(tree: Any) -> (Any, Any, Any);
 
     /// Take the largest key-value.
-    fn take_largest(tree: any) -> (any, any, any);
+    fn take_largest(tree: Any) -> (Any, Any, Any);
 
     /// Get all keys in order.
-    fn keys(tree: any) -> [any];
+    fn keys(tree: Any) -> [Any];
 
     /// Get all values (in key order).
-    fn values(tree: any) -> [any];
+    fn values(tree: Any) -> [Any];
 
     /// Convert to ordered list of {Key, Value}.
-    fn to_list(tree: any) -> [(any, any)];
+    fn to_list(tree: Any) -> [(Any, Any)];
 
     /// Create tree from ordered list.
-    fn from_orddict(list: [(any, any)]) -> any;
+    fn from_orddict(list: [(Any, Any)]) -> Any;
 
     /// Create balanced tree from ordered list.
-    fn balance(tree: any) -> any;
+    fn balance(tree: Any) -> Any;
 
     /// Get an iterator (start).
-    fn iterator(tree: any) -> any;
+    fn iterator(tree: Any) -> Any;
 
     /// Get an iterator from a specific key.
-    fn iterator_from(key: any, tree: any) -> any;
+    fn iterator_from(key: Any, tree: Any) -> Any;
 
     /// Get next from iterator.
-    fn next(iter: any) -> any;
+    fn next(iter: Any) -> Any;
 
     /// Map a function over values.
-    fn map(fun: fn(any, any) -> any, tree: any) -> any;
+    fn map(fun: fn(Any, Any) -> Any, tree: Any) -> Any;
 }

@@ -23,7 +23,7 @@ extern mod lists {
     fn duplicate<T>(n: int, elem: T) -> [T];
 
     /// Flatten a nested list structure.
-    fn flatten<T>(deep_list: any) -> [T];
+    fn flatten<T>(deep_list: Any) -> [T];
 
     /// Get the last element of a list.
     fn last<T>(list: [T]) -> T;
@@ -79,10 +79,10 @@ extern mod lists {
     fn filter<T>(pred: fn(T) -> bool, list: [T]) -> [T];
 
     /// Map and filter in one pass (keeps elements where fun returns {true, Value}).
-    fn filtermap<A, B>(fun: fn(A) -> any, list: [A]) -> [B];
+    fn filtermap<A, B>(fun: fn(A) -> Any, list: [A]) -> [B];
 
     /// Find the first element satisfying a predicate.
-    fn search<T>(pred: fn(T) -> bool, list: [T]) -> any;
+    fn search<T>(pred: fn(T) -> bool, list: [T]) -> Any;
 
     /// Fold left (reduce from head).
     fn foldl<T, Acc>(fun: fn(T, Acc) -> Acc, acc: Acc, list: [T]) -> Acc;
@@ -91,7 +91,7 @@ extern mod lists {
     fn foldr<T, Acc>(fun: fn(T, Acc) -> Acc, acc: Acc, list: [T]) -> Acc;
 
     /// Apply a function to each element (for side effects).
-    fn foreach<T>(fun: fn(T) -> any, list: [T]) -> atom;
+    fn foreach<T>(fun: fn(T) -> Any, list: [T]) -> atom;
 
     /// Map a function over a list.
     fn map<A, B>(fun: fn(A) -> B, list: [A]) -> [B];
@@ -140,28 +140,28 @@ extern mod lists {
     // ============== List of Tuples (Keyed Operations) ==============
 
     /// Delete by key in a list of tuples.
-    fn keydelete(key: any, n: int, tuple_list: [any]) -> [any];
+    fn keydelete(key: Any, n: int, tuple_list: [Any]) -> [Any];
 
     /// Find a tuple by key.
-    fn keyfind(key: any, n: int, tuple_list: [any]) -> any;
+    fn keyfind(key: Any, n: int, tuple_list: [Any]) -> Any;
 
     /// Check if a key exists.
-    fn keymember(key: any, n: int, tuple_list: [any]) -> bool;
+    fn keymember(key: Any, n: int, tuple_list: [Any]) -> bool;
 
     /// Replace a tuple by key.
-    fn keyreplace(key: any, n: int, tuple_list: [any], new_tuple: any) -> [any];
+    fn keyreplace(key: Any, n: int, tuple_list: [Any], new_tuple: Any) -> [Any];
 
     /// Find a tuple by key (returns tuple or raises).
-    fn keysearch(key: any, n: int, tuple_list: [any]) -> any;
+    fn keysearch(key: Any, n: int, tuple_list: [Any]) -> Any;
 
     /// Sort by key.
-    fn keysort(n: int, tuple_list: [any]) -> [any];
+    fn keysort(n: int, tuple_list: [Any]) -> [Any];
 
     /// Store a tuple (replace or append).
-    fn keystore(key: any, n: int, tuple_list: [any], new_tuple: any) -> [any];
+    fn keystore(key: Any, n: int, tuple_list: [Any], new_tuple: Any) -> [Any];
 
     /// Take a tuple by key (returns tuple and remaining list).
-    fn keytake(key: any, n: int, tuple_list: [any]) -> any;
+    fn keytake(key: Any, n: int, tuple_list: [Any]) -> Any;
 
     // ============== Zipping ==============
 

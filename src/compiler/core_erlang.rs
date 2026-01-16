@@ -5400,10 +5400,10 @@ mod tests {
         let source = r#"
             mod test {
                 extern mod file {
-                    fn read_file(path: string) -> Result<binary, atom>;
+                    fn read_file(path: String) -> Result<Binary, Atom>;
                 }
 
-                pub fn read(path: string) -> Result<binary, atom> {
+                pub fn read(path: String) -> Result<Binary, Atom> {
                     :file::read_file(path)
                 }
             }
@@ -5430,10 +5430,10 @@ mod tests {
         let source = r#"
             mod test {
                 extern mod file {
-                    fn read_file(path: any) -> Result<binary, atom>;
+                    fn read_file(path: Any) -> Result<Binary, Atom>;
                 }
 
-                pub fn read_with_default(path: any) -> binary {
+                pub fn read_with_default(path: Any) -> Binary {
                     :file::read_file(path).unwrap_or(<<"default">>)
                 }
             }

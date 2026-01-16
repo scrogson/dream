@@ -6,65 +6,65 @@
 #[name = "ordsets"]
 extern mod ordsets {
     /// Create a new empty ordered set.
-    fn new() -> [any];
+    fn new() -> [Any];
 
     /// Check if the set is empty.
-    fn is_empty(set: [any]) -> bool;
+    fn is_empty(set: [Any]) -> bool;
 
     /// Get the number of elements.
-    fn size(set: [any]) -> int;
+    fn size(set: [Any]) -> int;
 
     /// Check if term is an ordered set.
-    fn is_ordset(term: any) -> bool;
+    fn is_ordset(term: Any) -> bool;
 
     /// Check if element is a member.
-    fn is_element(elem: any, set: [any]) -> bool;
+    fn is_element(elem: Any, set: [Any]) -> bool;
 
     /// Add an element.
-    fn add_element(elem: any, set: [any]) -> [any];
+    fn add_element(elem: Any, set: [Any]) -> [Any];
 
     /// Delete an element.
-    fn del_element(elem: any, set: [any]) -> [any];
+    fn del_element(elem: Any, set: [Any]) -> [Any];
 
     /// Union of two ordered sets.
-    fn union(set1: [any], set2: [any]) -> [any];
+    fn union(set1: [Any], set2: [Any]) -> [Any];
 
     /// Union of a list of ordered sets.
-    fn union(set_list: [[any]]) -> [any];
+    fn union(set_list: [[Any]]) -> [Any];
 
     /// Intersection of two ordered sets.
-    fn intersection(set1: [any], set2: [any]) -> [any];
+    fn intersection(set1: [Any], set2: [Any]) -> [Any];
 
     /// Intersection of a list of ordered sets.
-    fn intersection(set_list: [[any]]) -> [any];
+    fn intersection(set_list: [[Any]]) -> [Any];
 
     /// Subtract set2 from set1.
-    fn subtract(set1: [any], set2: [any]) -> [any];
+    fn subtract(set1: [Any], set2: [Any]) -> [Any];
 
     /// Check if set1 is a subset of set2.
-    fn is_subset(set1: [any], set2: [any]) -> bool;
+    fn is_subset(set1: [Any], set2: [Any]) -> bool;
 
     /// Check if two sets are disjoint.
-    fn is_disjoint(set1: [any], set2: [any]) -> bool;
+    fn is_disjoint(set1: [Any], set2: [Any]) -> bool;
 
     /// Check if two sets are equal.
-    fn is_equal(set1: [any], set2: [any]) -> bool;
+    fn is_equal(set1: [Any], set2: [Any]) -> bool;
 
     /// Convert ordered set to list (identity).
-    fn to_list(set: [any]) -> [any];
+    fn to_list(set: [Any]) -> [Any];
 
     /// Create ordered set from list.
-    fn from_list(list: [any]) -> [any];
+    fn from_list(list: [Any]) -> [Any];
 
     /// Filter elements.
-    fn filter(pred: fn(any) -> bool, set: [any]) -> [any];
+    fn filter(pred: fn(Any) -> bool, set: [Any]) -> [Any];
 
     /// Map a function over elements.
-    fn map(fun: fn(any) -> any, set: [any]) -> [any];
+    fn map(fun: fn(Any) -> Any, set: [Any]) -> [Any];
 
     /// Filter and map in one pass.
-    fn filtermap(fun: fn(any) -> any, set: [any]) -> [any];
+    fn filtermap(fun: fn(Any) -> Any, set: [Any]) -> [Any];
 
     /// Fold over elements.
-    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, set: [any]) -> Acc;
+    fn fold<Acc>(fun: fn(Any, Acc) -> Acc, acc: Acc, set: [Any]) -> Acc;
 }

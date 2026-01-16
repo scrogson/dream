@@ -6,61 +6,61 @@
 #[name = "timer"]
 extern mod timer {
     /// Start the timer server.
-    fn start() -> Result<pid, any>;
+    fn start() -> Result<Pid, Any>;
 
     /// Apply function after delay.
-    fn apply_after(time: int, module: atom, function: atom, args: [any]) -> Result<any, any>;
+    fn apply_after(time: int, module: atom, function: atom, args: [Any]) -> Result<Any, Any>;
 
     /// Send message after delay.
-    fn send_after(time: int, message: any) -> Result<any, any>;
+    fn send_after(time: int, message: Any) -> Result<Any, Any>;
 
     /// Send message to pid after delay.
-    fn send_after(time: int, pid: pid, message: any) -> Result<any, any>;
+    fn send_after(time: int, pid: pid, message: Any) -> Result<Any, Any>;
 
     /// Call function after delay.
-    fn apply_after(time: int, fun: fn() -> any) -> Result<any, any>;
+    fn apply_after(time: int, fun: fn() -> Any) -> Result<Any, Any>;
 
     /// Kill process after delay.
-    fn kill_after(time: int) -> Result<any, any>;
+    fn kill_after(time: int) -> Result<Any, Any>;
 
     /// Kill specific process after delay.
-    fn kill_after(time: int, pid: pid) -> Result<any, any>;
+    fn kill_after(time: int, pid: pid) -> Result<Any, Any>;
 
     /// Exit process after delay.
-    fn exit_after(time: int, reason: any) -> Result<any, any>;
+    fn exit_after(time: int, reason: Any) -> Result<Any, Any>;
 
     /// Exit specific process after delay.
-    fn exit_after(time: int, pid: pid, reason: any) -> Result<any, any>;
+    fn exit_after(time: int, pid: pid, reason: Any) -> Result<Any, Any>;
 
     /// Apply function at intervals.
-    fn apply_interval(time: int, module: atom, function: atom, args: [any]) -> Result<any, any>;
+    fn apply_interval(time: int, module: atom, function: atom, args: [Any]) -> Result<Any, Any>;
 
     /// Send message at intervals.
-    fn send_interval(time: int, message: any) -> Result<any, any>;
+    fn send_interval(time: int, message: Any) -> Result<Any, Any>;
 
     /// Send message to pid at intervals.
-    fn send_interval(time: int, pid: pid, message: any) -> Result<any, any>;
+    fn send_interval(time: int, pid: pid, message: Any) -> Result<Any, Any>;
 
     /// Call function at intervals.
-    fn apply_interval(time: int, fun: fn() -> any) -> Result<any, any>;
+    fn apply_interval(time: int, fun: fn() -> Any) -> Result<Any, Any>;
 
     /// Cancel a timer.
-    fn cancel(tref: any) -> Result<any, any>;
+    fn cancel(tref: Any) -> Result<Any, Any>;
 
     /// Sleep for a number of milliseconds.
     fn sleep(time: int) -> atom;
 
     /// Measure function execution time.
-    fn tc(fun: fn() -> any) -> (int, any);
+    fn tc(fun: fn() -> Any) -> (int, Any);
 
     /// Measure MFA execution time.
-    fn tc(module: atom, function: atom, args: [any]) -> (int, any);
+    fn tc(module: atom, function: atom, args: [Any]) -> (int, Any);
 
     /// Measure with time unit.
-    fn tc(fun: fn() -> any, time_unit: atom) -> (int, any);
+    fn tc(fun: fn() -> Any, time_unit: atom) -> (int, Any);
 
     /// Measure MFA with time unit.
-    fn tc(module: atom, function: atom, args: [any], time_unit: atom) -> (int, any);
+    fn tc(module: atom, function: atom, args: [Any], time_unit: atom) -> (int, Any);
 
     /// Convert hours to milliseconds.
     fn hours(hours: int) -> int;
@@ -75,5 +75,5 @@ extern mod timer {
     fn hms(hours: int, minutes: int, seconds: int) -> int;
 
     /// Get current time in milliseconds.
-    fn now_diff(t2: any, t1: any) -> int;
+    fn now_diff(t2: Any, t1: Any) -> int;
 }

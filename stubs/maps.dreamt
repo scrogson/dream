@@ -25,7 +25,7 @@ extern mod maps {
     fn get(key: any, map_: any, default: any) -> any;
     fn filter(pred: fn(any, any) -> bool, maporiter: any) -> any;
     fn filtermap(fun: any, maporiter: any) -> any;
-    fn foreach(fun: fn(any, any) -> any, maporiter: any) -> atom;
+    fn foreach(fun: fn(any, any) -> any, maporiter: any) -> Atom;
     fn fold(fun: fn(any, any, any) -> any, init: any, maporiter: any) -> any;
     fn map(fun: fn(any, any) -> any, maporiter: any) -> any;
     fn size(map_: map) -> int;

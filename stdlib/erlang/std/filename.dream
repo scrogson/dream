@@ -6,62 +6,62 @@
 #[name = "filename"]
 extern mod filename {
     /// Get absolute path.
-    fn absname(filename: any) -> any;
+    fn absname(filename: Any) -> Any;
 
     /// Get absolute path relative to directory.
-    fn absname(filename: any, dir: any) -> any;
+    fn absname(filename: Any, dir: Any) -> Any;
 
     /// Get absolute path keeping symlinks.
-    fn absname_join(dir: any, filename: any) -> any;
+    fn absname_join(dir: Any, filename: Any) -> Any;
 
     /// Get the base name.
-    fn basename(filename: any) -> any;
+    fn basename(filename: Any) -> Any;
 
     /// Get base name without extension.
-    fn basename(filename: any, ext: any) -> any;
+    fn basename(filename: Any, ext: Any) -> Any;
 
     /// Get the directory name.
-    fn dirname(filename: any) -> any;
+    fn dirname(filename: Any) -> Any;
 
     /// Get the extension.
-    fn extension(filename: any) -> any;
+    fn extension(filename: Any) -> Any;
 
     /// Get the root name (without extension).
-    fn rootname(filename: any) -> any;
+    fn rootname(filename: Any) -> Any;
 
     /// Get the root name with specific extension removed.
-    fn rootname(filename: any, ext: any) -> any;
+    fn rootname(filename: Any, ext: Any) -> Any;
 
     /// Flatten a filename.
-    fn flatten(filename: any) -> any;
+    fn flatten(filename: Any) -> Any;
 
     /// Join path components.
-    fn join(components: [any]) -> any;
+    fn join(components: [Any]) -> Any;
 
     /// Join two path components.
-    fn join(name1: any, name2: any) -> any;
+    fn join(name1: Any, name2: Any) -> Any;
 
     /// Split into components.
-    fn split(filename: any) -> [any];
+    fn split(filename: Any) -> [Any];
 
     /// Convert native path separators.
-    fn nativename(path: any) -> any;
+    fn nativename(path: Any) -> Any;
 
     /// Get the path type.
-    fn pathtype(path: any) -> atom;
+    fn pathtype(path: Any) -> atom;
 
     /// Get the safe relative path.
-    fn safe_relative_path(filename: any, cwd: any) -> any;
+    fn safe_relative_path(filename: Any, cwd: Any) -> Any;
 
     /// Find executable in path.
-    fn find_src(module: atom) -> Result<any, any>;
+    fn find_src(module: atom) -> Result<Any, Any>;
 
     /// Find source with rules.
-    fn find_src(module: atom, rules: [any]) -> Result<any, any>;
+    fn find_src(module: atom, rules: [Any]) -> Result<Any, Any>;
 
     /// Get base directory for type.
-    fn basedir(path_type: atom, application: any) -> any;
+    fn basedir(path_type: atom, application: Any) -> Any;
 
     /// Get base directory with options.
-    fn basedir(path_type: atom, application: any, opts: map) -> any;
+    fn basedir(path_type: atom, application: Any, opts: map) -> Any;
 }

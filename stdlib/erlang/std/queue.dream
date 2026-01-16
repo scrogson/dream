@@ -8,115 +8,115 @@ extern mod queue {
     // ============== Original API ==============
 
     /// Create an empty queue.
-    fn new() -> any;
+    fn new() -> Any;
 
     /// Check if queue is empty.
-    fn is_empty(q: any) -> bool;
+    fn is_empty(q: Any) -> bool;
 
     /// Check if term is a queue.
-    fn is_queue(term: any) -> bool;
+    fn is_queue(term: Any) -> bool;
 
     /// Get queue length.
-    fn len(q: any) -> int;
+    fn len(q: Any) -> int;
 
     /// Add item to rear (in).
     #[name = "in"]
-    fn in_(item: any, q: any) -> any;
+    fn in_(item: Any, q: Any) -> Any;
 
     /// Add item to front (in_r).
-    fn in_r(item: any, q: any) -> any;
+    fn in_r(item: Any, q: Any) -> Any;
 
     /// Remove from front (out).
-    fn out(q: any) -> any;
+    fn out(q: Any) -> Any;
 
     /// Remove from rear (out_r).
-    fn out_r(q: any) -> any;
+    fn out_r(q: Any) -> Any;
 
     /// Convert queue to list (front to rear).
-    fn to_list(q: any) -> [any];
+    fn to_list(q: Any) -> [Any];
 
     /// Create queue from list.
-    fn from_list(list: [any]) -> any;
+    fn from_list(list: [Any]) -> Any;
 
     /// Check membership.
-    fn member(item: any, q: any) -> bool;
+    fn member(item: Any, q: Any) -> bool;
 
     // ============== Extended API ==============
 
     /// Get the front item without removing.
-    fn get(q: any) -> any;
+    fn get(q: Any) -> Any;
 
     /// Get the rear item without removing.
-    fn get_r(q: any) -> any;
+    fn get_r(q: Any) -> Any;
 
     /// Peek at the front item.
-    fn peek(q: any) -> any;
+    fn peek(q: Any) -> Any;
 
     /// Peek at the rear item.
-    fn peek_r(q: any) -> any;
+    fn peek_r(q: Any) -> Any;
 
     /// Remove front item, error if empty.
-    fn drop(q: any) -> any;
+    fn drop(q: Any) -> Any;
 
     /// Remove rear item, error if empty.
-    fn drop_r(q: any) -> any;
+    fn drop_r(q: Any) -> Any;
 
     /// Add to front.
-    fn cons(item: any, q: any) -> any;
+    fn cons(item: Any, q: Any) -> Any;
 
     /// Get front item (head).
-    fn head(q: any) -> any;
+    fn head(q: Any) -> Any;
 
     /// Get queue without front (tail).
-    fn tail(q: any) -> any;
+    fn tail(q: Any) -> Any;
 
     /// Add to rear.
-    fn snoc(q: any, item: any) -> any;
+    fn snoc(q: Any, item: Any) -> Any;
 
     /// Get rear item.
-    fn last(q: any) -> any;
+    fn last(q: Any) -> Any;
 
     /// Get queue without rear (all but last).
-    fn liat(q: any) -> any;
+    fn liat(q: Any) -> Any;
 
     /// Get queue without rear (alias for liat).
-    fn init(q: any) -> any;
+    fn init(q: Any) -> Any;
 
     // ============== Okasaki API ==============
 
     /// Reverse the queue.
-    fn reverse(q: any) -> any;
+    fn reverse(q: Any) -> Any;
 
     /// Split the queue into two lists.
-    fn split(n: int, q: any) -> (any, any);
+    fn split(n: int, q: Any) -> (Any, Any);
 
     /// Append two queues.
-    fn join(q1: any, q2: any) -> any;
+    fn join(q1: Any, q2: Any) -> Any;
 
     /// Filter queue elements.
-    fn filter(pred: fn(any) -> bool, q: any) -> any;
+    fn filter(pred: fn(Any) -> bool, q: Any) -> Any;
 
     /// Filter and optionally replace elements.
-    fn filtermap(fun: fn(any) -> any, q: any) -> any;
+    fn filtermap(fun: fn(Any) -> Any, q: Any) -> Any;
 
     /// Fold over queue (front to rear).
-    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, q: any) -> Acc;
+    fn fold<Acc>(fun: fn(Any, Acc) -> Acc, acc: Acc, q: Any) -> Acc;
 
     /// Check if any element satisfies predicate.
-    fn any(pred: fn(any) -> bool, q: any) -> bool;
+    fn any(pred: fn(Any) -> bool, q: Any) -> bool;
 
     /// Check if all elements satisfy predicate.
-    fn all(pred: fn(any) -> bool, q: any) -> bool;
+    fn all(pred: fn(Any) -> bool, q: Any) -> bool;
 
     /// Delete first occurrence of item.
-    fn delete(item: any, q: any) -> any;
+    fn delete(item: Any, q: Any) -> Any;
 
     /// Delete with custom equality function.
-    fn delete_with(pred: fn(any) -> bool, q: any) -> any;
+    fn delete_with(pred: fn(Any) -> bool, q: Any) -> Any;
 
     /// Delete all occurrences of item.
-    fn delete_r(item: any, q: any) -> any;
+    fn delete_r(item: Any, q: Any) -> Any;
 
     /// Delete all matching items.
-    fn delete_with_r(pred: fn(any) -> bool, q: any) -> any;
+    fn delete_with_r(pred: fn(Any) -> bool, q: Any) -> Any;
 }

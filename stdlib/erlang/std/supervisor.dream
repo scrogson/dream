@@ -8,41 +8,41 @@ extern mod supervisor {
     // ============== Starting ==============
 
     /// Start a linked supervisor.
-    fn start_link(module: atom, args: any) -> Result<pid, any>;
+    fn start_link(module: atom, args: Any) -> Result<Pid, Any>;
 
     /// Start a linked supervisor with registered name.
-    fn start_link(sup_name: any, module: atom, args: any) -> Result<pid, any>;
+    fn start_link(sup_name: Any, module: atom, args: Any) -> Result<Pid, Any>;
 
     // ============== Child Management ==============
 
     /// Start a child.
-    fn start_child(sup_ref: any, child_spec: any) -> Result<pid, any>;
+    fn start_child(sup_ref: Any, child_spec: Any) -> Result<Pid, Any>;
 
     /// Restart a child.
-    fn restart_child(sup_ref: any, child_id: any) -> Result<pid, any>;
+    fn restart_child(sup_ref: Any, child_id: Any) -> Result<Pid, Any>;
 
     /// Terminate a child.
-    fn terminate_child(sup_ref: any, child_id: any) -> Result<atom, any>;
+    fn terminate_child(sup_ref: Any, child_id: Any) -> Result<Atom, Any>;
 
     /// Delete a child specification.
-    fn delete_child(sup_ref: any, child_id: any) -> Result<atom, any>;
+    fn delete_child(sup_ref: Any, child_id: Any) -> Result<Atom, Any>;
 
     // ============== Querying ==============
 
     /// List all children.
-    fn which_children(sup_ref: any) -> [(any, any, atom, [atom])];
+    fn which_children(sup_ref: Any) -> [(Any, Any, atom, [Atom])];
 
     /// Count children by status.
-    fn count_children(sup_ref: any) -> [(atom, int)];
+    fn count_children(sup_ref: Any) -> [(Atom, int)];
 
     /// Get child specification.
-    fn get_childspec(sup_ref: any, child_id: any) -> Result<any, any>;
+    fn get_childspec(sup_ref: Any, child_id: Any) -> Result<Any, Any>;
 
     // ============== Utilities ==============
 
     /// Check child specification validity.
-    fn check_childspecs(child_specs: [any]) -> Result<atom, any>;
+    fn check_childspecs(child_specs: [Any]) -> Result<Atom, Any>;
 
     /// Check child specifications with options.
-    fn check_childspecs(child_specs: [any], opts: any) -> Result<atom, any>;
+    fn check_childspecs(child_specs: [Any], opts: Any) -> Result<Atom, Any>;
 }

@@ -6,68 +6,68 @@
 #[name = "proplists"]
 extern mod proplists {
     /// Get value for a key.
-    fn get_value(key: any, list: [any]) -> any;
+    fn get_value(key: Any, list: [Any]) -> Any;
 
     /// Get value with default.
-    fn get_value(key: any, list: [any], default: any) -> any;
+    fn get_value(key: Any, list: [Any], default: Any) -> Any;
 
     /// Get all values for a key.
-    fn get_all_values(key: any, list: [any]) -> [any];
+    fn get_all_values(key: Any, list: [Any]) -> [Any];
 
     /// Get boolean value.
-    fn get_bool(key: any, list: [any]) -> bool;
+    fn get_bool(key: Any, list: [Any]) -> bool;
 
     /// Get all keys.
-    fn get_keys(list: [any]) -> [any];
+    fn get_keys(list: [Any]) -> [Any];
 
     /// Look up a key.
-    fn lookup(key: any, list: [any]) -> any;
+    fn lookup(key: Any, list: [Any]) -> Any;
 
     /// Look up all entries for a key.
-    fn lookup_all(key: any, list: [any]) -> [any];
+    fn lookup_all(key: Any, list: [Any]) -> [Any];
 
     /// Check if key is defined.
-    fn is_defined(key: any, list: [any]) -> bool;
+    fn is_defined(key: Any, list: [Any]) -> bool;
 
     /// Delete all entries with key.
-    fn delete(key: any, list: [any]) -> [any];
+    fn delete(key: Any, list: [Any]) -> [Any];
 
     /// Append properties.
-    fn append_values(key: any, list: [any]) -> [any];
+    fn append_values(key: Any, list: [Any]) -> [Any];
 
     /// Normalize properties.
-    fn normalize(list: [any], stages: [any]) -> [any];
+    fn normalize(list: [Any], stages: [Any]) -> [Any];
 
     /// Expand properties.
-    fn expand(expansions: [any], list: [any]) -> [any];
+    fn expand(expansions: [Any], list: [Any]) -> [Any];
 
     /// Property to tuple.
-    fn property(property: any) -> (any, any);
+    fn property(property: Any) -> (Any, Any);
 
     /// Property with default value.
-    fn property(property: any, default: any) -> (any, any);
+    fn property(property: Any, default: Any) -> (Any, Any);
 
     /// Split by list of keys.
-    fn split(keys: [any], list: [any]) -> ([any], [any]);
+    fn split(keys: [Any], list: [Any]) -> ([Any], [Any]);
 
     /// Substitute aliases.
-    fn substitute_aliases(aliases: [any], list: [any]) -> [any];
+    fn substitute_aliases(aliases: [Any], list: [Any]) -> [Any];
 
     /// Substitute negations.
-    fn substitute_negations(negations: [any], list: [any]) -> [any];
+    fn substitute_negations(negations: [Any], list: [Any]) -> [Any];
 
     /// Compact list (remove undefined entries).
-    fn compact(list: [any]) -> [any];
+    fn compact(list: [Any]) -> [Any];
 
     /// Unfold properties.
-    fn unfold(list: [any]) -> [any];
+    fn unfold(list: [Any]) -> [Any];
 
     /// Convert to map.
-    fn to_map(list: [any]) -> map;
+    fn to_map(list: [Any]) -> map;
 
     /// Convert to map with stages.
-    fn to_map(list: [any], stages: [any]) -> map;
+    fn to_map(list: [Any], stages: [Any]) -> map;
 
     /// Create from map.
-    fn from_map(m: map) -> [any];
+    fn from_map(m: map) -> [Any];
 }
