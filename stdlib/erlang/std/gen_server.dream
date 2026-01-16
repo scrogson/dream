@@ -1,0 +1,94 @@
+// Erlang gen_server module bindings
+//
+// Generic server behavior from OTP.
+// See: https://www.erlang.org/doc/man/gen_server.html
+
+#[name = "gen_server"]
+extern mod gen_server {
+    // ============== Starting ==============
+
+    /// Start a linked gen_server.
+    fn start_link(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+
+    /// Start a linked gen_server with registered name.
+    fn start_link(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+
+    /// Start an unlinked gen_server.
+    fn start(module: atom, args: any, opts: [any]) -> Result<pid, any>;
+
+    /// Start an unlinked gen_server with registered name.
+    fn start(name: any, module: atom, args: any, opts: [any]) -> Result<pid, any>;
+
+    /// Start a monitored gen_server.
+    fn start_monitor(module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+
+    /// Start a monitored gen_server with registered name.
+    fn start_monitor(name: any, module: atom, args: any, opts: [any]) -> Result<(pid, ref), any>;
+
+    // ============== Synchronous Calls ==============
+
+    /// Make a synchronous call to a server.
+    fn call(server: any, request: any) -> any;
+
+    /// Make a synchronous call with timeout.
+    fn call(server: any, request: any, timeout: any) -> any;
+
+    /// Make multiple calls in parallel.
+    fn multi_call(name: atom, request: any) -> ([(atom, any)], [atom]);
+
+    /// Make multiple calls with timeout.
+    fn multi_call(nodes: [atom], name: atom, request: any, timeout: int) -> ([(atom, any)], [atom]);
+
+    // ============== Asynchronous Casts ==============
+
+    /// Send an asynchronous request to a server.
+    fn cast(server: any, request: any) -> atom;
+
+    /// Cast to multiple nodes.
+    fn abcast(name: atom, request: any) -> atom;
+
+    /// Cast to specific nodes.
+    fn abcast(nodes: [atom], name: atom, request: any) -> atom;
+
+    // ============== Replies ==============
+
+    /// Send a reply to a caller.
+    fn reply(client: any, reply: any) -> atom;
+
+    // ============== Stopping ==============
+
+    /// Stop a gen_server.
+    fn stop(server: any) -> atom;
+
+    /// Stop with a reason.
+    fn stop(server: any, reason: any) -> atom;
+
+    /// Stop with reason and timeout.
+    fn stop(server: any, reason: any, timeout: any) -> atom;
+
+    // ============== Info ==============
+
+    /// Check if a process is running gen_server code.
+    fn check_response(msg: any, request_id: any) -> any;
+
+    /// Wait for a response with timeout.
+    fn wait_response(request_id: any, timeout: any) -> any;
+
+    /// Receive a response.
+    fn receive_response(request_id: any, timeout: any) -> any;
+
+    /// Send a request and get a request ID.
+    fn send_request(server: any, request: any) -> any;
+
+    /// Send multiple requests.
+    fn reqids_new() -> any;
+
+    /// Add a request ID to a collection.
+    fn reqids_add(request_id: any, label: any, collection: any) -> any;
+
+    /// Get size of request ID collection.
+    fn reqids_size(collection: any) -> int;
+
+    /// Convert collection to list.
+    fn reqids_to_list(collection: any) -> [any];
+}

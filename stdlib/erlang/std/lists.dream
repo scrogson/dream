@@ -1,0 +1,193 @@
+// Erlang lists module bindings
+//
+// List processing functions from the Erlang standard library.
+// See: https://www.erlang.org/doc/man/lists.html
+
+#[name = "lists"]
+extern mod lists {
+    // ============== Basic Operations ==============
+
+    /// Append two lists.
+    fn append<T>(list1: [T], list2: [T]) -> [T];
+
+    /// Append a list of lists.
+    fn append<T>(list_of_lists: [[T]]) -> [T];
+
+    /// Concatenate a list of lists (alias for append/1).
+    fn concat<T>(list_of_lists: [[T]]) -> [T];
+
+    /// Delete the first occurrence of an element.
+    fn delete<T>(elem: T, list: [T]) -> [T];
+
+    /// Duplicate an element N times.
+    fn duplicate<T>(n: int, elem: T) -> [T];
+
+    /// Flatten a nested list structure.
+    fn flatten<T>(deep_list: any) -> [T];
+
+    /// Get the last element of a list.
+    fn last<T>(list: [T]) -> T;
+
+    /// Get the length of a list.
+    fn length<T>(list: [T]) -> int;
+
+    /// Check if an element is a member of a list.
+    fn member<T>(elem: T, list: [T]) -> bool;
+
+    /// Get the Nth element (1-indexed).
+    fn nth<T>(n: int, list: [T]) -> T;
+
+    /// Get the tail starting at position N (1-indexed).
+    fn nthtail<T>(n: int, list: [T]) -> [T];
+
+    /// Reverse a list.
+    fn reverse<T>(list: [T]) -> [T];
+
+    /// Reverse a list and append a tail.
+    fn reverse<T>(list: [T], tail: [T]) -> [T];
+
+    /// Generate a sequence of integers.
+    fn seq(from: int, to: int) -> [int];
+
+    /// Generate a sequence with a step.
+    fn seq(from: int, to: int, step: int) -> [int];
+
+    /// Sort a list using default ordering.
+    fn sort<T>(list: [T]) -> [T];
+
+    /// Sort a list using a comparison function.
+    fn sort<T>(fun: fn(T, T) -> bool, list: [T]) -> [T];
+
+    /// Split a list at position N.
+    fn split<T>(n: int, list: [T]) -> ([T], [T]);
+
+    /// Subtract elements of second list from first.
+    fn subtract<T>(list1: [T], list2: [T]) -> [T];
+
+    /// Get all elements except the last.
+    fn droplast<T>(list: [T]) -> [T];
+
+    // ============== Higher-Order Functions ==============
+
+    /// Check if all elements satisfy a predicate.
+    fn all<T>(pred: fn(T) -> bool, list: [T]) -> bool;
+
+    /// Check if any element satisfies a predicate.
+    fn any<T>(pred: fn(T) -> bool, list: [T]) -> bool;
+
+    /// Filter elements that satisfy a predicate.
+    fn filter<T>(pred: fn(T) -> bool, list: [T]) -> [T];
+
+    /// Map and filter in one pass (keeps elements where fun returns {true, Value}).
+    fn filtermap<A, B>(fun: fn(A) -> any, list: [A]) -> [B];
+
+    /// Find the first element satisfying a predicate.
+    fn search<T>(pred: fn(T) -> bool, list: [T]) -> any;
+
+    /// Fold left (reduce from head).
+    fn foldl<T, Acc>(fun: fn(T, Acc) -> Acc, acc: Acc, list: [T]) -> Acc;
+
+    /// Fold right (reduce from tail).
+    fn foldr<T, Acc>(fun: fn(T, Acc) -> Acc, acc: Acc, list: [T]) -> Acc;
+
+    /// Apply a function to each element (for side effects).
+    fn foreach<T>(fun: fn(T) -> any, list: [T]) -> atom;
+
+    /// Map a function over a list.
+    fn map<A, B>(fun: fn(A) -> B, list: [A]) -> [B];
+
+    /// Map and flatten the results.
+    fn flatmap<A, B>(fun: fn(A) -> [B], list: [A]) -> [B];
+
+    /// Map a function and fold in one pass.
+    fn mapfoldl<A, B, Acc>(fun: fn(A, Acc) -> (B, Acc), acc: Acc, list: [A]) -> ([B], Acc);
+
+    /// Map a function and fold right in one pass.
+    fn mapfoldr<A, B, Acc>(fun: fn(A, Acc) -> (B, Acc), acc: Acc, list: [A]) -> ([B], Acc);
+
+    /// Partition a list by a predicate.
+    fn partition<T>(pred: fn(T) -> bool, list: [T]) -> ([T], [T]);
+
+    /// Take elements while predicate is true.
+    fn takewhile<T>(pred: fn(T) -> bool, list: [T]) -> [T];
+
+    /// Drop elements while predicate is true.
+    fn dropwhile<T>(pred: fn(T) -> bool, list: [T]) -> [T];
+
+    /// Split at first element where predicate is false.
+    fn splitwith<T>(pred: fn(T) -> bool, list: [T]) -> ([T], [T]);
+
+    // ============== Sorting ==============
+
+    /// Merge two sorted lists.
+    fn merge<T>(list1: [T], list2: [T]) -> [T];
+
+    /// Merge two sorted lists using a comparison function.
+    fn merge<T>(fun: fn(T, T) -> bool, list1: [T], list2: [T]) -> [T];
+
+    /// Merge a list of sorted lists.
+    fn merge<T>(list_of_lists: [[T]]) -> [T];
+
+    /// Sort and remove duplicates.
+    fn usort<T>(list: [T]) -> [T];
+
+    /// Sort with custom comparison and remove duplicates.
+    fn usort<T>(fun: fn(T, T) -> bool, list: [T]) -> [T];
+
+    /// Merge and remove duplicates.
+    fn umerge<T>(list1: [T], list2: [T]) -> [T];
+
+    // ============== List of Tuples (Keyed Operations) ==============
+
+    /// Delete by key in a list of tuples.
+    fn keydelete(key: any, n: int, tuple_list: [any]) -> [any];
+
+    /// Find a tuple by key.
+    fn keyfind(key: any, n: int, tuple_list: [any]) -> any;
+
+    /// Check if a key exists.
+    fn keymember(key: any, n: int, tuple_list: [any]) -> bool;
+
+    /// Replace a tuple by key.
+    fn keyreplace(key: any, n: int, tuple_list: [any], new_tuple: any) -> [any];
+
+    /// Find a tuple by key (returns tuple or raises).
+    fn keysearch(key: any, n: int, tuple_list: [any]) -> any;
+
+    /// Sort by key.
+    fn keysort(n: int, tuple_list: [any]) -> [any];
+
+    /// Store a tuple (replace or append).
+    fn keystore(key: any, n: int, tuple_list: [any], new_tuple: any) -> [any];
+
+    /// Take a tuple by key (returns tuple and remaining list).
+    fn keytake(key: any, n: int, tuple_list: [any]) -> any;
+
+    // ============== Zipping ==============
+
+    /// Zip two lists into a list of pairs.
+    fn zip<A, B>(list1: [A], list2: [B]) -> [(A, B)];
+
+    /// Zip three lists into a list of triples.
+    fn zip3<A, B, C>(list1: [A], list2: [B], list3: [C]) -> [(A, B, C)];
+
+    /// Unzip a list of pairs into two lists.
+    fn unzip<A, B>(list: [(A, B)]) -> ([A], [B]);
+
+    /// Unzip a list of triples into three lists.
+    fn unzip3<A, B, C>(list: [(A, B, C)]) -> ([A], [B], [C]);
+
+    /// Zip with a combining function.
+    fn zipwith<A, B, C>(fun: fn(A, B) -> C, list1: [A], list2: [B]) -> [C];
+
+    /// Zip three lists with a combining function.
+    fn zipwith3<A, B, C, D>(fun: fn(A, B, C) -> D, list1: [A], list2: [B], list3: [C]) -> [D];
+
+    // ============== Set-like Operations ==============
+
+    /// Remove duplicate elements (preserves order).
+    fn uniq<T>(list: [T]) -> [T];
+
+    /// Remove consecutive duplicates.
+    fn dedup<T>(list: [T]) -> [T];
+}

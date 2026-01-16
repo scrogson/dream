@@ -1,0 +1,97 @@
+// Erlang io_lib module bindings
+//
+// I/O library functions for formatting.
+// See: https://www.erlang.org/doc/man/io_lib.html
+
+#[name = "io_lib"]
+extern mod io_lib {
+    /// Format a string.
+    fn format(format: any, args: [any]) -> any;
+
+    /// Format with options.
+    fn format(format: any, args: [any], opts: [any]) -> any;
+
+    /// Format to limited depth.
+    fn print(term: any) -> any;
+
+    /// Print with depth limit.
+    fn print(term: any, depth: int) -> any;
+
+    /// Write term.
+    fn write(term: any) -> any;
+
+    /// Write with options.
+    fn write(term: any, opts: [any]) -> any;
+
+    /// Format integer in base.
+    fn fwrite(format: any, args: [any]) -> any;
+
+    /// Write atom.
+    fn write_atom(atom: atom) -> any;
+
+    /// Write atom to string.
+    fn write_atom_as_latin1(atom: atom) -> any;
+
+    /// Write string.
+    fn write_string(string: any) -> any;
+
+    /// Write string as Latin-1.
+    fn write_string_as_latin1(string: any) -> any;
+
+    /// Write character.
+    fn write_char(char: any) -> any;
+
+    /// Write character as Latin-1.
+    fn write_char_as_latin1(char: any) -> any;
+
+    /// Write with latin1 encoding.
+    fn write_latin1_char(char: any) -> any;
+
+    /// Indent to column.
+    fn indentation(string: any, start_col: int) -> int;
+
+    /// Build text from iolist.
+    fn build_text(iolist: any) -> any;
+
+    // ============== Scanning ==============
+
+    /// Scan format string.
+    fn fread(format: any, string: any) -> any;
+
+    /// Scan for integer.
+    fn fread(format: any, string: any, start_line: int) -> any;
+
+    // ============== Character Properties ==============
+
+    /// Check if printable list.
+    fn printable_list(term: any) -> bool;
+
+    /// Check if printable Latin-1 list.
+    fn printable_latin1_list(term: any) -> bool;
+
+    /// Check if printable unicode list.
+    fn printable_unicode_list(term: any) -> bool;
+
+    /// Check if printable character.
+    fn char_list(term: any) -> bool;
+
+    /// Check if deep char list.
+    fn deep_char_list(term: any) -> bool;
+
+    /// Check if deep latin1 char list.
+    fn deep_latin1_char_list(term: any) -> bool;
+
+    /// Check if deep unicode char list.
+    fn deep_unicode_char_list(term: any) -> bool;
+
+    /// Check if latin1 string.
+    fn latin1_char_list(term: any) -> bool;
+
+    /// Check if unicode string.
+    fn unicode_char_list(term: any) -> bool;
+
+    // ============== Conversion ==============
+
+    /// Convert number to list.
+    fn nl() -> any;
+}

@@ -1,0 +1,90 @@
+// Erlang calendar module bindings
+//
+// Date and time calculations.
+// See: https://www.erlang.org/doc/man/calendar.html
+
+#[name = "calendar"]
+extern mod calendar {
+    // ============== Current Time ==============
+
+    /// Get local date and time.
+    fn local_time() -> ((int, int, int), (int, int, int));
+
+    /// Get universal (UTC) date and time.
+    fn universal_time() -> ((int, int, int), (int, int, int));
+
+    /// Get local date and time with microseconds.
+    fn system_time_to_local_time(system_time: int, time_unit: atom) -> ((int, int, int), (int, int, int));
+
+    /// Get universal date and time with microseconds.
+    fn system_time_to_universal_time(system_time: int, time_unit: atom) -> ((int, int, int), (int, int, int));
+
+    // ============== Conversions ==============
+
+    /// Convert datetime to Gregorian seconds.
+    fn datetime_to_gregorian_seconds(datetime: ((int, int, int), (int, int, int))) -> int;
+
+    /// Convert Gregorian seconds to datetime.
+    fn gregorian_seconds_to_datetime(seconds: int) -> ((int, int, int), (int, int, int));
+
+    /// Convert local time to universal time.
+    fn local_time_to_universal_time(datetime: ((int, int, int), (int, int, int))) -> ((int, int, int), (int, int, int));
+
+    /// Convert local time to universal time with DST flag.
+    fn local_time_to_universal_time_dst(datetime: ((int, int, int), (int, int, int))) -> [((int, int, int), (int, int, int))];
+
+    /// Convert universal time to local time.
+    fn universal_time_to_local_time(datetime: ((int, int, int), (int, int, int))) -> ((int, int, int), (int, int, int));
+
+    /// Convert now() format to datetime.
+    fn now_to_datetime(now: (int, int, int)) -> ((int, int, int), (int, int, int));
+
+    /// Convert now() format to local datetime.
+    fn now_to_local_time(now: (int, int, int)) -> ((int, int, int), (int, int, int));
+
+    /// Convert now() format to universal datetime.
+    fn now_to_universal_time(now: (int, int, int)) -> ((int, int, int), (int, int, int));
+
+    /// Convert to RFC 3339 string.
+    fn system_time_to_rfc3339(system_time: int) -> [int];
+
+    /// Convert to RFC 3339 with options.
+    fn system_time_to_rfc3339(system_time: int, opts: [any]) -> [int];
+
+    /// Parse RFC 3339 string.
+    fn rfc3339_to_system_time(string: [int]) -> int;
+
+    /// Parse RFC 3339 with options.
+    fn rfc3339_to_system_time(string: [int], opts: [any]) -> int;
+
+    // ============== Date Operations ==============
+
+    /// Get day of the week (1=Monday, 7=Sunday).
+    fn day_of_the_week(date: (int, int, int)) -> int;
+
+    /// Get day of the week from year/month/day.
+    fn day_of_the_week(year: int, month: int, day: int) -> int;
+
+    /// Check if year is a leap year.
+    fn is_leap_year(year: int) -> bool;
+
+    /// Get last day of month.
+    fn last_day_of_the_month(year: int, month: int) -> int;
+
+    /// Check if date is valid.
+    fn valid_date(date: (int, int, int)) -> bool;
+
+    /// Check if date components are valid.
+    fn valid_date(year: int, month: int, day: int) -> bool;
+
+    // ============== Time Differences ==============
+
+    /// Calculate time difference in seconds.
+    fn time_difference(t1: ((int, int, int), (int, int, int)), t2: ((int, int, int), (int, int, int))) -> int;
+
+    /// Get ISO week number.
+    fn iso_week_number(date: (int, int, int)) -> (int, int);
+
+    /// Get ISO week number from components.
+    fn iso_week_number(year: int, month: int, day: int) -> (int, int);
+}

@@ -1,0 +1,79 @@
+// Erlang timer module bindings
+//
+// Timer functions for delayed execution.
+// See: https://www.erlang.org/doc/man/timer.html
+
+#[name = "timer"]
+extern mod timer {
+    /// Start the timer server.
+    fn start() -> Result<pid, any>;
+
+    /// Apply function after delay.
+    fn apply_after(time: int, module: atom, function: atom, args: [any]) -> Result<any, any>;
+
+    /// Send message after delay.
+    fn send_after(time: int, message: any) -> Result<any, any>;
+
+    /// Send message to pid after delay.
+    fn send_after(time: int, pid: pid, message: any) -> Result<any, any>;
+
+    /// Call function after delay.
+    fn apply_after(time: int, fun: fn() -> any) -> Result<any, any>;
+
+    /// Kill process after delay.
+    fn kill_after(time: int) -> Result<any, any>;
+
+    /// Kill specific process after delay.
+    fn kill_after(time: int, pid: pid) -> Result<any, any>;
+
+    /// Exit process after delay.
+    fn exit_after(time: int, reason: any) -> Result<any, any>;
+
+    /// Exit specific process after delay.
+    fn exit_after(time: int, pid: pid, reason: any) -> Result<any, any>;
+
+    /// Apply function at intervals.
+    fn apply_interval(time: int, module: atom, function: atom, args: [any]) -> Result<any, any>;
+
+    /// Send message at intervals.
+    fn send_interval(time: int, message: any) -> Result<any, any>;
+
+    /// Send message to pid at intervals.
+    fn send_interval(time: int, pid: pid, message: any) -> Result<any, any>;
+
+    /// Call function at intervals.
+    fn apply_interval(time: int, fun: fn() -> any) -> Result<any, any>;
+
+    /// Cancel a timer.
+    fn cancel(tref: any) -> Result<any, any>;
+
+    /// Sleep for a number of milliseconds.
+    fn sleep(time: int) -> atom;
+
+    /// Measure function execution time.
+    fn tc(fun: fn() -> any) -> (int, any);
+
+    /// Measure MFA execution time.
+    fn tc(module: atom, function: atom, args: [any]) -> (int, any);
+
+    /// Measure with time unit.
+    fn tc(fun: fn() -> any, time_unit: atom) -> (int, any);
+
+    /// Measure MFA with time unit.
+    fn tc(module: atom, function: atom, args: [any], time_unit: atom) -> (int, any);
+
+    /// Convert hours to milliseconds.
+    fn hours(hours: int) -> int;
+
+    /// Convert minutes to milliseconds.
+    fn minutes(minutes: int) -> int;
+
+    /// Convert seconds to milliseconds.
+    fn seconds(seconds: int) -> int;
+
+    /// Convert hours/minutes/seconds to milliseconds.
+    fn hms(hours: int, minutes: int, seconds: int) -> int;
+
+    /// Get current time in milliseconds.
+    fn now_diff(t2: any, t1: any) -> int;
+}

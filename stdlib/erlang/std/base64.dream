@@ -1,0 +1,34 @@
+// Erlang base64 module bindings
+//
+// Base64 encoding and decoding.
+// See: https://www.erlang.org/doc/man/base64.html
+
+#[name = "base64"]
+extern mod base64 {
+    /// Encode binary to base64.
+    fn encode(data: any) -> binary;
+
+    /// Encode to base64 with options.
+    fn encode(data: any, opts: map) -> binary;
+
+    /// Encode to base64 iolist.
+    fn encode_to_string(data: any) -> [int];
+
+    /// Decode base64 to binary.
+    fn decode(base64: any) -> binary;
+
+    /// Decode base64 with options.
+    fn decode(base64: any, opts: map) -> binary;
+
+    /// Decode base64 to string.
+    fn decode_to_string(base64: any) -> [int];
+
+    /// MIME encode (with line breaks).
+    fn mime_decode(base64: any) -> binary;
+
+    /// MIME decode with options.
+    fn mime_decode(base64: any, opts: map) -> binary;
+
+    /// MIME decode to string.
+    fn mime_decode_to_string(base64: any) -> [int];
+}

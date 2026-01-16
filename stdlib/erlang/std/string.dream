@@ -1,0 +1,139 @@
+// Erlang string module bindings
+//
+// String processing functions (works with unicode strings).
+// See: https://www.erlang.org/doc/man/string.html
+
+#[name = "string"]
+extern mod string {
+    // ============== Case Conversion ==============
+
+    /// Convert to lowercase.
+    fn lowercase(string: any) -> any;
+
+    /// Convert to uppercase.
+    fn uppercase(string: any) -> any;
+
+    /// Convert to titlecase.
+    fn titlecase(string: any) -> any;
+
+    /// Case-fold for comparison.
+    fn casefold(string: any) -> any;
+
+    // ============== Trimming ==============
+
+    /// Trim whitespace from both ends.
+    fn trim(string: any) -> any;
+
+    /// Trim specified characters from both ends.
+    fn trim(string: any, dir: atom) -> any;
+
+    /// Trim with direction and characters.
+    fn trim(string: any, dir: atom, chars: any) -> any;
+
+    /// Chomp trailing newline.
+    fn chomp(string: any) -> any;
+
+    // ============== Padding ==============
+
+    /// Pad to length (default left).
+    fn pad(string: any, length: int) -> any;
+
+    /// Pad with direction.
+    fn pad(string: any, length: int, dir: atom) -> any;
+
+    /// Pad with direction and character.
+    fn pad(string: any, length: int, dir: atom, char: any) -> any;
+
+    // ============== Searching ==============
+
+    /// Find substring.
+    fn find(string: any, search_pattern: any) -> any;
+
+    /// Find with direction.
+    fn find(string: any, search_pattern: any, dir: atom) -> any;
+
+    /// Get prefix.
+    fn prefix(string: any, prefix: any) -> any;
+
+    /// Check if string starts with prefix.
+    fn is_prefix(prefix: any, string: any) -> bool;
+
+    // ============== Splitting/Joining ==============
+
+    /// Split string.
+    fn split(string: any, search_pattern: any) -> [any];
+
+    /// Split with direction.
+    fn split(string: any, search_pattern: any, where: atom) -> [any];
+
+    /// Lexemes (split by whitespace).
+    fn lexemes(string: any, separators: any) -> [any];
+
+    /// Join strings.
+    fn join(strings: [any], separator: any) -> any;
+
+    // ============== Replacement ==============
+
+    /// Replace substring.
+    fn replace(string: any, search_pattern: any, replacement: any) -> any;
+
+    /// Replace with direction.
+    fn replace(string: any, search_pattern: any, replacement: any, where: atom) -> any;
+
+    // ============== Length/Slicing ==============
+
+    /// Get string length in grapheme clusters.
+    fn length(string: any) -> int;
+
+    /// Get substring.
+    fn slice(string: any, start: int) -> any;
+
+    /// Get substring with length.
+    fn slice(string: any, start: int, length: any) -> any;
+
+    /// Reverse string.
+    fn reverse(string: any) -> any;
+
+    // ============== Comparison ==============
+
+    /// Compare strings.
+    fn equal(a: any, b: any) -> bool;
+
+    /// Compare with case insensitivity option.
+    fn equal(a: any, b: any, ignore_case: bool) -> bool;
+
+    /// Compare with locale option.
+    fn equal(a: any, b: any, ignore_case: bool, norm: atom) -> bool;
+
+    // ============== Conversion ==============
+
+    /// Convert to float.
+    fn to_float(string: any) -> Result<float, any>;
+
+    /// Convert to integer.
+    fn to_integer(string: any) -> Result<int, any>;
+
+    /// Convert to integer with base.
+    fn to_integer(string: any, base: int) -> Result<int, any>;
+
+    /// Convert graphemes to codepoints.
+    fn to_graphemes(string: any) -> [any];
+
+    /// Take graphemes.
+    fn take(string: any, characters: any) -> any;
+
+    /// Take with complement.
+    fn take(string: any, characters: any, complement: bool) -> any;
+
+    /// Take with complement and direction.
+    fn take(string: any, characters: any, complement: bool, dir: atom) -> any;
+
+    /// Check if string is empty.
+    fn is_empty(string: any) -> bool;
+
+    /// Get next grapheme cluster.
+    fn next_grapheme(string: any) -> any;
+
+    /// Get next codepoint.
+    fn next_codepoint(string: any) -> any;
+}

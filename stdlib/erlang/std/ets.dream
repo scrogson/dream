@@ -1,0 +1,167 @@
+// Erlang ets module bindings
+//
+// Erlang Term Storage - in-memory tables.
+// See: https://www.erlang.org/doc/man/ets.html
+
+#[name = "ets"]
+extern mod ets {
+    // ============== Table Management ==============
+
+    /// Create a new table.
+    fn new(name: atom, opts: [any]) -> any;
+
+    /// Delete a table.
+    fn delete(tab: any) -> bool;
+
+    /// Delete all objects in a table.
+    fn delete_all_objects(tab: any) -> bool;
+
+    /// Rename a table.
+    fn rename(tab: any, name: atom) -> atom;
+
+    /// Give table away to another process.
+    fn give_away(tab: any, pid: pid, gift_data: any) -> bool;
+
+    /// Get table info.
+    fn info(tab: any) -> [(atom, any)];
+
+    /// Get specific table info.
+    fn info(tab: any, item: atom) -> any;
+
+    /// List all tables.
+    fn all() -> [any];
+
+    // ============== Insert/Update ==============
+
+    /// Insert objects into a table.
+    fn insert(tab: any, objects: any) -> bool;
+
+    /// Insert new objects (fail if key exists).
+    fn insert_new(tab: any, objects: any) -> bool;
+
+    /// Update a counter.
+    fn update_counter(tab: any, key: any, update_op: any) -> int;
+
+    /// Update a counter with default.
+    fn update_counter(tab: any, key: any, update_op: any, default: any) -> int;
+
+    /// Update an element.
+    fn update_element(tab: any, key: any, element_spec: any) -> bool;
+
+    // ============== Lookup/Delete ==============
+
+    /// Look up objects by key.
+    fn lookup(tab: any, key: any) -> [any];
+
+    /// Look up a specific element.
+    fn lookup_element(tab: any, key: any, pos: int) -> any;
+
+    /// Delete by key.
+    fn delete(tab: any, key: any) -> bool;
+
+    /// Delete an exact object.
+    fn delete_object(tab: any, object: any) -> bool;
+
+    /// Take objects (lookup and delete).
+    fn take(tab: any, key: any) -> [any];
+
+    /// Check if key exists.
+    fn member(tab: any, key: any) -> bool;
+
+    // ============== Iteration ==============
+
+    /// Get the first key.
+    fn first(tab: any) -> any;
+
+    /// Get the next key.
+    fn next(tab: any, key: any) -> any;
+
+    /// Get the last key.
+    fn last(tab: any) -> any;
+
+    /// Get the previous key.
+    fn prev(tab: any, key: any) -> any;
+
+    /// Convert table to list.
+    fn tab2list(tab: any) -> [any];
+
+    /// Fold over table.
+    fn foldl<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, tab: any) -> Acc;
+
+    /// Fold right over table.
+    fn foldr<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, tab: any) -> Acc;
+
+    // ============== Select/Match ==============
+
+    /// Select using match specification.
+    fn select(tab: any, match_spec: [any]) -> [any];
+
+    /// Select with limit.
+    fn select(tab: any, match_spec: [any], limit: int) -> any;
+
+    /// Continue a select operation.
+    fn select(continuation: any) -> any;
+
+    /// Select and delete.
+    fn select_delete(tab: any, match_spec: [any]) -> int;
+
+    /// Select and replace.
+    fn select_replace(tab: any, match_spec: [any]) -> int;
+
+    /// Select count.
+    fn select_count(tab: any, match_spec: [any]) -> int;
+
+    /// Match objects.
+    #[name = "match"]
+    fn match_(tab: any, pattern: any) -> [any];
+
+    /// Match with limit.
+    #[name = "match"]
+    fn match_with_limit(tab: any, pattern: any, limit: int) -> any;
+
+    /// Match and delete.
+    fn match_delete(tab: any, pattern: any) -> bool;
+
+    /// Match objects (full tuples).
+    fn match_object(tab: any, pattern: any) -> [any];
+
+    /// Match objects with limit.
+    fn match_object(tab: any, pattern: any, limit: int) -> any;
+
+    // ============== File Operations ==============
+
+    /// Save table to file.
+    fn tab2file(tab: any, filename: any) -> Result<atom, any>;
+
+    /// Save table to file with options.
+    fn tab2file(tab: any, filename: any, opts: [any]) -> Result<atom, any>;
+
+    /// Load table from file.
+    fn file2tab(filename: any) -> Result<any, any>;
+
+    /// Load table from file with options.
+    fn file2tab(filename: any, opts: [any]) -> Result<any, any>;
+
+    /// Get file table info.
+    fn tabfile_info(filename: any) -> Result<[(atom, any)], any>;
+
+    // ============== Utilities ==============
+
+    /// Compile a match specification.
+    fn match_spec_compile(match_spec: [any]) -> any;
+
+    /// Run a compiled match specification.
+    fn match_spec_run(list: [any], compiled_ms: any) -> [any];
+
+    /// Test a match specification.
+    fn test_ms(tuple: any, match_spec: [any]) -> any;
+
+    /// Check if term is a compiled match specification.
+    fn is_compiled_ms(term: any) -> bool;
+
+    /// Get slot info.
+    fn slot(tab: any, i: int) -> [any];
+
+    /// Safe fixed-point iteration.
+    fn safe_fixtable(tab: any, fix: bool) -> bool;
+}

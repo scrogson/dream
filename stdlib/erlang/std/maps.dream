@@ -1,0 +1,109 @@
+// Erlang maps module bindings
+//
+// Map (dictionary) operations from the Erlang standard library.
+// See: https://www.erlang.org/doc/man/maps.html
+
+#[name = "maps"]
+extern mod maps {
+    // ============== Basic Operations ==============
+
+    /// Get a value by key, raises if not found.
+    fn get<K, V>(key: K, m: map) -> V;
+
+    /// Get a value by key with a default.
+    fn get<K, V>(key: K, m: map, default: V) -> V;
+
+    /// Find a value by key, returns {ok, Value} or error.
+    fn find<K, V>(key: K, m: map) -> Result<V, atom>;
+
+    /// Check if a key exists.
+    fn is_key<K>(key: K, m: map) -> bool;
+
+    /// Get all keys.
+    fn keys(m: map) -> [any];
+
+    /// Get all values.
+    fn values(m: map) -> [any];
+
+    /// Get the number of key-value pairs.
+    fn size(m: map) -> int;
+
+    /// Create an empty map.
+    fn new() -> map;
+
+    // ============== Modification ==============
+
+    /// Put a key-value pair (insert or update).
+    fn put<K, V>(key: K, value: V, m: map) -> map;
+
+    /// Update a key's value (raises if key not found).
+    fn update<K, V>(key: K, value: V, m: map) -> map;
+
+    /// Update a key's value using a function.
+    fn update_with<K, V>(key: K, fun: fn(V) -> V, m: map) -> map;
+
+    /// Update a key's value using a function with default.
+    fn update_with<K, V>(key: K, fun: fn(V) -> V, init: V, m: map) -> map;
+
+    /// Remove a key (no error if not present).
+    fn remove<K>(key: K, m: map) -> map;
+
+    /// Take a value by key (returns value and remaining map).
+    fn take<K, V>(key: K, m: map) -> (V, map);
+
+    /// Merge two maps (second map's values win on conflict).
+    fn merge(m1: map, m2: map) -> map;
+
+    /// Merge with a combining function for conflicts.
+    fn merge_with<K, V>(fun: fn(K, V, V) -> V, m1: map, m2: map) -> map;
+
+    // ============== Higher-Order Functions ==============
+
+    /// Filter key-value pairs by a predicate.
+    fn filter<K, V>(pred: fn(K, V) -> bool, m: map) -> map;
+
+    /// Map a function over values.
+    fn map<K, V1, V2>(fun: fn(K, V1) -> V2, m: map) -> map;
+
+    /// Fold over key-value pairs.
+    fn fold<K, V, Acc>(fun: fn(K, V, Acc) -> Acc, acc: Acc, m: map) -> Acc;
+
+    /// Apply a function to each key-value pair (for side effects).
+    fn foreach<K, V>(fun: fn(K, V) -> any, m: map) -> atom;
+
+    /// Filter and map in one pass.
+    fn filtermap<K, V1, V2>(fun: fn(K, V1) -> any, m: map) -> map;
+
+    // ============== Conversion ==============
+
+    /// Convert map to list of key-value pairs.
+    fn to_list(m: map) -> [(any, any)];
+
+    /// Create map from list of key-value pairs.
+    fn from_list<K, V>(list: [(K, V)]) -> map;
+
+    /// Create map from list of keys with a value generator.
+    fn from_keys<K, V>(keys: [K], value: V) -> map;
+
+    // ============== Set-like Operations ==============
+
+    /// Get keys that exist in both maps.
+    fn intersect(m1: map, m2: map) -> map;
+
+    /// Merge with custom function for intersecting keys.
+    fn intersect_with<K, V>(fun: fn(K, V, V) -> V, m1: map, m2: map) -> map;
+
+    /// Keep only the specified keys.
+    fn with<K>(keys: [K], m: map) -> map;
+
+    /// Remove the specified keys.
+    fn without<K>(keys: [K], m: map) -> map;
+
+    // ============== Grouping ==============
+
+    /// Group list elements by a key function.
+    fn groups_from_list<K, V>(fun: fn(V) -> K, list: [V]) -> map;
+
+    /// Group with custom value transformation.
+    fn groups_from_list<K, V1, V2>(key_fun: fn(V1) -> K, value_fun: fn(V1) -> V2, list: [V1]) -> map;
+}

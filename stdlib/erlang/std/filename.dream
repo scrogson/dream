@@ -1,0 +1,67 @@
+// Erlang filename module bindings
+//
+// Filename manipulation.
+// See: https://www.erlang.org/doc/man/filename.html
+
+#[name = "filename"]
+extern mod filename {
+    /// Get absolute path.
+    fn absname(filename: any) -> any;
+
+    /// Get absolute path relative to directory.
+    fn absname(filename: any, dir: any) -> any;
+
+    /// Get absolute path keeping symlinks.
+    fn absname_join(dir: any, filename: any) -> any;
+
+    /// Get the base name.
+    fn basename(filename: any) -> any;
+
+    /// Get base name without extension.
+    fn basename(filename: any, ext: any) -> any;
+
+    /// Get the directory name.
+    fn dirname(filename: any) -> any;
+
+    /// Get the extension.
+    fn extension(filename: any) -> any;
+
+    /// Get the root name (without extension).
+    fn rootname(filename: any) -> any;
+
+    /// Get the root name with specific extension removed.
+    fn rootname(filename: any, ext: any) -> any;
+
+    /// Flatten a filename.
+    fn flatten(filename: any) -> any;
+
+    /// Join path components.
+    fn join(components: [any]) -> any;
+
+    /// Join two path components.
+    fn join(name1: any, name2: any) -> any;
+
+    /// Split into components.
+    fn split(filename: any) -> [any];
+
+    /// Convert native path separators.
+    fn nativename(path: any) -> any;
+
+    /// Get the path type.
+    fn pathtype(path: any) -> atom;
+
+    /// Get the safe relative path.
+    fn safe_relative_path(filename: any, cwd: any) -> any;
+
+    /// Find executable in path.
+    fn find_src(module: atom) -> Result<any, any>;
+
+    /// Find source with rules.
+    fn find_src(module: atom, rules: [any]) -> Result<any, any>;
+
+    /// Get base directory for type.
+    fn basedir(path_type: atom, application: any) -> any;
+
+    /// Get base directory with options.
+    fn basedir(path_type: atom, application: any, opts: map) -> any;
+}

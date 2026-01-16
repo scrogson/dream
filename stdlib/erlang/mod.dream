@@ -1,0 +1,6 @@
+// Erlang Standard Library Bindings
+//
+// Provides type-safe access to core Erlang/OTP modules.
+// Usage: erlang::std::lists, erlang::std::maps, etc.
+
+pub mod std;

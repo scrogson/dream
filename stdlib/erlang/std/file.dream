@@ -1,0 +1,156 @@
+// Erlang file module bindings
+//
+// File system operations from the Erlang standard library.
+// See: https://www.erlang.org/doc/man/file.html
+
+#[name = "file"]
+extern mod file {
+    // ============== Reading ==============
+
+    /// Read entire file contents.
+    fn read_file(filename: any) -> Result<binary, any>;
+
+    /// Read file and consult as Erlang terms.
+    fn consult(filename: any) -> Result<[any], any>;
+
+    /// Evaluate file as Erlang expressions.
+    fn eval(filename: any) -> Result<any, any>;
+
+    /// Evaluate with variable bindings.
+    fn eval(filename: any, bindings: [any]) -> Result<any, any>;
+
+    /// Read file info (stat).
+    fn read_file_info(filename: any) -> Result<any, any>;
+
+    /// Read file info with options.
+    fn read_file_info(filename: any, opts: [any]) -> Result<any, any>;
+
+    /// Read symbolic link target.
+    fn read_link(name: any) -> Result<any, any>;
+
+    /// Read symbolic link info.
+    fn read_link_info(name: any) -> Result<any, any>;
+
+    // ============== Writing ==============
+
+    /// Write data to a file.
+    fn write_file(filename: any, data: any) -> Result<atom, any>;
+
+    /// Write data to a file with modes.
+    fn write_file(filename: any, data: any, modes: [any]) -> Result<atom, any>;
+
+    // ============== File Handle Operations ==============
+
+    /// Open a file.
+    fn open(filename: any, modes: [any]) -> Result<any, any>;
+
+    /// Close a file.
+    fn close(io_device: any) -> Result<atom, any>;
+
+    /// Read from an open file.
+    fn read(io_device: any, num_bytes: int) -> Result<any, any>;
+
+    /// Read a line from an open file.
+    fn read_line(io_device: any) -> Result<any, any>;
+
+    /// Write to an open file.
+    fn write(io_device: any, data: any) -> Result<atom, any>;
+
+    /// Sync file to disk.
+    fn sync(io_device: any) -> Result<atom, any>;
+
+    /// Sync file data to disk (not metadata).
+    fn datasync(io_device: any) -> Result<atom, any>;
+
+    /// Get current position in file.
+    fn position(io_device: any, location: any) -> Result<int, any>;
+
+    /// Truncate file at current position.
+    fn truncate(io_device: any) -> Result<atom, any>;
+
+    /// Read at specific position.
+    fn pread(io_device: any, location: int, num_bytes: int) -> Result<any, any>;
+
+    /// Write at specific position.
+    fn pwrite(io_device: any, location: int, data: any) -> Result<atom, any>;
+
+    // ============== Directory Operations ==============
+
+    /// List directory contents.
+    fn list_dir(dir: any) -> Result<[any], any>;
+
+    /// List directory with all file info.
+    fn list_dir_all(dir: any) -> Result<[any], any>;
+
+    /// Create a directory.
+    fn make_dir(dir: any) -> Result<atom, any>;
+
+    /// Delete a directory.
+    fn del_dir(dir: any) -> Result<atom, any>;
+
+    /// Delete directory recursively.
+    fn del_dir_r(dir: any) -> Result<atom, any>;
+
+    /// Get current working directory.
+    fn get_cwd() -> Result<any, any>;
+
+    /// Set current working directory.
+    fn set_cwd(dir: any) -> Result<atom, any>;
+
+    // ============== File Management ==============
+
+    /// Copy a file.
+    fn copy(source: any, dest: any) -> Result<int, any>;
+
+    /// Copy with byte count limit.
+    fn copy(source: any, dest: any, byte_count: int) -> Result<int, any>;
+
+    /// Delete a file.
+    fn delete(filename: any) -> Result<atom, any>;
+
+    /// Rename a file or directory.
+    fn rename(source: any, dest: any) -> Result<atom, any>;
+
+    /// Create a symbolic link.
+    fn make_symlink(existing: any, new: any) -> Result<atom, any>;
+
+    /// Create a hard link.
+    fn make_link(existing: any, new: any) -> Result<atom, any>;
+
+    // ============== File Attributes ==============
+
+    /// Change file mode (permissions).
+    fn change_mode(filename: any, mode: int) -> Result<atom, any>;
+
+    /// Change file owner.
+    fn change_owner(filename: any, uid: int) -> Result<atom, any>;
+
+    /// Change file owner and group.
+    fn change_owner(filename: any, uid: int, gid: int) -> Result<atom, any>;
+
+    /// Change file group.
+    fn change_group(filename: any, gid: int) -> Result<atom, any>;
+
+    /// Change file access/modification times.
+    fn change_time(filename: any, mtime: any) -> Result<atom, any>;
+
+    /// Change file times with access time.
+    fn change_time(filename: any, atime: any, mtime: any) -> Result<atom, any>;
+
+    /// Write file info (stat).
+    fn write_file_info(filename: any, file_info: any) -> Result<atom, any>;
+
+    // ============== Path Operations ==============
+
+    /// Get the native name representation.
+    fn native_name_encoding() -> atom;
+
+    /// Convert path to native format.
+    fn path_open(path: [any], filename: any, modes: [any]) -> Result<any, any>;
+
+    /// Evaluate a script file.
+    fn script(filename: any) -> Result<any, any>;
+
+    /// Evaluate script with variable bindings.
+    fn script(filename: any, bindings: [any]) -> Result<any, any>;
+}

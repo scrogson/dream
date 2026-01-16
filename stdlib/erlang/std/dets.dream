@@ -1,0 +1,119 @@
+// Erlang dets module bindings
+//
+// Disk-based Erlang Term Storage.
+// See: https://www.erlang.org/doc/man/dets.html
+
+#[name = "dets"]
+extern mod dets {
+    // ============== Opening/Closing ==============
+
+    /// Open a table file.
+    fn open_file(name: any) -> Result<any, any>;
+
+    /// Open a table file with options.
+    fn open_file(name: any, args: [any]) -> Result<any, any>;
+
+    /// Close a table.
+    fn close(name: any) -> Result<atom, any>;
+
+    /// Check if table is open.
+    fn info(name: any) -> [(atom, any)];
+
+    /// Get specific info about a table.
+    fn info(name: any, item: atom) -> any;
+
+    /// List all open tables.
+    fn all() -> [any];
+
+    // ============== Insert/Update ==============
+
+    /// Insert objects.
+    fn insert(name: any, objects: any) -> Result<atom, any>;
+
+    /// Insert new (fail if exists).
+    fn insert_new(name: any, objects: any) -> Result<bool, any>;
+
+    /// Update a counter.
+    fn update_counter(name: any, key: any, increment: any) -> Result<int, any>;
+
+    // ============== Lookup/Delete ==============
+
+    /// Look up by key.
+    fn lookup(name: any, key: any) -> Result<[any], any>;
+
+    /// Check if key is member.
+    fn member(name: any, key: any) -> Result<bool, any>;
+
+    /// Delete by key.
+    fn delete(name: any, key: any) -> Result<atom, any>;
+
+    /// Delete all objects.
+    fn delete_all_objects(name: any) -> Result<atom, any>;
+
+    /// Delete specific object.
+    fn delete_object(name: any, object: any) -> Result<atom, any>;
+
+    // ============== Iteration ==============
+
+    /// Get first key.
+    fn first(name: any) -> any;
+
+    /// Get next key.
+    fn next(name: any, key: any) -> any;
+
+    /// Convert to list.
+    fn to_list(name: any) -> Result<[any], any>;
+
+    /// Fold over table.
+    fn foldl<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, name: any) -> Result<Acc, any>;
+
+    /// Traverse table (like foldl but can stop).
+    fn traverse(name: any, fun: fn(any) -> any) -> Result<atom, any>;
+
+    // ============== Matching ==============
+
+    /// Match objects.
+    #[name = "match"]
+    fn match_(name: any, pattern: any) -> Result<[any], any>;
+
+    /// Match objects returning full tuples.
+    fn match_object(name: any, pattern: any) -> Result<[any], any>;
+
+    /// Delete matching objects.
+    fn match_delete(name: any, pattern: any) -> Result<int, any>;
+
+    /// Select with match specification.
+    fn select(name: any, match_spec: [any]) -> Result<[any], any>;
+
+    /// Select and delete.
+    fn select_delete(name: any, match_spec: [any]) -> Result<int, any>;
+
+    // ============== File Operations ==============
+
+    /// Sync to disk.
+    fn sync(name: any) -> Result<atom, any>;
+
+    /// Repair a table.
+    fn repair_continuation(continuation: any, match_spec: [any]) -> any;
+
+    /// Check if name is a dets table.
+    fn is_dets_file(filename: any) -> Result<bool, any>;
+
+    /// Safe fixtable for iteration.
+    fn safe_fixtable(name: any, fix: bool) -> atom;
+
+    /// Insert objects from another table.
+    fn from_ets(name: any, ets_tab: any) -> Result<atom, any>;
+
+    /// Copy to ets table.
+    fn to_ets(name: any, ets_tab: any) -> Result<any, any>;
+
+    /// Initialize from bchunk format.
+    fn init_table(name: any, init_fun: fn() -> any) -> Result<atom, any>;
+
+    /// Initialize with options.
+    fn init_table(name: any, init_fun: fn() -> any, opts: [any]) -> Result<atom, any>;
+
+    /// Binary chunk operations.
+    fn bchunk(name: any, start: any) -> any;
+}

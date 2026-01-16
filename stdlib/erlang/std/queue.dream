@@ -1,0 +1,122 @@
+// Erlang queue module bindings
+//
+// Double-ended FIFO queues.
+// See: https://www.erlang.org/doc/man/queue.html
+
+#[name = "queue"]
+extern mod queue {
+    // ============== Original API ==============
+
+    /// Create an empty queue.
+    fn new() -> any;
+
+    /// Check if queue is empty.
+    fn is_empty(q: any) -> bool;
+
+    /// Check if term is a queue.
+    fn is_queue(term: any) -> bool;
+
+    /// Get queue length.
+    fn len(q: any) -> int;
+
+    /// Add item to rear (in).
+    #[name = "in"]
+    fn in_(item: any, q: any) -> any;
+
+    /// Add item to front (in_r).
+    fn in_r(item: any, q: any) -> any;
+
+    /// Remove from front (out).
+    fn out(q: any) -> any;
+
+    /// Remove from rear (out_r).
+    fn out_r(q: any) -> any;
+
+    /// Convert queue to list (front to rear).
+    fn to_list(q: any) -> [any];
+
+    /// Create queue from list.
+    fn from_list(list: [any]) -> any;
+
+    /// Check membership.
+    fn member(item: any, q: any) -> bool;
+
+    // ============== Extended API ==============
+
+    /// Get the front item without removing.
+    fn get(q: any) -> any;
+
+    /// Get the rear item without removing.
+    fn get_r(q: any) -> any;
+
+    /// Peek at the front item.
+    fn peek(q: any) -> any;
+
+    /// Peek at the rear item.
+    fn peek_r(q: any) -> any;
+
+    /// Remove front item, error if empty.
+    fn drop(q: any) -> any;
+
+    /// Remove rear item, error if empty.
+    fn drop_r(q: any) -> any;
+
+    /// Add to front.
+    fn cons(item: any, q: any) -> any;
+
+    /// Get front item (head).
+    fn head(q: any) -> any;
+
+    /// Get queue without front (tail).
+    fn tail(q: any) -> any;
+
+    /// Add to rear.
+    fn snoc(q: any, item: any) -> any;
+
+    /// Get rear item.
+    fn last(q: any) -> any;
+
+    /// Get queue without rear (all but last).
+    fn liat(q: any) -> any;
+
+    /// Get queue without rear (alias for liat).
+    fn init(q: any) -> any;
+
+    // ============== Okasaki API ==============
+
+    /// Reverse the queue.
+    fn reverse(q: any) -> any;
+
+    /// Split the queue into two lists.
+    fn split(n: int, q: any) -> (any, any);
+
+    /// Append two queues.
+    fn join(q1: any, q2: any) -> any;
+
+    /// Filter queue elements.
+    fn filter(pred: fn(any) -> bool, q: any) -> any;
+
+    /// Filter and optionally replace elements.
+    fn filtermap(fun: fn(any) -> any, q: any) -> any;
+
+    /// Fold over queue (front to rear).
+    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, q: any) -> Acc;
+
+    /// Check if any element satisfies predicate.
+    fn any(pred: fn(any) -> bool, q: any) -> bool;
+
+    /// Check if all elements satisfy predicate.
+    fn all(pred: fn(any) -> bool, q: any) -> bool;
+
+    /// Delete first occurrence of item.
+    fn delete(item: any, q: any) -> any;
+
+    /// Delete with custom equality function.
+    fn delete_with(pred: fn(any) -> bool, q: any) -> any;
+
+    /// Delete all occurrences of item.
+    fn delete_r(item: any, q: any) -> any;
+
+    /// Delete all matching items.
+    fn delete_with_r(pred: fn(any) -> bool, q: any) -> any;
+}

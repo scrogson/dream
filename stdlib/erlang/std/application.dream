@@ -1,0 +1,113 @@
+// Erlang application module bindings
+//
+// Application behavior from OTP.
+// See: https://www.erlang.org/doc/man/application.html
+
+#[name = "application"]
+extern mod application {
+    // ============== Starting/Stopping ==============
+
+    /// Start an application.
+    fn start(application: atom) -> Result<atom, any>;
+
+    /// Start an application with type.
+    fn start(application: atom, start_type: atom) -> Result<atom, any>;
+
+    /// Ensure an application is started.
+    fn ensure_started(application: atom) -> Result<atom, any>;
+
+    /// Ensure an application is started with type.
+    fn ensure_started(application: atom, start_type: atom) -> Result<atom, any>;
+
+    /// Ensure all dependencies are started.
+    fn ensure_all_started(application: atom) -> Result<[atom], any>;
+
+    /// Ensure all dependencies are started with type.
+    fn ensure_all_started(application: atom, start_type: atom) -> Result<[atom], any>;
+
+    /// Stop an application.
+    fn stop(application: atom) -> Result<atom, any>;
+
+    /// Takeover an application from another node.
+    fn takeover(application: atom, start_type: atom) -> Result<atom, any>;
+
+    // ============== Configuration ==============
+
+    /// Get an environment variable.
+    fn get_env(par: atom) -> Result<any, atom>;
+
+    /// Get an environment variable for a specific application.
+    fn get_env(application: atom, par: atom) -> Result<any, atom>;
+
+    /// Get an environment variable with default.
+    fn get_env(application: atom, par: atom, default: any) -> any;
+
+    /// Get all environment variables.
+    fn get_all_env() -> [(atom, any)];
+
+    /// Get all environment variables for a specific application.
+    fn get_all_env(application: atom) -> [(atom, any)];
+
+    /// Set an environment variable.
+    fn set_env(application: atom, par: atom, val: any) -> atom;
+
+    /// Set an environment variable with options.
+    fn set_env(application: atom, par: atom, val: any, opts: [any]) -> atom;
+
+    /// Set multiple environment variables.
+    fn set_env(config: [(atom, [(atom, any)])]) -> atom;
+
+    /// Set multiple environment variables with options.
+    fn set_env(config: [(atom, [(atom, any)])], opts: [any]) -> atom;
+
+    /// Unset an environment variable.
+    fn unset_env(application: atom, par: atom) -> atom;
+
+    /// Unset an environment variable with options.
+    fn unset_env(application: atom, par: atom, opts: [any]) -> atom;
+
+    // ============== Information ==============
+
+    /// Get the application specification key.
+    fn get_key(key: atom) -> Result<any, atom>;
+
+    /// Get a key for a specific application.
+    fn get_key(application: atom, key: atom) -> Result<any, atom>;
+
+    /// Get all application specification keys.
+    fn get_all_key() -> Result<[(atom, any)], atom>;
+
+    /// Get all keys for a specific application.
+    fn get_all_key(application: atom) -> Result<[(atom, any)], atom>;
+
+    /// Get application for a module.
+    fn get_application() -> Result<atom, atom>;
+
+    /// Get application for a specific module.
+    fn get_application(module: atom) -> Result<atom, atom>;
+
+    /// Get list of loaded applications.
+    fn loaded_applications() -> [(atom, any, any)];
+
+    /// Get list of running applications.
+    fn which_applications() -> [(atom, any, any)];
+
+    /// Get list of running applications with timeout.
+    fn which_applications(timeout: int) -> [(atom, any, any)];
+
+    // ============== Loading ==============
+
+    /// Load an application.
+    fn load(app_spec: any) -> Result<atom, any>;
+
+    /// Load an application with options.
+    fn load(app_spec: any, distributed: any) -> Result<atom, any>;
+
+    /// Unload an application.
+    fn unload(application: atom) -> Result<atom, any>;
+
+    // ============== Distributed ==============
+
+    /// Permit/forbid starting an application.
+    fn permit(application: atom, permission: bool) -> Result<atom, any>;
+}

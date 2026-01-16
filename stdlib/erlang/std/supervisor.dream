@@ -1,0 +1,48 @@
+// Erlang supervisor module bindings
+//
+// Supervisor behavior from OTP for fault-tolerant process trees.
+// See: https://www.erlang.org/doc/man/supervisor.html
+
+#[name = "supervisor"]
+extern mod supervisor {
+    // ============== Starting ==============
+
+    /// Start a linked supervisor.
+    fn start_link(module: atom, args: any) -> Result<pid, any>;
+
+    /// Start a linked supervisor with registered name.
+    fn start_link(sup_name: any, module: atom, args: any) -> Result<pid, any>;
+
+    // ============== Child Management ==============
+
+    /// Start a child.
+    fn start_child(sup_ref: any, child_spec: any) -> Result<pid, any>;
+
+    /// Restart a child.
+    fn restart_child(sup_ref: any, child_id: any) -> Result<pid, any>;
+
+    /// Terminate a child.
+    fn terminate_child(sup_ref: any, child_id: any) -> Result<atom, any>;
+
+    /// Delete a child specification.
+    fn delete_child(sup_ref: any, child_id: any) -> Result<atom, any>;
+
+    // ============== Querying ==============
+
+    /// List all children.
+    fn which_children(sup_ref: any) -> [(any, any, atom, [atom])];
+
+    /// Count children by status.
+    fn count_children(sup_ref: any) -> [(atom, int)];
+
+    /// Get child specification.
+    fn get_childspec(sup_ref: any, child_id: any) -> Result<any, any>;
+
+    // ============== Utilities ==============
+
+    /// Check child specification validity.
+    fn check_childspecs(child_specs: [any]) -> Result<atom, any>;
+
+    /// Check child specifications with options.
+    fn check_childspecs(child_specs: [any], opts: any) -> Result<atom, any>;
+}

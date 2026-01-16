@@ -1,0 +1,76 @@
+// Erlang sets module bindings
+//
+// Sets implemented using a hash table.
+// See: https://www.erlang.org/doc/man/sets.html
+
+#[name = "sets"]
+extern mod sets {
+    /// Create a new empty set.
+    fn new() -> any;
+
+    /// Create a new empty set with version option.
+    fn new(opts: [any]) -> any;
+
+    /// Check if a set is empty.
+    fn is_empty(set: any) -> bool;
+
+    /// Get the number of elements.
+    fn size(set: any) -> int;
+
+    /// Check if term is a set.
+    fn is_set(term: any) -> bool;
+
+    /// Check if element is a member.
+    fn is_element(elem: any, set: any) -> bool;
+
+    /// Add an element.
+    fn add_element(elem: any, set: any) -> any;
+
+    /// Delete an element.
+    fn del_element(elem: any, set: any) -> any;
+
+    /// Union of two sets.
+    fn union(set1: any, set2: any) -> any;
+
+    /// Union of a list of sets.
+    fn union(set_list: [any]) -> any;
+
+    /// Intersection of two sets.
+    fn intersection(set1: any, set2: any) -> any;
+
+    /// Intersection of a list of sets.
+    fn intersection(set_list: [any]) -> any;
+
+    /// Subtract set2 from set1.
+    fn subtract(set1: any, set2: any) -> any;
+
+    /// Check if set1 is a subset of set2.
+    fn is_subset(set1: any, set2: any) -> bool;
+
+    /// Check if two sets are disjoint.
+    fn is_disjoint(set1: any, set2: any) -> bool;
+
+    /// Check if two sets are equal.
+    fn is_equal(set1: any, set2: any) -> bool;
+
+    /// Convert set to list.
+    fn to_list(set: any) -> [any];
+
+    /// Create set from list.
+    fn from_list(list: [any]) -> any;
+
+    /// Create set from list with options.
+    fn from_list(list: [any], opts: [any]) -> any;
+
+    /// Filter elements.
+    fn filter(pred: fn(any) -> bool, set: any) -> any;
+
+    /// Map a function over elements.
+    fn map(fun: fn(any) -> any, set: any) -> any;
+
+    /// Filter and map in one pass.
+    fn filtermap(fun: fn(any) -> any, set: any) -> any;
+
+    /// Fold over elements.
+    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, set: any) -> Acc;
+}

@@ -1,0 +1,60 @@
+// Erlang rand module bindings
+//
+// Random number generation.
+// See: https://www.erlang.org/doc/man/rand.html
+
+#[name = "rand"]
+extern mod rand {
+    /// Get a random float between 0.0 and 1.0.
+    fn uniform() -> float;
+
+    /// Get a random integer between 1 and N.
+    fn uniform(n: int) -> int;
+
+    /// Get a random float, returning new state.
+    fn uniform_s(state: any) -> (float, any);
+
+    /// Get a random integer, returning new state.
+    fn uniform_s(n: int, state: any) -> (int, any);
+
+    /// Get random bytes.
+    #[name = "bytes"]
+    fn random_bytes(n: int) -> binary;
+
+    /// Get random bytes with state.
+    #[name = "bytes_s"]
+    fn random_bytes_s(n: int, state: any) -> (binary, any);
+
+    /// Seed the generator.
+    fn seed(alg: atom) -> any;
+
+    /// Seed with explicit values.
+    fn seed(alg: atom, seed: any) -> any;
+
+    /// Seed with exported state.
+    fn seed(exported_seed: any) -> any;
+
+    /// Export current state.
+    fn export_seed() -> any;
+
+    /// Export state with algorithm.
+    fn export_seed_s(state: any) -> any;
+
+    /// Jump the generator forward.
+    fn jump() -> any;
+
+    /// Jump with state.
+    fn jump(state: any) -> any;
+
+    /// Normal distribution (mean 0, stddev 1).
+    fn normal() -> float;
+
+    /// Normal distribution with state.
+    fn normal_s(state: any) -> (float, any);
+
+    /// Normal distribution with mean and variance.
+    fn normal(mean: float, variance: float) -> float;
+
+    /// Normal distribution with parameters and state.
+    fn normal_s(mean: float, variance: float, state: any) -> (float, any);
+}

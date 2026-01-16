@@ -1,0 +1,40 @@
+// Erlang Standard Library Modules
+//
+// Core Erlang/OTP modules with type-safe bindings.
+
+// Data structures
+mod lists;
+mod maps;
+mod sets;
+mod ordsets;
+mod gb_trees;
+mod gb_sets;
+mod queue;
+mod ets;
+mod dets;
+
+// I/O and Files
+mod io;
+mod io_lib;
+mod file;
+mod filelib;
+mod filename;
+
+// Strings and Binaries
+mod bin;
+mod string;
+mod unicode;
+mod base64;
+
+// OTP Behaviors
+mod gen_server;
+mod gen_statem;
+mod gen_event;
+mod supervisor;
+mod application;
+
+// Utilities
+mod timer;
+mod calendar;
+mod proplists;
+mod rand;

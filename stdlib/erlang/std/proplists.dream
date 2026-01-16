@@ -1,0 +1,73 @@
+// Erlang proplists module bindings
+//
+// Property list functions.
+// See: https://www.erlang.org/doc/man/proplists.html
+
+#[name = "proplists"]
+extern mod proplists {
+    /// Get value for a key.
+    fn get_value(key: any, list: [any]) -> any;
+
+    /// Get value with default.
+    fn get_value(key: any, list: [any], default: any) -> any;
+
+    /// Get all values for a key.
+    fn get_all_values(key: any, list: [any]) -> [any];
+
+    /// Get boolean value.
+    fn get_bool(key: any, list: [any]) -> bool;
+
+    /// Get all keys.
+    fn get_keys(list: [any]) -> [any];
+
+    /// Look up a key.
+    fn lookup(key: any, list: [any]) -> any;
+
+    /// Look up all entries for a key.
+    fn lookup_all(key: any, list: [any]) -> [any];
+
+    /// Check if key is defined.
+    fn is_defined(key: any, list: [any]) -> bool;
+
+    /// Delete all entries with key.
+    fn delete(key: any, list: [any]) -> [any];
+
+    /// Append properties.
+    fn append_values(key: any, list: [any]) -> [any];
+
+    /// Normalize properties.
+    fn normalize(list: [any], stages: [any]) -> [any];
+
+    /// Expand properties.
+    fn expand(expansions: [any], list: [any]) -> [any];
+
+    /// Property to tuple.
+    fn property(property: any) -> (any, any);
+
+    /// Property with default value.
+    fn property(property: any, default: any) -> (any, any);
+
+    /// Split by list of keys.
+    fn split(keys: [any], list: [any]) -> ([any], [any]);
+
+    /// Substitute aliases.
+    fn substitute_aliases(aliases: [any], list: [any]) -> [any];
+
+    /// Substitute negations.
+    fn substitute_negations(negations: [any], list: [any]) -> [any];
+
+    /// Compact list (remove undefined entries).
+    fn compact(list: [any]) -> [any];
+
+    /// Unfold properties.
+    fn unfold(list: [any]) -> [any];
+
+    /// Convert to map.
+    fn to_map(list: [any]) -> map;
+
+    /// Convert to map with stages.
+    fn to_map(list: [any], stages: [any]) -> map;
+
+    /// Create from map.
+    fn from_map(m: map) -> [any];
+}

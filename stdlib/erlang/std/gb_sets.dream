@@ -1,0 +1,115 @@
+// Erlang gb_sets module bindings
+//
+// General balanced sets.
+// See: https://www.erlang.org/doc/man/gb_sets.html
+
+#[name = "gb_sets"]
+extern mod gb_sets {
+    /// Create an empty set.
+    fn empty() -> any;
+
+    /// Create a new empty set (alias for empty).
+    fn new() -> any;
+
+    /// Create a singleton set.
+    fn singleton(elem: any) -> any;
+
+    /// Check if set is empty.
+    fn is_empty(set: any) -> bool;
+
+    /// Check if term is a gb_set.
+    fn is_set(term: any) -> bool;
+
+    /// Check if element is a member.
+    fn is_member(elem: any, set: any) -> bool;
+
+    /// Check if element is a member (alias).
+    fn is_element(elem: any, set: any) -> bool;
+
+    /// Get the number of elements.
+    fn size(set: any) -> int;
+
+    /// Add an element (error if exists).
+    fn add(elem: any, set: any) -> any;
+
+    /// Add an element (alias for add).
+    fn add_element(elem: any, set: any) -> any;
+
+    /// Insert an element (allow duplicates).
+    fn insert(elem: any, set: any) -> any;
+
+    /// Delete an element (error if not found).
+    fn delete(elem: any, set: any) -> any;
+
+    /// Delete an element if present.
+    fn delete_any(elem: any, set: any) -> any;
+
+    /// Delete an element (alias).
+    fn del_element(elem: any, set: any) -> any;
+
+    /// Take an element (delete and return).
+    fn take_any(elem: any, set: any) -> any;
+
+    /// Get the smallest element.
+    fn smallest(set: any) -> any;
+
+    /// Get the largest element.
+    fn largest(set: any) -> any;
+
+    /// Take the smallest element.
+    fn take_smallest(set: any) -> (any, any);
+
+    /// Take the largest element.
+    fn take_largest(set: any) -> (any, any);
+
+    /// Union of two sets.
+    fn union(set1: any, set2: any) -> any;
+
+    /// Union of a list of sets.
+    fn union(set_list: [any]) -> any;
+
+    /// Intersection of two sets.
+    fn intersection(set1: any, set2: any) -> any;
+
+    /// Intersection of a list of sets.
+    fn intersection(set_list: [any]) -> any;
+
+    /// Subtract set2 from set1.
+    fn subtract(set1: any, set2: any) -> any;
+
+    /// Check if set1 is a subset of set2.
+    fn is_subset(set1: any, set2: any) -> bool;
+
+    /// Check if two sets are disjoint.
+    fn is_disjoint(set1: any, set2: any) -> bool;
+
+    /// Check if two sets are equal.
+    fn is_equal(set1: any, set2: any) -> bool;
+
+    /// Convert set to list.
+    fn to_list(set: any) -> [any];
+
+    /// Create set from list.
+    fn from_list(list: [any]) -> any;
+
+    /// Create set from ordset (ordered list).
+    fn from_ordset(list: [any]) -> any;
+
+    /// Balance the tree.
+    fn balance(set: any) -> any;
+
+    /// Filter elements.
+    fn filter(pred: fn(any) -> bool, set: any) -> any;
+
+    /// Fold over elements.
+    fn fold<Acc>(fun: fn(any, Acc) -> Acc, acc: Acc, set: any) -> Acc;
+
+    /// Get an iterator.
+    fn iterator(set: any) -> any;
+
+    /// Get an iterator from a specific element.
+    fn iterator_from(elem: any, set: any) -> any;
+
+    /// Get next from iterator.
+    fn next(iter: any) -> any;
+}

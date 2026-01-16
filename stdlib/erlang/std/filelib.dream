@@ -1,0 +1,52 @@
+// Erlang filelib module bindings
+//
+// File utilities.
+// See: https://www.erlang.org/doc/man/filelib.html
+
+#[name = "filelib"]
+extern mod filelib {
+    /// Ensure parent directories exist.
+    fn ensure_dir(filename: any) -> Result<atom, any>;
+
+    /// Ensure a path exists.
+    fn ensure_path(path: any) -> Result<atom, any>;
+
+    /// Get file size.
+    fn file_size(filename: any) -> int;
+
+    /// Check if path is a directory.
+    fn is_dir(name: any) -> bool;
+
+    /// Check if path is a regular file.
+    fn is_regular(name: any) -> bool;
+
+    /// Check if path exists (file or directory).
+    fn is_file(name: any) -> bool;
+
+    /// Get last modification time.
+    fn last_modified(filename: any) -> any;
+
+    /// Find files matching a wildcard.
+    fn wildcard(wildcard: any) -> [any];
+
+    /// Find files in a directory.
+    fn wildcard(wildcard: any, cwd: any) -> [any];
+
+    /// Fold over files matching a pattern.
+    fn fold_files<Acc>(dir: any, regexp: any, recursive: bool, fun: fn(any, Acc) -> Acc, acc: Acc) -> Acc;
+
+    /// Find source file for a module.
+    fn find_source(module: atom) -> Result<any, any>;
+
+    /// Find source with search rules.
+    fn find_source(filename: any, rules: [any]) -> Result<any, any>;
+
+    /// Find file in path.
+    fn find_file(filename: any, path: [any]) -> Result<any, any>;
+
+    /// Find file with extensions.
+    fn find_file(filename: any, path: [any], extensions: [any]) -> Result<any, any>;
+
+    /// Safe relative path (prevent directory traversal).
+    fn safe_relative_path(filename: any, cwd: any) -> any;
+}

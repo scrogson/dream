@@ -1,0 +1,52 @@
+// Erlang unicode module bindings
+//
+// Unicode conversion and utilities.
+// See: https://www.erlang.org/doc/man/unicode.html
+
+#[name = "unicode"]
+extern mod unicode {
+    /// Convert binary to character list.
+    fn characters_to_list(data: any) -> any;
+
+    /// Convert binary with encoding.
+    fn characters_to_list(data: any, encoding: atom) -> any;
+
+    /// Convert to binary.
+    fn characters_to_binary(data: any) -> any;
+
+    /// Convert to binary with in/out encodings.
+    fn characters_to_binary(data: any, in_encoding: atom) -> any;
+
+    /// Convert with explicit in/out encodings.
+    fn characters_to_binary(data: any, in_encoding: atom, out_encoding: atom) -> any;
+
+    /// Convert to NFD normalized form.
+    fn characters_to_nfd_list(data: any) -> any;
+
+    /// Convert to NFD binary.
+    fn characters_to_nfd_binary(data: any) -> any;
+
+    /// Convert to NFC normalized form.
+    fn characters_to_nfc_list(data: any) -> any;
+
+    /// Convert to NFC binary.
+    fn characters_to_nfc_binary(data: any) -> any;
+
+    /// Convert to NFKD normalized form.
+    fn characters_to_nfkd_list(data: any) -> any;
+
+    /// Convert to NFKD binary.
+    fn characters_to_nfkd_binary(data: any) -> any;
+
+    /// Convert to NFKC normalized form.
+    fn characters_to_nfkc_list(data: any) -> any;
+
+    /// Convert to NFKC binary.
+    fn characters_to_nfkc_binary(data: any) -> any;
+
+    /// Get BOM (byte order mark).
+    fn bom_to_encoding(data: binary) -> (atom, int);
+
+    /// Create encoding BOM.
+    fn encoding_to_bom(encoding: atom) -> binary;
+}

@@ -1,0 +1,72 @@
+// Erlang gen_event module bindings
+//
+// Generic event handling behavior from OTP.
+// See: https://www.erlang.org/doc/man/gen_event.html
+
+#[name = "gen_event"]
+extern mod gen_event {
+    // ============== Starting ==============
+
+    /// Start a linked event manager.
+    fn start_link() -> Result<pid, any>;
+
+    /// Start a linked event manager with options.
+    fn start_link(opts: [any]) -> Result<pid, any>;
+
+    /// Start a linked event manager with registered name.
+    fn start_link(name: any, opts: [any]) -> Result<pid, any>;
+
+    /// Start an unlinked event manager.
+    fn start() -> Result<pid, any>;
+
+    /// Start an unlinked event manager with options.
+    fn start(opts: [any]) -> Result<pid, any>;
+
+    /// Start an unlinked event manager with registered name.
+    fn start(name: any, opts: [any]) -> Result<pid, any>;
+
+    // ============== Handler Management ==============
+
+    /// Add an event handler.
+    fn add_handler(manager: any, handler: any, args: any) -> any;
+
+    /// Add a supervised event handler.
+    fn add_sup_handler(manager: any, handler: any, args: any) -> any;
+
+    /// Delete an event handler.
+    fn delete_handler(manager: any, handler: any, args: any) -> any;
+
+    /// Swap event handlers.
+    fn swap_handler(manager: any, old_handler: (any, any), new_handler: (any, any)) -> any;
+
+    /// Swap supervised event handlers.
+    fn swap_sup_handler(manager: any, old_handler: (any, any), new_handler: (any, any)) -> any;
+
+    /// Get list of handlers.
+    fn which_handlers(manager: any) -> [any];
+
+    // ============== Events ==============
+
+    /// Send a synchronous event.
+    fn sync_notify(manager: any, event: any) -> atom;
+
+    /// Send an asynchronous event.
+    fn notify(manager: any, event: any) -> atom;
+
+    /// Make a call to a specific handler.
+    fn call(manager: any, handler: any, request: any) -> any;
+
+    /// Make a call with timeout.
+    fn call(manager: any, handler: any, request: any, timeout: any) -> any;
+
+    // ============== Stopping ==============
+
+    /// Stop the event manager.
+    fn stop(manager: any) -> atom;
+
+    /// Stop with reason.
+    fn stop(manager: any, reason: any) -> atom;
+
+    /// Stop with reason and timeout.
+    fn stop(manager: any, reason: any, timeout: any) -> atom;
+}
