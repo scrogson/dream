@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, ExitCode};
 
 use clap::{Parser, Subcommand};
 
@@ -1994,30 +1994,12 @@ fn run_function(
 /// if interrupted with Ctrl+C, causing arrow keys and other control sequences to
 /// print garbage instead of working properly.
 fn reset_terminal() {
-    // On Unix, reset terminal settings thoroughly
-    #[cfg(unix)]
-    {
-        // First, print ANSI reset sequence to clear any pending escape sequences
-        // \x1b[0m - reset attributes, \x1b[?25h - show cursor, \x1b[?7h - enable line wrap
-        print!("\x1b[0m\x1b[?25h\x1b[?7h");
-        let _ = io::stdout().flush();
+    // Use crossterm to reset terminal state in a cross-platform way
+    let _ = crossterm::terminal::disable_raw_mode();
 
-        // Use stty sane to reset terminal settings
-        let _ = Command::new("stty")
-            .arg("sane")
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+    // Also show cursor in case it was hidden
+    let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
 
-        // Also explicitly enable echo and canonical mode
-        let _ = Command::new("stty")
-            .args(["echo", "icanon", "icrnl", "opost"])
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
     // Flush stdout to ensure any pending output is written
     let _ = io::stdout().flush();
 }
