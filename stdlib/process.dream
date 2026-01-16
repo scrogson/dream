@@ -2,6 +2,9 @@
 //
 // Provides process management and communication functions.
 
+use erlang::std::erlang as erl;
+use erlang::std::timer as erl_timer;
+
 /// Get the current process's PID.
 /// Note: You can also use the built-in `self()` expression directly.
 pub fn current() -> Pid {
@@ -10,65 +13,65 @@ pub fn current() -> Pid {
 
 /// Sleep for the given number of milliseconds.
 pub fn sleep(ms: int) -> Atom {
-    :timer::sleep(ms)
+    erl_timer::sleep(ms)
 }
 
 /// Check if a process is alive.
 pub fn is_alive(p: Pid) -> bool {
-    :erlang::is_process_alive(p)
+    erl::is_process_alive(p)
 }
 
 /// Send a message to a process (returns the message).
 pub fn send<T>(p: Pid, msg: T) -> T {
-    :erlang::send(p, msg)
+    erl::send(p, msg)
 }
 
 /// Register a process with a name.
 pub fn register(name: Atom, p: Pid) -> Atom {
-    :erlang::register(name, p)
+    erl::register(name, p)
 }
 
 /// Unregister a process name.
 pub fn unregister(name: Atom) -> Atom {
-    :erlang::unregister(name)
+    erl::unregister(name)
 }
 
 /// Look up a registered process by name.
 pub fn whereis(name: Atom) -> Pid {
-    :erlang::whereis(name)
+    erl::whereis(name)
 }
 
 /// Get a list of all registered process names.
 pub fn registered() -> [Atom] {
-    :erlang::registered()
+    erl::registered()
 }
 
 /// Link to another process.
 pub fn link(p: Pid) -> Atom {
-    :erlang::link(p)
+    erl::link(p)
 }
 
 /// Unlink from another process.
 pub fn unlink(p: Pid) -> Atom {
-    :erlang::unlink(p)
+    erl::unlink(p)
 }
 
 /// Exit the current process with a reason.
 pub fn exit(reason: Atom) -> Atom {
-    :erlang::exit(reason)
+    erl::exit(reason)
 }
 
 /// Exit another process with a reason.
 pub fn exit_pid(p: Pid, reason: Atom) -> Atom {
-    :erlang::exit(p, reason)
+    erl::exit(p, reason)
 }
 
 /// Get a list of all processes.
 pub fn list() -> [Pid] {
-    :erlang::processes()
+    erl::processes()
 }
 
 /// Set the process flag for trapping exits.
 pub fn trap_exit(flag: bool) -> bool {
-    :erlang::process_flag(:trap_exit, flag)
+    erl::process_flag(:trap_exit, flag)
 }

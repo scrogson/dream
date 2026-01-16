@@ -2,6 +2,9 @@
 //
 // Core Erlang/OTP modules with type-safe bindings.
 
+// Core erlang module
+mod erlang;
+
 // Data structures
 mod lists;
 mod maps;

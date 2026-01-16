@@ -4,20 +4,27 @@
 // All functions take path as first argument for pipe compatibility.
 // Returns (:ok, result) or (:error, reason) tuples.
 
+use erlang::std::file as erl_file;
+use erlang::std::filelib as erl_filelib;
+use erlang::std::filename as erl_filename;
+use erlang::std::binary as erl_binary;
+use erlang::std::lists as erl_lists;
+use erlang::std::erlang as erl;
+
 // ============== Read Operations ==============
 
 /// Read entire file contents as binary.
 /// Returns Ok(binary) or Err(reason).
 pub fn read(path: Any) -> Result<Any, Any> {
-    :file::read_file(path)
+    erl_file::read_file(path)
 }
 
 /// Read file and split into lines.
 /// Returns Ok([lines]) or Err(reason).
 pub fn read_lines(path: Any) -> Result<Any, Any> {
-    match :file::read_file(path) {
+    match erl_file::read_file(path) {
         (:ok, content) => {
-            let lines = :binary::split(content, <<"\n">>, [:global]);
+            let lines = erl_binary::split(content, <<"\n">>, [:global]);
             Ok(lines)
         },
         (:error, e) => Err(e),
@@ -30,54 +37,54 @@ pub fn read_lines(path: Any) -> Result<Any, Any> {
 /// Write content to file, creating if it doesn't exist.
 /// Returns :ok or (:error, reason).
 pub fn write(path: Any, content: Any) -> Any {
-    :file::write_file(path, content)
+    erl_file::write_file(path, content)
 }
 
 /// Write content with specific modes.
 /// Modes: [:append, :binary, :raw, etc.]
 pub fn write_with_modes(path: Any, content: Any, modes: [Any]) -> Any {
-    :file::write_file(path, content, modes)
+    erl_file::write_file(path, content, modes)
 }
 
 /// Append content to file.
 /// Returns :ok or (:error, reason).
 pub fn append(path: Any, content: Any) -> Any {
-    :file::write_file(path, content, [:append])
+    erl_file::write_file(path, content, [:append])
 }
 
 // ============== File Information ==============
 
 /// Check if path exists.
 pub fn exists(path: Any) -> bool {
-    if :filelib::is_file(path) {
+    if erl_filelib::is_file(path) {
         true
     } else {
-        :filelib::is_dir(path)
+        erl_filelib::is_dir(path)
     }
 }
 
 /// Check if path is a regular file.
 pub fn regular(path: Any) -> bool {
-    :filelib::is_regular(path)
+    erl_filelib::is_regular(path)
 }
 
 /// Check if path is a directory.
 pub fn dir(path: Any) -> bool {
-    :filelib::is_dir(path)
+    erl_filelib::is_dir(path)
 }
 
 /// Get file statistics.
 /// Returns Ok(stat_info) or Err(reason).
 pub fn stat(path: Any) -> Result<Any, Any> {
-    :file::read_file_info(path)
+    erl_file::read_file_info(path)
 }
 
 /// Get file size in bytes.
 /// Returns Ok(size) or Err(reason).
 pub fn size(path: Any) -> Result<Any, Any> {
-    match :file::read_file_info(path) {
+    match erl_file::read_file_info(path) {
         (:ok, info) => {
-            let file_size = :erlang::element(2, info);
+            let file_size = erl::element(2, info);
             Ok(file_size)
         },
         (:error, e) => Err(e),
@@ -90,28 +97,28 @@ pub fn size(path: Any) -> Result<Any, Any> {
 /// Create a directory.
 /// Returns :ok or (:error, reason).
 pub fn mkdir(path: Any) -> Any {
-    :file::make_dir(path)
+    erl_file::make_dir(path)
 }
 
 /// Create a directory and all parent directories.
 /// Returns :ok or (:error, reason).
 pub fn mkdir_p(path: Any) -> Any {
-    :filelib::ensure_dir(:filename::join(path, "dummy"))
+    erl_filelib::ensure_dir(erl_filename::join(path, "dummy"))
 }
 
 /// Remove an empty directory.
 /// Returns :ok or (:error, reason).
 pub fn rmdir(path: Any) -> Any {
-    :file::del_dir(path)
+    erl_file::del_dir(path)
 }
 
 /// List directory contents.
 /// Returns Ok([filenames]) or Err(reason).
 pub fn ls(path: Any) -> Result<Any, Any> {
-    match :file::list_dir(path) {
+    match erl_file::list_dir(path) {
         (:ok, files) => {
             // Convert charlists to binaries
-            let binaries = :lists::map(|f| { :erlang::list_to_binary(f) }, files);
+            let binaries = erl_lists::map(|f| { erl::list_to_binary(f) }, files);
             Ok(binaries)
         },
         (:error, e) => Err(e),
@@ -124,19 +131,19 @@ pub fn ls(path: Any) -> Result<Any, Any> {
 /// Copy a file.
 /// Returns Ok(bytes_copied) or Err(reason).
 pub fn cp(source: Any, destination: Any) -> Result<Any, Any> {
-    :file::copy(source, destination)
+    erl_file::copy(source, destination)
 }
 
 /// Rename/move a file or directory.
 /// Returns :ok or (:error, reason).
 pub fn rename(source: Any, destination: Any) -> Any {
-    :file::rename(source, destination)
+    erl_file::rename(source, destination)
 }
 
 /// Delete a file.
 /// Returns :ok or (:error, reason).
 pub fn rm(path: Any) -> Any {
-    :file::delete(path)
+    erl_file::delete(path)
 }
 
 /// Recursively delete files and directories.
@@ -147,8 +154,8 @@ pub fn rm_rf(path: Any) -> Any {
         // List and delete contents first
         match ls(path) {
             Ok(files) => {
-                let results = :lists::map(|f| {
-                    let full_path = :filename::join(path, f);
+                let results = erl_lists::map(|f| {
+                    let full_path = erl_filename::join(path, f);
                     rm_rf(full_path)
                 }, files);
                 // Then delete the directory itself
@@ -168,8 +175,8 @@ pub fn rm_rf(path: Any) -> Any {
 /// Get current working directory.
 /// Returns Ok(path) or Err(reason).
 pub fn cwd() -> Result<Any, Any> {
-    match :file::get_cwd() {
-        (:ok, dir) => Ok(:erlang::list_to_binary(dir)),
+    match erl_file::get_cwd() {
+        (:ok, dir) => Ok(erl::list_to_binary(dir)),
         (:error, e) => Err(e),
         _ => Err(:unknown)
     }
@@ -178,7 +185,7 @@ pub fn cwd() -> Result<Any, Any> {
 /// Change current working directory.
 /// Returns :ok or (:error, reason).
 pub fn cd(path: Any) -> Any {
-    :file::set_cwd(path)
+    erl_file::set_cwd(path)
 }
 
 // ============== Permissions ==============
@@ -187,7 +194,7 @@ pub fn cd(path: Any) -> Any {
 /// Mode is an integer (e.g., 0o755).
 /// Returns :ok or (:error, reason).
 pub fn chmod(path: Any, mode: int) -> Any {
-    :file::change_mode(path, mode)
+    erl_file::change_mode(path, mode)
 }
 
 // ============== Links ==============
@@ -195,20 +202,20 @@ pub fn chmod(path: Any, mode: int) -> Any {
 /// Create a symbolic link.
 /// Returns :ok or (:error, reason).
 pub fn ln_s(existing: Any, new: Any) -> Any {
-    :file::make_symlink(existing, new)
+    erl_file::make_symlink(existing, new)
 }
 
 /// Create a hard link.
 /// Returns :ok or (:error, reason).
 pub fn ln(existing: Any, new: Any) -> Any {
-    :file::make_link(existing, new)
+    erl_file::make_link(existing, new)
 }
 
 /// Read the target of a symbolic link.
 /// Returns Ok(target) or Err(reason).
 pub fn read_link(path: Any) -> Result<Any, Any> {
-    match :file::read_link(path) {
-        (:ok, target) => Ok(:erlang::list_to_binary(target)),
+    match erl_file::read_link(path) {
+        (:ok, target) => Ok(erl::list_to_binary(target)),
         (:error, e) => Err(e),
         _ => Err(:unknown)
     }
@@ -222,8 +229,8 @@ pub fn read_link(path: Any) -> Result<Any, Any> {
 pub fn touch(path: Any) -> Any {
     if exists(path) {
         // Update times to now
-        let now = :erlang::localtime();
-        :file::change_time(path, now)
+        let now = erl::localtime();
+        erl_file::change_time(path, now)
     } else {
         // Create empty file
         write(path, <<>>)
@@ -236,11 +243,11 @@ pub fn touch(path: Any) -> Any {
 /// Modes: [:read, :write, :append, :binary, :raw, etc.]
 /// Returns Ok(io_device) or Err(reason).
 pub fn open(path: Any, modes: [Any]) -> Result<Any, Any> {
-    :file::open(path, modes)
+    erl_file::open(path, modes)
 }
 
 /// Close an open file.
 /// Returns :ok or (:error, reason).
 pub fn close(io_device: Any) -> Any {
-    :file::close(io_device)
+    erl_file::close(io_device)
 }

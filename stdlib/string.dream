@@ -2,25 +2,29 @@
 //
 // Provides string manipulation functions using Erlang's string/binary modules.
 
+use erlang::std::string as erl_string;
+use erlang::std::lists as erl_lists;
+use erlang::std::erlang as erl;
+
 /// Get the length of a string (in characters).
 pub fn len(s: String) -> int {
-    :string::length(s)
+    erl_string::length(s)
 }
 
 /// Concatenate two strings.
 pub fn concat(a: String, b: String) -> String {
     // Use iolist_to_binary for efficient binary concatenation
-    :erlang::iolist_to_binary([a, b])
+    erl::iolist_to_binary([a, b])
 }
 
 /// Check if a string contains a substring.
 pub fn contains(haystack: String, needle: String) -> bool {
-    :string::find(haystack, needle) != :nomatch
+    erl_string::find(haystack, needle) != :nomatch
 }
 
 /// Check if a string starts with a prefix.
 pub fn starts_with(s: String, prefix: String) -> bool {
-    :string::prefix(s, prefix) != :nomatch
+    erl_string::prefix(s, prefix) != :nomatch
 }
 
 /// Check if a string ends with a suffix.
@@ -30,58 +34,58 @@ pub fn ends_with(s: String, suffix: String) -> bool {
     if suflen > slen {
         false
     } else {
-        :string::slice(s, slen - suflen) == suffix
+        erl_string::slice(s, slen - suflen) == suffix
     }
 }
 
 /// Convert string to uppercase.
 pub fn to_upper(s: String) -> String {
-    :string::uppercase(s)
+    erl_string::uppercase(s)
 }
 
 /// Convert string to lowercase.
 pub fn to_lower(s: String) -> String {
-    :string::lowercase(s)
+    erl_string::lowercase(s)
 }
 
 /// Trim whitespace from both ends.
 pub fn trim(s: String) -> String {
-    :string::trim(s)
+    erl_string::trim(s)
 }
 
 /// Trim whitespace from the left.
 pub fn trim_left(s: String) -> String {
-    :string::trim(s, :leading)
+    erl_string::trim(s, :leading)
 }
 
 /// Trim whitespace from the right.
 pub fn trim_right(s: String) -> String {
-    :string::trim(s, :trailing)
+    erl_string::trim(s, :trailing)
 }
 
 /// Split string by a delimiter.
 pub fn split(s: String, delim: String) -> [String] {
-    :string::split(s, delim, :all)
+    erl_string::split(s, delim, :all)
 }
 
 /// Join a list of strings with a separator.
 pub fn join(parts: [String], sep: String) -> String {
-    :erlang::iolist_to_binary(:lists::join(sep, parts))
+    erl::iolist_to_binary(erl_lists::join(parts, sep))
 }
 
 /// Replace all occurrences of a pattern with a replacement.
 pub fn replace(s: String, pattern: String, replacement: String) -> String {
-    :string::replace(s, pattern, replacement, :all)
+    erl_string::replace(s, pattern, replacement, :all)
 }
 
 /// Get a substring (slice) from start index with given length.
 pub fn slice(s: String, start: int, length: int) -> String {
-    :string::slice(s, start, length)
+    erl_string::slice(s, start, length)
 }
 
 /// Reverse a string.
 pub fn reverse(s: String) -> String {
-    :string::reverse(s)
+    erl_string::reverse(s)
 }
 
 /// Check if string is empty.
@@ -91,35 +95,35 @@ pub fn is_empty(s: String) -> bool {
 
 /// Repeat a string n times.
 pub fn repeat(s: String, n: int) -> String {
-    :erlang::iolist_to_binary(:lists::duplicate(n, s))
+    erl::iolist_to_binary(erl_lists::duplicate(n, s))
 }
 
 /// Pad string on the left to reach target length.
 pub fn pad_left(s: String, target_len: int, pad_char: String) -> String {
-    :string::pad(s, target_len, :leading, pad_char)
+    erl_string::pad(s, target_len, :leading, pad_char)
 }
 
 /// Pad string on the right to reach target length.
 pub fn pad_right(s: String, target_len: int, pad_char: String) -> String {
-    :string::pad(s, target_len, :trailing, pad_char)
+    erl_string::pad(s, target_len, :trailing, pad_char)
 }
 
 /// Convert an integer to a string.
 pub fn from_int(n: int) -> String {
-    :erlang::integer_to_binary(n)
+    erl::integer_to_binary(n)
 }
 
 /// Parse a string as an integer.
 pub fn to_int(s: String) -> int {
-    :erlang::binary_to_integer(s)
+    erl::binary_to_integer(s)
 }
 
 /// Convert an atom to a string.
 pub fn from_atom(a: Atom) -> String {
-    :erlang::atom_to_binary(a)
+    erl::atom_to_binary(a)
 }
 
 /// Convert a string to an atom.
 pub fn to_atom(s: String) -> Atom {
-    :erlang::binary_to_atom(s)
+    erl::binary_to_atom(s)
 }

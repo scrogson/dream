@@ -2,102 +2,105 @@
 //
 // Provides list manipulation functions.
 
+use erlang::std::lists as erl_lists;
+use erlang::std::erlang as erl;
+
 /// Reverse a list.
 pub fn reverse<T>(items: [T]) -> [T] {
-    :lists::reverse(items)
+    erl_lists::reverse(items)
 }
 
 /// Get the length of a list.
 pub fn len<T>(items: [T]) -> int {
-    :erlang::length(items)
+    erl::length(items)
 }
 
 /// Get the first element of a list.
 pub fn head<T>(items: [T]) -> T {
-    :erlang::hd(items)
+    erl::hd(items)
 }
 
 /// Get all elements except the first.
 pub fn tail<T>(items: [T]) -> [T] {
-    :erlang::tl(items)
+    erl::tl(items)
 }
 
 /// Append two lists.
 pub fn append<T>(a: [T], b: [T]) -> [T] {
-    :lists::append(a, b)
+    erl_lists::append(a, b)
 }
 
 /// Flatten a list of lists.
 pub fn flatten<T>(items: [[T]]) -> [T] {
-    :lists::flatten(items)
+    erl_lists::flatten(items)
 }
 
 /// Sort a list.
 pub fn sort<T>(items: [T]) -> [T] {
-    :lists::sort(items)
+    erl_lists::sort(items)
 }
 
 /// Get the nth element (1-indexed, like Erlang).
 pub fn nth<T>(n: int, items: [T]) -> T {
-    :lists::nth(n, items)
+    erl_lists::nth(n, items)
 }
 
 /// Check if an element is in the list.
 pub fn member<T>(elem: T, items: [T]) -> bool {
-    :lists::member(elem, items)
+    erl_lists::member(elem, items)
 }
 
 /// Get the last element of a list.
 pub fn last<T>(items: [T]) -> T {
-    :lists::last(items)
+    erl_lists::last(items)
 }
 
 /// Take the first n elements.
 pub fn take<T>(n: int, items: [T]) -> [T] {
-    :lists::sublist(items, n)
+    erl_lists::sublist(items, n)
 }
 
 /// Drop the first n elements.
 pub fn drop<T>(n: int, items: [T]) -> [T] {
-    :lists::nthtail(n, items)
+    erl_lists::nthtail(n, items)
 }
 
 /// Zip two lists into a list of tuples.
 pub fn zip<A, B>(a: [A], b: [B]) -> [(A, B)] {
-    :lists::zip(a, b)
+    erl_lists::zip(a, b)
 }
 
 /// Unzip a list of tuples into two lists.
 pub fn unzip<A, B>(items: [(A, B)]) -> ([A], [B]) {
-    :lists::unzip(items)
+    erl_lists::unzip(items)
 }
 
 /// Sum all integers in a list.
 pub fn sum(items: [int]) -> int {
-    :lists::sum(items)
+    erl_lists::sum(items)
 }
 
 /// Find the maximum value in a list.
 pub fn max(items: [int]) -> int {
-    :lists::max(items)
+    erl_lists::max(items)
 }
 
 /// Find the minimum value in a list.
 pub fn min(items: [int]) -> int {
-    :lists::min(items)
+    erl_lists::min(items)
 }
 
 /// Check if a list is empty.
 pub fn is_empty<T>(items: [T]) -> bool {
-    :erlang::length(items) == 0
+    erl::length(items) == 0
 }
 
 /// Create a list with n copies of an element.
 pub fn replicate<T>(n: int, elem: T) -> [T] {
-    :lists::duplicate(n, elem)
+    erl_lists::duplicate(n, elem)
 }
 
 /// Create a range of integers from start to end (inclusive).
 pub fn range(start: int, stop: int) -> [int] {
-    :lists::seq(start, stop)
+    erl_lists::seq(start, stop)
 }

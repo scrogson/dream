@@ -3,6 +3,11 @@
 // Provides functional collection operations for lists and other enumerables.
 // Inspired by Elixir's Enum module.
 
+use erlang::std::lists as erl_lists;
+use erlang::std::erlang as erl;
+use erlang::std::maps as erl_maps;
+use erlang::std::rand as erl_rand;
+
 // =============================================================================
 // Iter Trait
 // =============================================================================
@@ -43,18 +48,18 @@ trait Iter {
 
 /// Transform each element using a function.
 pub fn map<T, U>(items: [T], f: fn(T) -> U) -> [U] {
-    :lists::map(f, items)
+    erl_lists::map(f, items)
 }
 
 /// Keep only elements where the predicate returns true.
 pub fn filter<T>(items: [T], pred: fn(T) -> bool) -> [T] {
-    :lists::filter(pred, items)
+    erl_lists::filter(pred, items)
 }
 
 /// Remove elements where the predicate returns true.
 pub fn reject<T>(items: [T], pred: fn(T) -> bool) -> [T] {
     // Can't use nested closure with outer param, use filtermap
-    :lists::filtermap(|x| {
+    erl_lists::filtermap(|x| {
         if pred(x) {
             false
         } else {
@@ -65,17 +70,17 @@ pub fn reject<T>(items: [T], pred: fn(T) -> bool) -> [T] {
 
 /// Reduce a list to a single value using an accumulator.
 pub fn reduce<T, Acc>(items: [T], init: Acc, f: fn(T, Acc) -> Acc) -> Acc {
-    :lists::foldl(f, init, items)
+    erl_lists::foldl(f, init, items)
 }
 
 /// Reduce from the right side.
 pub fn reduce_right<T, Acc>(items: [T], init: Acc, f: fn(T, Acc) -> Acc) -> Acc {
-    :lists::foldr(f, init, items)
+    erl_lists::foldr(f, init, items)
 }
 
 /// Map then flatten one level.
 pub fn flat_map<T, U>(items: [T], f: fn(T) -> [U]) -> [U] {
-    :lists::flatmap(f, items)
+    erl_lists::flatmap(f, items)
 }
 
 // =============================================================================
@@ -102,32 +107,32 @@ fn find_in_list<T>(items: [T], pred: fn(T) -> bool) -> Option<T> {
 
 /// Check if any element matches the predicate.
 pub fn any<T>(items: [T], pred: fn(T) -> bool) -> bool {
-    :lists::any(pred, items)
+    erl_lists::any(pred, items)
 }
 
 /// Check if all elements match the predicate.
 pub fn all<T>(items: [T], pred: fn(T) -> bool) -> bool {
-    :lists::all(pred, items)
+    erl_lists::all(pred, items)
 }
 
 /// Check if no elements match the predicate.
 pub fn none<T>(items: [T], pred: fn(T) -> bool) -> bool {
-    !:lists::any(pred, items)
+    !erl_lists::any(pred, items)
 }
 
 /// Count elements matching a predicate.
 pub fn count<T>(items: [T], pred: fn(T) -> bool) -> int {
-    :erlang::length(:lists::filter(pred, items))
+    erl::length(erl_lists::filter(pred, items))
 }
 
 /// Count all elements.
 pub fn count_all<T>(items: [T]) -> int {
-    :erlang::length(items)
+    erl::length(items)
 }
 
 /// Check if an element exists in the list.
 pub fn member<T>(items: [T], elem: T) -> bool {
-    :lists::member(elem, items)
+    erl_lists::member(elem, items)
 }
 
 // =============================================================================
@@ -136,37 +141,37 @@ pub fn member<T>(items: [T], elem: T) -> bool {
 
 /// Take the first n elements.
 pub fn take<T>(items: [T], n: int) -> [T] {
-    :lists::sublist(items, n)
+    erl_lists::sublist(items, n)
 }
 
 /// Drop the first n elements.
 pub fn drop<T>(items: [T], n: int) -> [T] {
-    :lists::nthtail(n, items)
+    erl_lists::nthtail(n, items)
 }
 
 /// Take elements while predicate is true.
 pub fn take_while<T>(items: [T], pred: fn(T) -> bool) -> [T] {
-    :lists::takewhile(pred, items)
+    erl_lists::takewhile(pred, items)
 }
 
 /// Drop elements while predicate is true.
 pub fn drop_while<T>(items: [T], pred: fn(T) -> bool) -> [T] {
-    :lists::dropwhile(pred, items)
+    erl_lists::dropwhile(pred, items)
 }
 
 /// Get a slice from start index with given length.
 pub fn slice<T>(items: [T], start: int, len: int) -> [T] {
-    :lists::sublist(items, start + 1, len)
+    erl_lists::sublist(items, start + 1, len)
 }
 
 /// Split a list at position n.
 pub fn split<T>(items: [T], n: int) -> ([T], [T]) {
-    :lists::split(n, items)
+    erl_lists::split(n, items)
 }
 
 /// Split a list based on a predicate (take_while, drop_while combined).
 pub fn split_while<T>(items: [T], pred: fn(T) -> bool) -> ([T], [T]) {
-    :lists::splitwith(pred, items)
+    erl_lists::splitwith(pred, items)
 }
 
 // =============================================================================
@@ -175,22 +180,22 @@ pub fn split_while<T>(items: [T], pred: fn(T) -> bool) -> ([T], [T]) {
 
 /// Zip two lists into a list of tuples.
 pub fn zip<A, B>(a: [A], b: [B]) -> [(A, B)] {
-    :lists::zip(a, b)
+    erl_lists::zip(a, b)
 }
 
 /// Zip with a custom combining function.
 pub fn zip_with<A, B, C>(a: [A], b: [B], f: fn(A, B) -> C) -> [C] {
-    :lists::zipwith(f, a, b)
+    erl_lists::zipwith(f, a, b)
 }
 
 /// Unzip a list of tuples into two lists.
 pub fn unzip<A, B>(items: [(A, B)]) -> ([A], [B]) {
-    :lists::unzip(items)
+    erl_lists::unzip(items)
 }
 
 /// Concatenate a list of lists.
 pub fn concat<T>(items: [[T]]) -> [T] {
-    :lists::append(items)
+    erl_lists::append(items)
 }
 
 /// Intersperse an element between all elements.
@@ -202,7 +207,7 @@ fn intersperse_loop<T>(items: [T], sep: T) -> [T] {
     match items {
         [] => [],
         [x] => [x],
-        [x | rest] => :lists::append([x, sep], intersperse_loop(rest, sep)),
+        [x | rest] => erl_lists::append([x, sep], intersperse_loop(rest, sep)),
     }
 }
 
@@ -212,16 +217,16 @@ pub fn chunk<T>(items: [T], n: int) -> [[T]] {
 }
 
 fn chunk_loop<T>(items: [T], n: int, acc: [[T]]) -> [[T]] {
-    if :erlang::length(items) == 0 {
-        :lists::reverse(acc)
+    if erl::length(items) == 0 {
+        erl_lists::reverse(acc)
     } else {
-        let chunk = :lists::sublist(items, n);
-        let rest = if :erlang::length(items) > n {
-            :lists::nthtail(n, items)
+        let chunk = erl_lists::sublist(items, n);
+        let rest = if erl::length(items) > n {
+            erl_lists::nthtail(n, items)
         } else {
             []
         };
-        chunk_loop(rest, n, :lists::append([chunk], acc))
+        chunk_loop(rest, n, erl_lists::append([chunk], acc))
     }
 }
 
@@ -231,26 +236,26 @@ fn chunk_loop<T>(items: [T], n: int, acc: [[T]]) -> [[T]] {
 
 /// Sort a list using default comparison.
 pub fn sort<T>(items: [T]) -> [T] {
-    :lists::sort(items)
+    erl_lists::sort(items)
 }
 
 /// Sort a list using a custom comparison function.
 /// The function should return true if the first arg should come before the second.
 pub fn sort_by<T>(items: [T], cmp: fn(T, T) -> bool) -> [T] {
-    :lists::sort(cmp, items)
+    erl_lists::sort(cmp, items)
 }
 
 /// Reverse a list.
 pub fn reverse<T>(items: [T]) -> [T] {
-    :lists::reverse(items)
+    erl_lists::reverse(items)
 }
 
 /// Shuffle a list randomly.
 pub fn shuffle<T>(items: [T]) -> [T] {
     // Fisher-Yates shuffle using Erlang's random
-    let indexed = :lists::zip(:lists::seq(1, :erlang::length(items)), items);
-    let shuffled = :lists::sort(|a, b| { :rand::uniform(100) < 50 }, indexed);
-    map(shuffled, |pair| { :erlang::element(2, pair) })
+    let indexed = erl_lists::zip(erl_lists::seq(1, erl::length(items)), items);
+    let shuffled = erl_lists::sort(|a, b| { erl_rand::uniform(100) < 50 }, indexed);
+    map(shuffled, |pair| { erl::element(2, pair) })
 }
 
 // =============================================================================
@@ -259,44 +264,44 @@ pub fn shuffle<T>(items: [T]) -> [T] {
 
 /// Remove duplicate elements (keeps first occurrence).
 pub fn uniq<T>(items: [T]) -> [T] {
-    :lists::usort(items)
+    erl_lists::usort(items)
 }
 
 /// Remove consecutive duplicate elements.
 pub fn dedup<T>(items: [T]) -> [T] {
-    if :erlang::length(items) < 2 {
+    if erl::length(items) < 2 {
         items
     } else {
-        dedup_loop(items, :lists::hd(items), [:lists::hd(items)])
+        dedup_loop(items, erl::hd(items), [erl::hd(items)])
     }
 }
 
 fn dedup_loop<T>(items: [T], prev: T, acc: [T]) -> [T] {
-    let rest = :lists::tl(items);
-    if :erlang::length(rest) == 0 {
-        :lists::reverse(acc)
+    let rest = erl::tl(items);
+    if erl::length(rest) == 0 {
+        erl_lists::reverse(acc)
     } else {
-        let curr = :lists::hd(rest);
+        let curr = erl::hd(rest);
         if curr == prev {
             dedup_loop(rest, curr, acc)
         } else {
-            dedup_loop(rest, curr, :lists::append([curr], acc))
+            dedup_loop(rest, curr, erl_lists::append([curr], acc))
         }
     }
 }
 
 /// Group elements by a key function.
 pub fn group_by<T, K>(items: [T], key_fn: fn(T) -> K) -> Map {
-    reduce(items, :maps::new(), |item, acc| {
+    reduce(items, erl_maps::new(), |item, acc| {
         let key = key_fn(item);
-        let existing = :maps::get(key, acc, []);
-        :maps::put(key, :lists::append([item], existing), acc)
+        let existing = erl_maps::get(key, acc, []);
+        erl_maps::put(key, erl_lists::append([item], existing), acc)
     })
 }
 
 /// Partition elements into two lists based on a predicate.
 pub fn partition<T>(items: [T], pred: fn(T) -> bool) -> ([T], [T]) {
-    :lists::partition(pred, items)
+    erl_lists::partition(pred, items)
 }
 
 // =============================================================================
@@ -305,7 +310,7 @@ pub fn partition<T>(items: [T], pred: fn(T) -> bool) -> ([T], [T]) {
 
 /// Sum all numbers.
 pub fn sum(items: [int]) -> int {
-    :lists::sum(items)
+    erl_lists::sum(items)
 }
 
 /// Sum using a function to extract the value.
@@ -315,17 +320,17 @@ pub fn sum_by<T>(items: [T], f: fn(T) -> int) -> int {
 
 /// Find the maximum value.
 pub fn max<T>(items: [T]) -> T {
-    :lists::max(items)
+    erl_lists::max(items)
 }
 
 /// Find the minimum value.
 pub fn min<T>(items: [T]) -> T {
-    :lists::min(items)
+    erl_lists::min(items)
 }
 
 /// Find the maximum by a custom comparison.
 pub fn max_by<T>(items: [T], f: fn(T) -> int) -> T {
-    reduce(:lists::tl(items), :lists::hd(items), |item, best| {
+    reduce(erl::tl(items), erl::hd(items), |item, best| {
         if f(item) > f(best) {
             item
         } else {
@@ -336,7 +341,7 @@ pub fn max_by<T>(items: [T], f: fn(T) -> int) -> T {
 
 /// Find the minimum by a custom comparison.
 pub fn min_by<T>(items: [T], f: fn(T) -> int) -> T {
-    reduce(:lists::tl(items), :lists::hd(items), |item, best| {
+    reduce(erl::tl(items), erl::hd(items), |item, best| {
         if f(item) < f(best) {
             item
         } else {
@@ -351,7 +356,7 @@ pub fn min_by<T>(items: [T], f: fn(T) -> int) -> T {
 
 /// Apply a function to each element for side effects.
 pub fn each<T>(items: [T], f: fn(T) -> ()) -> Atom {
-    :lists::foreach(f, items);
+    erl_lists::foreach(f, items);
     :ok
 }
 
@@ -373,8 +378,8 @@ fn each_with_index_loop<T>(items: [T], idx: int, f: fn(T, int) -> ()) -> Atom {
 
 /// Map with index.
 pub fn map_with_index<T, U>(items: [T], f: fn(T, int) -> U) -> [U] {
-    let indexed = :lists::zip(:lists::seq(0, :erlang::length(items) - 1), items);
-    map(indexed, |pair| { f(:erlang::element(2, pair), :erlang::element(1, pair)) })
+    let indexed = erl_lists::zip(erl_lists::seq(0, erl::length(items) - 1), items);
+    map(indexed, |pair| { f(erl::element(2, pair), erl::element(1, pair)) })
 }
 
 // =============================================================================
@@ -398,7 +403,7 @@ pub fn first<T>(items: [T]) -> Option<T> {
 pub fn last<T>(items: [T]) -> Option<T> {
     match items {
         [] => None,
-        _ => Some(:lists::last(items)),
+        _ => Some(erl_lists::last(items)),
     }
 }
 
@@ -406,10 +411,10 @@ pub fn last<T>(items: [T]) -> Option<T> {
 pub fn at<T>(items: [T], index: int) -> Option<T> {
     if index < 0 {
         None
-    } else if index >= :erlang::length(items) {
+    } else if index >= erl::length(items) {
         None
     } else {
-        Some(:lists::nth(index + 1, items))
+        Some(erl_lists::nth(index + 1, items))
     }
 }
 
@@ -419,15 +424,15 @@ pub fn at<T>(items: [T], index: int) -> Option<T> {
 
 /// Create a list with n copies of an element.
 pub fn replicate<T>(n: int, elem: T) -> [T] {
-    :lists::duplicate(n, elem)
+    erl_lists::duplicate(n, elem)
 }
 
 /// Create a range of integers.
 pub fn range(start: int, stop: int) -> [int] {
-    :lists::seq(start, stop)
+    erl_lists::seq(start, stop)
 }
 
 /// Create a range with a step.
 pub fn range_step(start: int, stop: int, step: int) -> [int] {
-    :lists::seq(start, stop, step)
+    erl_lists::seq(start, stop, step)
 }

@@ -1,0 +1,407 @@
+// Erlang core module bindings
+//
+// Core functions from the erlang module.
+// See: https://www.erlang.org/doc/man/erlang.html
+
+#[name = "erlang"]
+extern mod erlang {
+    // ============== Time ==============
+
+    /// Get monotonic time in given unit.
+    fn monotonic_time(unit: Atom) -> int;
+
+    /// Get system time in given unit.
+    fn system_time(unit: Atom) -> int;
+
+    /// Get current time as {MegaSecs, Secs, MicroSecs}.
+    fn timestamp() -> (int, int, int);
+
+    /// Get local time as {{Year, Month, Day}, {Hour, Min, Sec}}.
+    fn localtime() -> ((int, int, int), (int, int, int));
+
+    /// Get universal time as {{Year, Month, Day}, {Hour, Min, Sec}}.
+    fn universaltime() -> ((int, int, int), (int, int, int));
+
+    // ============== Timers ==============
+
+    /// Send message to pid after delay (milliseconds).
+    fn send_after(time: int, dest: Pid, msg: Any) -> Ref;
+
+    /// Cancel a timer, returns remaining time or false.
+    fn cancel_timer(timer_ref: Ref) -> Any;
+
+    /// Read a timer's remaining time.
+    fn read_timer(timer_ref: Ref) -> Any;
+
+    // ============== Process Info ==============
+
+    /// Get current process pid.
+    fn self() -> Pid;
+
+    /// Check if a process is alive.
+    fn is_process_alive(pid: Pid) -> bool;
+
+    /// Get information about a process.
+    fn process_info(pid: Pid) -> Any;
+
+    /// Get specific process info.
+    fn process_info(pid: Pid, item: Atom) -> Any;
+
+    /// Get list of all processes.
+    fn processes() -> [Pid];
+
+    /// Get number of processes.
+    fn system_info(item: Atom) -> Any;
+
+    // ============== Links and Monitors ==============
+
+    /// Create a link to a process.
+    fn link(pid: Pid) -> bool;
+
+    /// Remove a link to a process.
+    fn unlink(pid: Pid) -> bool;
+
+    /// Monitor a process.
+    fn monitor(type_: Atom, item: Any) -> Ref;
+
+    /// Remove a monitor.
+    fn demonitor(ref: Ref) -> bool;
+
+    /// Remove a monitor with options.
+    fn demonitor(ref: Ref, opts: [Atom]) -> bool;
+
+    // ============== Process Registry ==============
+
+    /// Register a process with a name.
+    fn register(name: Atom, pid: Pid) -> bool;
+
+    /// Unregister a process name.
+    fn unregister(name: Atom) -> bool;
+
+    /// Look up a registered process.
+    fn whereis(name: Atom) -> Any;
+
+    /// Get list of all registered names.
+    fn registered() -> [Atom];
+
+    // ============== Message Passing ==============
+
+    /// Send a message to a process.
+    fn send(dest: Any, msg: Any) -> Any;
+
+    /// Send a message with options.
+    fn send(dest: Any, msg: Any, opts: [Atom]) -> Any;
+
+    // ============== Process Flags ==============
+
+    /// Set a process flag.
+    fn process_flag(flag: Atom, value: Any) -> Any;
+
+    /// Set a process flag on another process.
+    fn process_flag(pid: Pid, flag: Atom, value: Any) -> Any;
+
+    // ============== Error Handling ==============
+
+    /// Exit with a reason.
+    fn exit(reason: Any) -> Any;
+
+    /// Send exit signal to a process.
+    fn exit(pid: Pid, reason: Any) -> bool;
+
+    /// Raise an error.
+    fn error(reason: Any) -> Any;
+
+    /// Raise an error with arguments.
+    fn error(reason: Any, args: [Any]) -> Any;
+
+    /// Throw a value.
+    fn throw(value: Any) -> Any;
+
+    // ============== Type Conversions ==============
+
+    /// Convert atom to list (charlist).
+    fn atom_to_list(atom: Atom) -> Any;
+
+    /// Convert atom to binary.
+    fn atom_to_binary(atom: Atom) -> Binary;
+
+    /// Convert atom to binary with encoding.
+    fn atom_to_binary(atom: Atom, encoding: Atom) -> Binary;
+
+    /// Convert list to atom.
+    fn list_to_atom(list: Any) -> Atom;
+
+    /// Convert list to existing atom (safe).
+    fn list_to_existing_atom(list: Any) -> Atom;
+
+    /// Convert binary to atom.
+    fn binary_to_atom(binary: Binary) -> Atom;
+
+    /// Convert binary to existing atom (safe).
+    fn binary_to_existing_atom(binary: Binary) -> Atom;
+
+    /// Convert list to binary.
+    fn list_to_binary(list: Any) -> Binary;
+
+    /// Convert binary to list.
+    fn binary_to_list(binary: Binary) -> Any;
+
+    /// Convert integer to list.
+    fn integer_to_list(n: int) -> Any;
+
+    /// Convert integer to list with base.
+    fn integer_to_list(n: int, base: int) -> Any;
+
+    /// Convert integer to binary.
+    fn integer_to_binary(n: int) -> Binary;
+
+    /// Convert integer to binary with base.
+    fn integer_to_binary(n: int, base: int) -> Binary;
+
+    /// Convert list to integer.
+    fn list_to_integer(list: Any) -> int;
+
+    /// Convert list to integer with base.
+    fn list_to_integer(list: Any, base: int) -> int;
+
+    /// Convert binary to integer.
+    fn binary_to_integer(binary: Binary) -> int;
+
+    /// Convert binary to integer with base.
+    fn binary_to_integer(binary: Binary, base: int) -> int;
+
+    /// Convert float to list.
+    fn float_to_list(f: float) -> Any;
+
+    /// Convert float to list with options.
+    fn float_to_list(f: float, opts: [Any]) -> Any;
+
+    /// Convert float to binary.
+    fn float_to_binary(f: float) -> Binary;
+
+    /// Convert float to binary with options.
+    fn float_to_binary(f: float, opts: [Any]) -> Binary;
+
+    /// Convert list to float.
+    fn list_to_float(list: Any) -> float;
+
+    /// Convert binary to float.
+    fn binary_to_float(binary: Binary) -> float;
+
+    /// Convert tuple to list.
+    fn tuple_to_list(tuple: Any) -> [Any];
+
+    /// Convert list to tuple.
+    fn list_to_tuple(list: [Any]) -> Any;
+
+    /// Convert term to binary.
+    fn term_to_binary(term: Any) -> Binary;
+
+    /// Convert term to binary with options.
+    fn term_to_binary(term: Any, opts: [Any]) -> Binary;
+
+    /// Convert binary to term.
+    fn binary_to_term(binary: Binary) -> Any;
+
+    /// Convert binary to term with options.
+    fn binary_to_term(binary: Binary, opts: [Atom]) -> Any;
+
+    /// Convert pid to list.
+    fn pid_to_list(pid: Pid) -> Any;
+
+    /// Convert list to pid.
+    fn list_to_pid(list: Any) -> Pid;
+
+    /// Convert ref to list.
+    fn ref_to_list(ref: Ref) -> Any;
+
+    // ============== Type Checking ==============
+
+    /// Check if value is an atom.
+    fn is_atom(term: Any) -> bool;
+
+    /// Check if value is a binary.
+    fn is_binary(term: Any) -> bool;
+
+    /// Check if value is a bitstring.
+    fn is_bitstring(term: Any) -> bool;
+
+    /// Check if value is a boolean.
+    fn is_boolean(term: Any) -> bool;
+
+    /// Check if value is a float.
+    fn is_float(term: Any) -> bool;
+
+    /// Check if value is a function.
+    fn is_function(term: Any) -> bool;
+
+    /// Check if value is a function with given arity.
+    fn is_function(term: Any, arity: int) -> bool;
+
+    /// Check if value is an integer.
+    fn is_integer(term: Any) -> bool;
+
+    /// Check if value is a list.
+    fn is_list(term: Any) -> bool;
+
+    /// Check if value is a map.
+    fn is_map(term: Any) -> bool;
+
+    /// Check if value is a number.
+    fn is_number(term: Any) -> bool;
+
+    /// Check if value is a pid.
+    fn is_pid(term: Any) -> bool;
+
+    /// Check if value is a port.
+    fn is_port(term: Any) -> bool;
+
+    /// Check if value is a reference.
+    fn is_reference(term: Any) -> bool;
+
+    /// Check if value is a tuple.
+    fn is_tuple(term: Any) -> bool;
+
+    // ============== Tuple Operations ==============
+
+    /// Get element at 1-based index from tuple.
+    fn element(n: int, tuple: Any) -> Any;
+
+    /// Set element at 1-based index in tuple.
+    fn setelement(n: int, tuple: Any, value: Any) -> Any;
+
+    /// Get tuple size.
+    fn tuple_size(tuple: Any) -> int;
+
+    /// Create tuple of given size filled with value.
+    fn make_tuple(size: int, value: Any) -> Any;
+
+    /// Append element to tuple.
+    fn append_element(tuple: Any, element: Any) -> Any;
+
+    /// Delete element at index from tuple.
+    fn delete_element(index: int, tuple: Any) -> Any;
+
+    /// Insert element at index in tuple.
+    fn insert_element(index: int, tuple: Any, element: Any) -> Any;
+
+    // ============== List Operations ==============
+
+    /// Get head of list.
+    fn hd(list: [Any]) -> Any;
+
+    /// Get tail of list.
+    fn tl(list: [Any]) -> [Any];
+
+    /// Get length of list.
+    fn length(list: [Any]) -> int;
+
+    /// Append two lists.
+    #[name = "++"]
+    fn append(list1: [Any], list2: [Any]) -> [Any];
+
+    /// Subtract elements.
+    #[name = "--"]
+    fn subtract(list1: [Any], list2: [Any]) -> [Any];
+
+    // ============== Binary Operations ==============
+
+    /// Get byte size of binary.
+    fn byte_size(binary: Binary) -> int;
+
+    /// Get bit size of binary.
+    fn bit_size(binary: Binary) -> int;
+
+    /// Create binary from list of bytes.
+    fn iolist_to_binary(iolist: Any) -> Binary;
+
+    /// Get byte size of iolist.
+    fn iolist_size(iolist: Any) -> int;
+
+    // ============== Arithmetic ==============
+
+    /// Absolute value.
+    fn abs(n: Any) -> Any;
+
+    /// Maximum of two values.
+    fn max(a: Any, b: Any) -> Any;
+
+    /// Minimum of two values.
+    fn min(a: Any, b: Any) -> Any;
+
+    /// Integer division.
+    fn div(a: int, b: int) -> int;
+
+    /// Remainder (modulo).
+    fn rem(a: int, b: int) -> int;
+
+    /// Round to nearest integer.
+    fn round(n: float) -> int;
+
+    /// Truncate to integer.
+    fn trunc(n: float) -> int;
+
+    /// Ceiling.
+    fn ceil(n: float) -> int;
+
+    /// Floor.
+    fn floor(n: float) -> int;
+
+    // ============== Hashing ==============
+
+    /// Calculate hash of term.
+    fn phash2(term: Any) -> int;
+
+    /// Calculate hash with range.
+    fn phash2(term: Any, range: int) -> int;
+
+    // ============== Misc ==============
+
+    /// Apply function with arguments.
+    fn apply(fun: Any, args: [Any]) -> Any;
+
+    /// Apply module:function with arguments.
+    fn apply(module: Atom, function: Atom, args: [Any]) -> Any;
+
+    /// Create a unique reference.
+    fn make_ref() -> Ref;
+
+    /// Get node name.
+    fn node() -> Atom;
+
+    /// Get node of pid/ref/port.
+    fn node(item: Any) -> Atom;
+
+    /// Get list of all connected nodes.
+    fn nodes() -> [Atom];
+
+    /// Put a value in the process dictionary.
+    fn put(key: Any, value: Any) -> Any;
+
+    /// Get a value from the process dictionary.
+    fn get(key: Any) -> Any;
+
+    /// Get all values from the process dictionary.
+    fn get() -> [(Any, Any)];
+
+    /// Erase a value from the process dictionary.
+    fn erase(key: Any) -> Any;
+
+    /// Erase all values from the process dictionary.
+    fn erase() -> [(Any, Any)];
+
+    /// Get keys from the process dictionary.
+    fn get_keys() -> [Any];
+
+    /// Get keys with specific value from the process dictionary.
+    fn get_keys(value: Any) -> [Any];
+
+    /// Halt the system.
+    fn halt() -> Any;
+
+    /// Halt with status code.
+    fn halt(status: int) -> Any;
+
+    /// Halt with status and options.
+    fn halt(status: Any, opts: [Any]) -> Any;
+}

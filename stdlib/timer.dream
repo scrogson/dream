@@ -2,36 +2,39 @@
 //
 // Provides timing utilities using Erlang's timer module.
 
+use erlang::std::timer as erl_timer;
+use erlang::std::erlang as erl;
+
 /// Sleep for a given number of milliseconds.
 pub fn sleep(ms: int) -> Atom {
-    :timer::sleep(ms)
+    erl_timer::sleep(ms)
 }
 
 /// Get the current timestamp in milliseconds (monotonic).
 pub fn now() -> int {
-    :erlang::monotonic_time(:millisecond)
+    erl::monotonic_time(:millisecond)
 }
 
 /// Get the current system time in milliseconds (wall clock).
 pub fn system_time() -> int {
-    :erlang::system_time(:millisecond)
+    erl::system_time(:millisecond)
 }
 
 /// Get the current system time in seconds (Unix timestamp).
 pub fn unix_time() -> int {
-    :erlang::system_time(:second)
+    erl::system_time(:second)
 }
 
 /// Send a message to a process after a delay.
 /// Returns a timer reference that can be used to cancel.
 pub fn send_after<T>(ms: int, p: Pid, msg: T) -> Ref {
-    :erlang::send_after(ms, p, msg)
+    erl::send_after(ms, p, msg)
 }
 
 /// Cancel a timer created by send_after.
 /// Returns the remaining time in ms, or false if already expired.
 pub fn cancel(timer_ref: Ref) -> Any {
-    :erlang::cancel_timer(timer_ref)
+    erl::cancel_timer(timer_ref)
 }
 
 /// Convert seconds to milliseconds.

@@ -3,6 +3,10 @@
 // Provides a key-value map backed by Erlang maps with Option/Result-based access.
 // Uses Option and Result from the prelude.
 
+use erlang::std::maps as erl_maps;
+use erlang::std::lists as erl_lists;
+use erlang::std::erlang as erl;
+
 /// Error type for map operations
 pub enum KeyError {
     NotFound,
@@ -18,18 +22,18 @@ pub struct Map {
 impl Map {
     /// Create an empty map
     pub fn new<K, V>() -> Self {
-        Map { data: :maps::new() }
+        Map { data: erl_maps::new() }
     }
 
     /// Create a map from a list of key-value pairs
     pub fn from_list<K, V>(pairs: [(K, V)]) -> Self {
-        Map { data: :maps::from_list(pairs) }
+        Map { data: erl_maps::from_list(pairs) }
     }
 
     /// Get a value by key, returns None if not found
     pub fn get<K, V>(self, key: K) -> Option<V> {
-        if :maps::is_key(key, self.data) {
-            Some(:maps::get(key, self.data))
+        if erl_maps::is_key(key, self.data) {
+            Some(erl_maps::get(key, self.data))
         } else {
             None
         }
@@ -37,13 +41,13 @@ impl Map {
 
     /// Get a value by key, returns default if not found
     pub fn get_or<K, V>(self, key: K, default: V) -> V {
-        :maps::get(key, self.data, default)
+        erl_maps::get(key, self.data, default)
     }
 
     /// Fetch a value by key, returns Result
     pub fn fetch<K, V>(self, key: K) -> Result<V, KeyError> {
-        if :maps::is_key(key, self.data) {
-            Ok(:maps::get(key, self.data))
+        if erl_maps::is_key(key, self.data) {
+            Ok(erl_maps::get(key, self.data))
         } else {
             Err(KeyError::NotFound)
         }
@@ -51,18 +55,18 @@ impl Map {
 
     /// Check if key exists
     pub fn has_key<K>(self, key: K) -> bool {
-        :maps::is_key(key, self.data)
+        erl_maps::is_key(key, self.data)
     }
 
     /// Insert or update a key-value pair
     pub fn put<K, V>(self, key: K, value: V) -> Self {
-        Map { data: :maps::put(key, value, self.data) }
+        Map { data: erl_maps::put(key, value, self.data) }
     }
 
     /// Remove a key (returns same map if key doesn't exist)
     pub fn delete<K>(self, key: K) -> Self {
-        if :maps::is_key(key, self.data) {
-            Map { data: :maps::remove(key, self.data) }
+        if erl_maps::is_key(key, self.data) {
+            Map { data: erl_maps::remove(key, self.data) }
         } else {
             self
         }
@@ -70,70 +74,70 @@ impl Map {
 
     /// Merge two maps (values from other win on conflict)
     pub fn merge(self, other: Self) -> Self {
-        Map { data: :maps::merge(self.data, other.data) }
+        Map { data: erl_maps::merge(self.data, other.data) }
     }
 
     /// Get all keys as a list
     pub fn keys<K>(self) -> [K] {
-        :maps::keys(self.data)
+        erl_maps::keys(self.data)
     }
 
     /// Get all values as a list
     pub fn values<V>(self) -> [V] {
-        :maps::values(self.data)
+        erl_maps::values(self.data)
     }
 
     /// Convert to list of key-value tuples
     pub fn to_list<K, V>(self) -> [(K, V)] {
-        :maps::to_list(self.data)
+        erl_maps::to_list(self.data)
     }
 
     /// Get number of entries
     pub fn size(self) -> int {
-        :maps::size(self.data)
+        erl_maps::size(self.data)
     }
 
     /// Check if map is empty
     pub fn is_empty(self) -> bool {
-        :maps::size(self.data) == 0
+        erl_maps::size(self.data) == 0
     }
 }
 
 /// Enumerable operations for Map - each entry is a (key, value) tuple.
 impl Map {
     pub fn map<K, V, U>(self, f: fn((K, V)) -> U) -> [U] {
-        :lists::map(f, :maps::to_list(self.data))
+        erl_lists::map(f, erl_maps::to_list(self.data))
     }
 
     pub fn filter<K, V>(self, pred: fn((K, V)) -> bool) -> [(K, V)] {
-        :lists::filter(pred, :maps::to_list(self.data))
+        erl_lists::filter(pred, erl_maps::to_list(self.data))
     }
 
     pub fn reduce<K, V, Acc>(self, init: Acc, f: fn((K, V), Acc) -> Acc) -> Acc {
-        :lists::foldl(f, init, :maps::to_list(self.data))
+        erl_lists::foldl(f, init, erl_maps::to_list(self.data))
     }
 
     pub fn any<K, V>(self, pred: fn((K, V)) -> bool) -> bool {
-        :lists::any(pred, :maps::to_list(self.data))
+        erl_lists::any(pred, erl_maps::to_list(self.data))
     }
 
     pub fn all<K, V>(self, pred: fn((K, V)) -> bool) -> bool {
-        :lists::all(pred, :maps::to_list(self.data))
+        erl_lists::all(pred, erl_maps::to_list(self.data))
     }
 
     pub fn count<K, V>(self, pred: fn((K, V)) -> bool) -> int {
-        :erlang::length(:lists::filter(pred, :maps::to_list(self.data)))
+        erl::length(erl_lists::filter(pred, erl_maps::to_list(self.data)))
     }
 
     pub fn take<K, V>(self, n: int) -> [(K, V)] {
-        :lists::sublist(:maps::to_list(self.data), n)
+        erl_lists::sublist(erl_maps::to_list(self.data), n)
     }
 
     pub fn drop<K, V>(self, n: int) -> [(K, V)] {
-        :lists::nthtail(n, :maps::to_list(self.data))
+        erl_lists::nthtail(n, erl_maps::to_list(self.data))
     }
 
     pub fn reverse<K, V>(self) -> [(K, V)] {
-        :lists::reverse(:maps::to_list(self.data))
+        erl_lists::reverse(erl_maps::to_list(self.data))
     }
 }

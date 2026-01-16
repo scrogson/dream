@@ -52,6 +52,21 @@ extern mod lists {
     /// Generate a sequence with a step.
     fn seq(from: int, to: int, step: int) -> [int];
 
+    /// Get a sublist of length Len starting from beginning.
+    fn sublist<T>(list: [T], len: int) -> [T];
+
+    /// Get a sublist of length Len starting from position Start (1-indexed).
+    fn sublist<T>(list: [T], start: int, len: int) -> [T];
+
+    /// Sum all numbers in a list.
+    fn sum(list: [int]) -> int;
+
+    /// Find the maximum value in a list.
+    fn max<T>(list: [T]) -> T;
+
+    /// Find the minimum value in a list.
+    fn min<T>(list: [T]) -> T;
+
     /// Sort a list using default ordering.
     fn sort<T>(list: [T]) -> [T];
 
@@ -162,6 +177,11 @@ extern mod lists {
 
     /// Take a tuple by key (returns tuple and remaining list).
     fn keytake(key: Any, n: int, tuple_list: [Any]) -> Any;
+
+    // ============== Joining ==============
+
+    /// Join list elements with a separator.
+    fn join<T>(list: [T], separator: T) -> [T];
 
     // ============== Zipping ==============
 
