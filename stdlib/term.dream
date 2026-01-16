@@ -1,0 +1,261 @@
+// Dream Standard Library - Term Module
+//
+// Provides a sum type for type-safe handling of dynamic Erlang values.
+// Use Term when you need to inspect or pattern match on dynamic data.
+// Use `any` when you just need to pass values through without inspection.
+
+/// A dynamic Erlang term that can be pattern matched.
+///
+/// Example:
+/// ```dream
+/// fn handle_message(msg: Term) -> string {
+///     match msg {
+///         Term::Atom(a) => atom::to_string(a),
+///         Term::Int(n) => int::to_string(n),
+///         Term::Binary(b) => b,
+///         Term::List(items) => format_list(items),
+///         _ => "unknown"
+///     }
+/// }
+/// ```
+pub enum Term {
+    /// An atom value (e.g., :ok, :error)
+    Atom(atom),
+    /// An integer value (arbitrary precision)
+    Int(int),
+    /// A floating point value
+    Float(float),
+    /// A binary/string value
+    Binary(binary),
+    /// A list (elements are raw, use from_any on each to convert)
+    List([any]),
+    /// A tuple as list of elements (raw, use from_any on each to convert)
+    Tuple([any]),
+    /// An Erlang map
+    Map(map),
+    /// A process identifier
+    Pid(pid),
+    /// A reference
+    Ref(ref),
+    /// A function (opaque)
+    Fun(any),
+}
+
+impl Term {
+    /// Check if the term is an atom.
+    pub fn is_atom(self) -> bool {
+        match self {
+            Term::Atom(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is an integer.
+    pub fn is_int(self) -> bool {
+        match self {
+            Term::Int(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a float.
+    pub fn is_float(self) -> bool {
+        match self {
+            Term::Float(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a binary/string.
+    pub fn is_binary(self) -> bool {
+        match self {
+            Term::Binary(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a list.
+    pub fn is_list(self) -> bool {
+        match self {
+            Term::List(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a tuple.
+    pub fn is_tuple(self) -> bool {
+        match self {
+            Term::Tuple(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a map.
+    pub fn is_map(self) -> bool {
+        match self {
+            Term::Map(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a pid.
+    pub fn is_pid(self) -> bool {
+        match self {
+            Term::Pid(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a reference.
+    pub fn is_ref(self) -> bool {
+        match self {
+            Term::Ref(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Check if the term is a function.
+    pub fn is_fun(self) -> bool {
+        match self {
+            Term::Fun(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Try to extract an atom value.
+    pub fn as_atom(self) -> Option<atom> {
+        match self {
+            Term::Atom(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Try to extract an integer value.
+    pub fn as_int(self) -> Option<int> {
+        match self {
+            Term::Int(n) => Some(n),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a float value.
+    pub fn as_float(self) -> Option<float> {
+        match self {
+            Term::Float(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a binary/string value.
+    pub fn as_binary(self) -> Option<binary> {
+        match self {
+            Term::Binary(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a list value (elements are raw `any` values).
+    pub fn as_list(self) -> Option<[any]> {
+        match self {
+            Term::List(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a tuple as a list of elements (raw `any` values).
+    pub fn as_tuple(self) -> Option<[any]> {
+        match self {
+            Term::Tuple(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a map value.
+    pub fn as_map(self) -> Option<map> {
+        match self {
+            Term::Map(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a pid value.
+    pub fn as_pid(self) -> Option<pid> {
+        match self {
+            Term::Pid(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a reference value.
+    pub fn as_ref(self) -> Option<ref> {
+        match self {
+            Term::Ref(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
+// ============== Conversion Functions ==============
+
+/// Wrap a dynamic value into a Term (shallow - doesn't recurse into lists/tuples).
+/// Uses runtime type detection to determine the variant.
+pub fn from_any(value: any) -> Term {
+    if :erlang::is_atom(value) {
+        Term::Atom(value)
+    } else if :erlang::is_integer(value) {
+        Term::Int(value)
+    } else if :erlang::is_float(value) {
+        Term::Float(value)
+    } else if :erlang::is_binary(value) {
+        Term::Binary(value)
+    } else if :erlang::is_list(value) {
+        // Shallow: stores raw list, use from_any_deep for recursive conversion
+        Term::List(value)
+    } else if :erlang::is_tuple(value) {
+        // Shallow: stores tuple elements as raw list
+        Term::Tuple(:erlang::tuple_to_list(value))
+    } else if :erlang::is_map(value) {
+        Term::Map(value)
+    } else if :erlang::is_pid(value) {
+        Term::Pid(value)
+    } else if :erlang::is_reference(value) {
+        Term::Ref(value)
+    } else if :erlang::is_function(value) {
+        Term::Fun(value)
+    } else {
+        // Fallback - shouldn't happen for valid Erlang terms
+        Term::Fun(value)
+    }
+}
+
+/// Unwrap a Term back to its raw Erlang value.
+pub fn to_any(t: Term) -> any {
+    match t {
+        Term::Atom(a) => a,
+        Term::Int(n) => n,
+        Term::Float(f) => f,
+        Term::Binary(b) => b,
+        Term::List(l) => l,
+        Term::Tuple(elems) => :erlang::list_to_tuple(elems),
+        Term::Map(m) => m,
+        Term::Pid(p) => p,
+        Term::Ref(r) => r,
+        Term::Fun(f) => f,
+    }
+}
+
+/// Get a string representation of the term type.
+pub fn type_name(t: Term) -> string {
+    match t {
+        Term::Atom(_) => "atom",
+        Term::Int(_) => "int",
+        Term::Float(_) => "float",
+        Term::Binary(_) => "binary",
+        Term::List(_) => "list",
+        Term::Tuple(_) => "tuple",
+        Term::Map(_) => "map",
+        Term::Pid(_) => "pid",
+        Term::Ref(_) => "ref",
+        Term::Fun(_) => "fun",
+    }
+}
