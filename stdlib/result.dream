@@ -2,6 +2,8 @@
 //
 // Provides the Result<T, E> type for representing success or failure.
 
+use erlang::std::erlang as erl;
+
 /// Result type - represents either success (Ok) or failure (Err).
 pub enum Result<T, E> {
     Ok(T),
@@ -29,7 +31,7 @@ pub fn is_err<T, E>(res: Result<T, E>) -> bool {
 pub fn unwrap<T, E>(res: Result<T, E>) -> T {
     match res {
         Ok(x) => x,
-        Err(e) => :erlang::error((:unwrap_err, e)),
+        Err(e) => erl::error((:unwrap_err, e)),
     }
 }
 
@@ -45,7 +47,7 @@ pub fn unwrap_or<T, E>(res: Result<T, E>, default: T) -> T {
 /// Panics if the result is Ok.
 pub fn unwrap_err<T, E>(res: Result<T, E>) -> E {
     match res {
-        Ok(x) => :erlang::error((:unwrap_ok, x)),
+        Ok(x) => erl::error((:unwrap_ok, x)),
         Err(e) => e,
     }
 }
@@ -71,7 +73,7 @@ pub fn to_list<T, E>(res: Result<T, E>) -> [T] {
 pub fn expect<T, E>(res: Result<T, E>, msg: String) -> T {
     match res {
         Ok(x) => x,
-        Err(_) => :erlang::error(msg),
+        Err(_) => erl::error(msg),
     }
 }
 
@@ -79,7 +81,7 @@ pub fn expect<T, E>(res: Result<T, E>, msg: String) -> T {
 /// Panics with the given message if the result is Ok.
 pub fn expect_err<T, E>(res: Result<T, E>, msg: String) -> E {
     match res {
-        Ok(_) => :erlang::error(msg),
+        Ok(_) => erl::error(msg),
         Err(e) => e,
     }
 }

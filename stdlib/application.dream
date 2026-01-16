@@ -4,6 +4,7 @@
 // and application lifecycle.
 
 use erlang::std::application as erl_app;
+use erlang::std::erlang as erl;
 
 /// Start type for application startup.
 /// - `:normal` - Standard application start
@@ -95,7 +96,7 @@ pub fn get_env_for_default(app: Atom, key: Atom, default: Any) -> Any {
 pub fn fetch_env(key: Atom) -> Any {
     match get_env(key) {
         Some(value) => value,
-        None => :erlang::error((:missing_env, key))
+        None => erl::error((:missing_env, key))
     }
 }
 
@@ -103,7 +104,7 @@ pub fn fetch_env(key: Atom) -> Any {
 pub fn fetch_env_for(app: Atom, key: Atom) -> Any {
     match get_env_for(app, key) {
         Some(value) => value,
-        None => :erlang::error((:missing_env, app, key))
+        None => erl::error((:missing_env, app, key))
     }
 }
 
@@ -156,7 +157,7 @@ pub fn ensure_started(app: Atom) -> Result<[Atom], Any> {
 pub fn ensure_started_simple(app: Atom) -> Atom {
     match ensure_started(app) {
         Ok(_) => :ok,
-        Err(reason) => :erlang::error(reason)
+        Err(reason) => erl::error(reason)
     }
 }
 

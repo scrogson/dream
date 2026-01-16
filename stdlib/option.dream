@@ -2,6 +2,8 @@
 //
 // Provides the Option<T> type for representing optional values.
 
+use erlang::std::erlang as erl;
+
 /// Option type - represents a value that may or may not exist.
 pub enum Option<T> {
     Some(T),
@@ -29,7 +31,7 @@ pub fn is_none<T>(opt: Option<T>) -> bool {
 pub fn unwrap<T>(opt: Option<T>) -> T {
     match opt {
         Some(x) => x,
-        None => :erlang::error(:unwrap_none),
+        None => erl::error(:unwrap_none),
     }
 }
 
@@ -62,7 +64,7 @@ pub fn to_list<T>(opt: Option<T>) -> [T] {
 pub fn expect<T>(opt: Option<T>, msg: String) -> T {
     match opt {
         Some(x) => x,
-        None => :erlang::error(msg),
+        None => erl::error(msg),
     }
 }
 

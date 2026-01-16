@@ -1,6 +1,9 @@
 // proc_macro - Procedural macro support for Dream
 //
 // This module provides types and utilities for writing procedural macros.
+
+use erlang::std::erlang as erl;
+use erlang::std::lists as erl_lists;
 // Macros receive input as TokenStream and return TokenStream.
 //
 // ## Usage
@@ -83,32 +86,32 @@ pub type TokenStream = [TokenTree];
 
 /// Check if a TokenStream is empty.
 pub fn is_empty(tokens: TokenStream) -> bool {
-    :erlang::length(tokens) == 0
+    erl::length(tokens) == 0
 }
 
 /// Get the first token from a TokenStream.
 /// Returns (:some, token) or :none.
 pub fn first(tokens: TokenStream) -> (:some, TokenTree) | :none {
-    if :erlang::length(tokens) == 0 {
+    if erl::length(tokens) == 0 {
         :none
     } else {
-        (:some, :erlang::hd(tokens))
+        (:some, erl::hd(tokens))
     }
 }
 
 /// Get the rest of the tokens after the first.
 /// Returns empty list if tokens is empty.
 pub fn rest(tokens: TokenStream) -> TokenStream {
-    if :erlang::length(tokens) == 0 {
+    if erl::length(tokens) == 0 {
         []
     } else {
-        :erlang::tl(tokens)
+        erl::tl(tokens)
     }
 }
 
 /// Concatenate two TokenStreams.
 pub fn concat(a: TokenStream, b: TokenStream) -> TokenStream {
-    :lists::append(a, b)
+    erl_lists::append(a, b)
 }
 
 // =============================================================================
