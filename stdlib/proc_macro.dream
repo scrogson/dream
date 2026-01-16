@@ -120,50 +120,50 @@ pub fn concat(a: TokenStream, b: TokenStream) -> TokenStream {
 
 /// Create an identifier token.
 pub fn ident(name: String) -> TokenTree {
-    Ident(name)
+    TokenTree::Ident(name)
 }
 
 /// Create a type identifier token.
 pub fn type_ident(name: String) -> TokenTree {
-    TypeIdent(name)
+    TokenTree::TypeIdent(name)
 }
 
 /// Create an integer token.
 pub fn int(value: int) -> TokenTree {
-    Int(value)
+    TokenTree::Int(value)
 }
 
 /// Create a string token.
 pub fn string(value: String) -> TokenTree {
-    String(value)
+    TokenTree::String(value)
 }
 
 /// Create an atom token.
 pub fn atom(name: String) -> TokenTree {
-    Atom(name)
+    TokenTree::Atom(name)
 }
 
 /// Create a punctuation token.
 pub fn punct(chars: String) -> TokenTree {
-    Punct(chars)
+    TokenTree::Punct(chars)
 }
 
 /// Create a keyword token.
 pub fn keyword(name: String) -> TokenTree {
-    Keyword(name)
+    TokenTree::Keyword(name)
 }
 
 /// Create a parenthesized group.
 pub fn paren_group(tokens: TokenStream) -> TokenTree {
-    Group(Delimiter::Paren, tokens)
+    TokenTree::Group(Delimiter::Paren, tokens)
 }
 
 /// Create a bracketed group.
 pub fn bracket_group(tokens: TokenStream) -> TokenTree {
-    Group(Delimiter::Bracket, tokens)
+    TokenTree::Group(Delimiter::Bracket, tokens)
 }
 
 /// Create a braced group.
 pub fn brace_group(tokens: TokenStream) -> TokenTree {
-    Group(Delimiter::Brace, tokens)
+    TokenTree::Group(Delimiter::Brace, tokens)
 }

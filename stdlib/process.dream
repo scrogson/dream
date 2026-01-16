@@ -27,12 +27,14 @@ pub fn send<T>(p: Pid, msg: T) -> T {
 }
 
 /// Register a process with a name.
-pub fn register(name: Atom, p: Pid) -> Atom {
+/// Returns true on success.
+pub fn register(name: Atom, p: Pid) -> bool {
     erl::register(name, p)
 }
 
 /// Unregister a process name.
-pub fn unregister(name: Atom) -> Atom {
+/// Returns true on success.
+pub fn unregister(name: Atom) -> bool {
     erl::unregister(name)
 }
 
@@ -47,12 +49,14 @@ pub fn registered() -> [Atom] {
 }
 
 /// Link to another process.
-pub fn link(p: Pid) -> Atom {
+/// Returns true on success.
+pub fn link(p: Pid) -> bool {
     erl::link(p)
 }
 
 /// Unlink from another process.
-pub fn unlink(p: Pid) -> Atom {
+/// Returns true on success.
+pub fn unlink(p: Pid) -> bool {
     erl::unlink(p)
 }
 
@@ -62,7 +66,8 @@ pub fn exit(reason: Atom) -> Atom {
 }
 
 /// Exit another process with a reason.
-pub fn exit_pid(p: Pid, reason: Atom) -> Atom {
+/// Returns true on success.
+pub fn exit_pid(p: Pid, reason: Atom) -> bool {
     erl::exit(p, reason)
 }
 

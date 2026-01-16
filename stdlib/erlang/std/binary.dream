@@ -55,11 +55,11 @@ extern mod binary {
     /// Extract part with separate position and length.
     fn part(subject: Binary, pos: int, len: int) -> Binary;
 
-    /// Split Binary at pattern.
-    fn split(subject: Binary, pattern: Any) -> [Binary];
+    /// Split Binary/String at pattern.
+    fn split(subject: String, pattern: Any) -> [String];
 
-    /// Split Binary with options.
-    fn split(subject: Binary, pattern: Any, opts: [Any]) -> [Binary];
+    /// Split Binary/String with options.
+    fn split(subject: String, pattern: Any, opts: [Any]) -> [String];
 
     /// Get longest common prefix of binaries.
     fn longest_common_prefix(binaries: [Binary]) -> int;

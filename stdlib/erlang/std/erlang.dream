@@ -122,11 +122,11 @@ extern mod erlang {
     /// Convert atom to list (charlist).
     fn atom_to_list(atom: Atom) -> Any;
 
-    /// Convert atom to binary.
-    fn atom_to_binary(atom: Atom) -> Binary;
+    /// Convert atom to string.
+    fn atom_to_binary(atom: Atom) -> String;
 
-    /// Convert atom to binary with encoding.
-    fn atom_to_binary(atom: Atom, encoding: Atom) -> Binary;
+    /// Convert atom to string with encoding.
+    fn atom_to_binary(atom: Atom, encoding: Atom) -> String;
 
     /// Convert list to atom.
     fn list_to_atom(list: Any) -> Atom;
@@ -134,17 +134,17 @@ extern mod erlang {
     /// Convert list to existing atom (safe).
     fn list_to_existing_atom(list: Any) -> Atom;
 
-    /// Convert binary to atom.
-    fn binary_to_atom(binary: Binary) -> Atom;
+    /// Convert binary/string to atom.
+    fn binary_to_atom(binary: String) -> Atom;
 
-    /// Convert binary to existing atom (safe).
-    fn binary_to_existing_atom(binary: Binary) -> Atom;
+    /// Convert binary/string to existing atom (safe).
+    fn binary_to_existing_atom(binary: String) -> Atom;
 
-    /// Convert list to binary.
-    fn list_to_binary(list: Any) -> Binary;
+    /// Convert list to binary/string.
+    fn list_to_binary(list: Any) -> String;
 
-    /// Convert binary to list.
-    fn binary_to_list(binary: Binary) -> Any;
+    /// Convert binary/string to list.
+    fn binary_to_list(binary: String) -> Any;
 
     /// Convert integer to list.
     fn integer_to_list(n: int) -> Any;
@@ -152,11 +152,11 @@ extern mod erlang {
     /// Convert integer to list with base.
     fn integer_to_list(n: int, base: int) -> Any;
 
-    /// Convert integer to binary.
-    fn integer_to_binary(n: int) -> Binary;
+    /// Convert integer to string.
+    fn integer_to_binary(n: int) -> String;
 
-    /// Convert integer to binary with base.
-    fn integer_to_binary(n: int, base: int) -> Binary;
+    /// Convert integer to string with base.
+    fn integer_to_binary(n: int, base: int) -> String;
 
     /// Convert list to integer.
     fn list_to_integer(list: Any) -> int;
@@ -164,11 +164,11 @@ extern mod erlang {
     /// Convert list to integer with base.
     fn list_to_integer(list: Any, base: int) -> int;
 
-    /// Convert binary to integer.
-    fn binary_to_integer(binary: Binary) -> int;
+    /// Convert binary/string to integer.
+    fn binary_to_integer(binary: String) -> int;
 
-    /// Convert binary to integer with base.
-    fn binary_to_integer(binary: Binary, base: int) -> int;
+    /// Convert binary/string to integer with base.
+    fn binary_to_integer(binary: String, base: int) -> int;
 
     /// Convert float to list.
     fn float_to_list(f: float) -> Any;
@@ -312,8 +312,8 @@ extern mod erlang {
     /// Get bit size of binary.
     fn bit_size(binary: Binary) -> int;
 
-    /// Create binary from list of bytes.
-    fn iolist_to_binary(iolist: Any) -> Binary;
+    /// Create binary/string from iolist.
+    fn iolist_to_binary(iolist: Any) -> String;
 
     /// Get byte size of iolist.
     fn iolist_size(iolist: Any) -> int;
@@ -354,6 +354,11 @@ extern mod erlang {
 
     /// Calculate hash with range.
     fn phash2(term: Any, range: int) -> int;
+
+    // ============== Module Info ==============
+
+    /// Check if a function is exported by a module.
+    fn function_exported(module: Atom, function: Atom, arity: int) -> bool;
 
     // ============== Misc ==============
 
@@ -399,8 +404,8 @@ extern mod erlang {
     /// Halt the system.
     fn halt() -> Any;
 
-    /// Halt with status code.
-    fn halt(status: int) -> Any;
+    /// Halt with status code or message.
+    fn halt(status: Any) -> Any;
 
     /// Halt with status and options.
     fn halt(status: Any, opts: [Any]) -> Any;
