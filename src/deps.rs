@@ -66,7 +66,7 @@ impl DepsManager {
         self.project_root.join("_build").join("dev").join("lib")
     }
 
-    /// Fetch all dependencies.
+    /// Fetch all dependencies including transitive deps.
     pub async fn fetch_all(&self) -> DepsResult<()> {
         if self.config.dependencies.is_empty() {
             println!("No dependencies to fetch.");
@@ -81,27 +81,51 @@ impl DepsManager {
 
         println!("Fetching {} dependencies...", self.config.dependencies.len());
 
-        // Fetch all hex dependencies concurrently
-        let hex_deps: Vec<_> = self
+        // Collect initial hex dependencies to fetch
+        let mut pending_hex_deps: Vec<(String, String)> = self
             .config
             .dependencies
             .iter()
             .filter(|(_, dep)| dep.version().is_some() && !dep.is_git() && !dep.is_path())
+            .map(|(name, dep)| (name.clone(), dep.version().unwrap().to_string()))
             .collect();
 
-        let fetch_futures: Vec<_> = hex_deps
-            .iter()
-            .map(|(name, dep)| self.fetch_hex_package(name, dep.version().unwrap()))
-            .collect();
+        // Track which packages we've already fetched or queued
+        let mut fetched: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-        let results = join_all(fetch_futures).await;
+        // Fetch hex packages and their transitive dependencies
+        while !pending_hex_deps.is_empty() {
+            let fetch_futures: Vec<_> = pending_hex_deps
+                .iter()
+                .map(|(name, version)| self.fetch_hex_package(name, version))
+                .collect();
 
-        // Check for errors
-        for (i, result) in results.into_iter().enumerate() {
-            if let Err(e) = result {
-                let (name, _) = hex_deps[i];
-                eprintln!("  Failed to fetch {}: {}", name, e);
+            let results = join_all(fetch_futures).await;
+
+            // Collect all new requirements from fetched packages
+            let mut new_requirements: Vec<(String, String)> = Vec::new();
+
+            for (i, result) in results.into_iter().enumerate() {
+                let (name, _) = &pending_hex_deps[i];
+                fetched.insert(name.clone());
+
+                match result {
+                    Ok(requirements) => {
+                        // Add requirements we haven't seen yet
+                        for (req_name, req_version) in requirements {
+                            if !fetched.contains(&req_name) && !new_requirements.iter().any(|(n, _)| n == &req_name) {
+                                new_requirements.push((req_name, req_version));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  Failed to fetch {}: {}", name, e);
+                    }
+                }
             }
+
+            // Queue new requirements for next iteration
+            pending_hex_deps = new_requirements;
         }
 
         // Handle git dependencies sequentially (git clone isn't easily parallelized)
@@ -122,15 +146,15 @@ impl DepsManager {
         Ok(())
     }
 
-    /// Fetch a package from hex.pm.
-    async fn fetch_hex_package(&self, name: &str, version: &str) -> DepsResult<()> {
+    /// Fetch a package from hex.pm and return its requirements.
+    async fn fetch_hex_package(&self, name: &str, version: &str) -> DepsResult<Vec<(String, String)>> {
         let deps_dir = self.deps_dir();
         let pkg_dir = deps_dir.join(name);
 
-        // Skip if already fetched
+        // Skip if already fetched (requirements already processed)
         if pkg_dir.exists() {
             println!("  {} {} (cached)", name, version);
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         println!("  Fetching {} {}...", name, version);
@@ -157,15 +181,15 @@ impl DepsManager {
             .await
             .map_err(|e| DepsError::new(format!("Failed to read response for {}: {}", name, e)))?;
 
-        // Extract the package
-        self.extract_hex_tarball(name, &tarball)?;
+        // Extract the package and get its requirements
+        let requirements = self.extract_hex_tarball(name, &tarball)?;
 
         println!("  {} {} fetched", name, version);
-        Ok(())
+        Ok(requirements)
     }
 
-    /// Extract a hex package tarball.
-    fn extract_hex_tarball(&self, name: &str, tarball: &[u8]) -> DepsResult<()> {
+    /// Extract a hex package tarball and return its requirements.
+    fn extract_hex_tarball(&self, name: &str, tarball: &[u8]) -> DepsResult<Vec<(String, String)>> {
         let deps_dir = self.deps_dir();
         let pkg_dir = deps_dir.join(name);
 
@@ -179,6 +203,7 @@ impl DepsManager {
         let mut archive = Archive::new(tarball);
 
         let mut contents_tar_gz: Option<Vec<u8>> = None;
+        let mut metadata_config: Option<String> = None;
 
         for entry in archive.entries().map_err(|e| {
             DepsError::new(format!("Failed to read tarball for {}: {}", name, e))
@@ -191,12 +216,19 @@ impl DepsManager {
                 DepsError::new(format!("Failed to get entry path for {}: {}", name, e))
             })?;
 
-            if path.to_string_lossy() == "contents.tar.gz" {
+            let path_str = path.to_string_lossy();
+            if path_str == "contents.tar.gz" {
                 let mut data = Vec::new();
                 entry.read_to_end(&mut data).map_err(|e| {
                     DepsError::new(format!("Failed to read contents.tar.gz for {}: {}", name, e))
                 })?;
                 contents_tar_gz = Some(data);
+            } else if path_str == "metadata.config" {
+                let mut data = String::new();
+                entry.read_to_string(&mut data).map_err(|e| {
+                    DepsError::new(format!("Failed to read metadata.config for {}: {}", name, e))
+                })?;
+                metadata_config = Some(data);
             }
         }
 
@@ -218,7 +250,102 @@ impl DepsManager {
         // Clean up temp directory
         let _ = fs::remove_dir_all(&temp_dir);
 
-        Ok(())
+        // Parse requirements from metadata.config
+        let requirements = if let Some(metadata) = metadata_config {
+            self.parse_hex_requirements(&metadata)
+        } else {
+            Vec::new()
+        };
+
+        Ok(requirements)
+    }
+
+    /// Parse requirements from hex metadata.config content.
+    /// Format: {<<"requirements">>, [{<<"name">>, [{<<"app">>,_}, {<<"optional">>,_}, {<<"requirement">>,<<"version">>}]}, ...]}.
+    fn parse_hex_requirements(&self, metadata: &str) -> Vec<(String, String)> {
+        let mut requirements = Vec::new();
+
+        // Find the requirements section: {<<"requirements">>, [...]}.
+        let req_marker = "{<<\"requirements\">>,";
+        if let Some(req_start) = metadata.find(req_marker) {
+            let after_marker = req_start + req_marker.len();
+            let rest = &metadata[after_marker..];
+
+            // Find the opening bracket of the requirements list
+            if let Some(list_start) = rest.find('[') {
+                let list_content = &rest[list_start + 1..];
+
+                // Parse each requirement entry: {<<"pkgname">>, [...]}
+                // We need to find top-level {<<"...">> patterns (not nested ones)
+                let mut pos = 0;
+                let mut depth = 0;
+
+                while pos < list_content.len() {
+                    let ch = list_content.as_bytes()[pos];
+
+                    if ch == b'[' {
+                        depth += 1;
+                        pos += 1;
+                    } else if ch == b']' {
+                        if depth == 0 {
+                            // End of requirements list
+                            break;
+                        }
+                        depth -= 1;
+                        pos += 1;
+                    } else if depth == 0 && list_content[pos..].starts_with("{<<\"") {
+                        // Top-level package entry
+                        let name_start = pos + 4;
+                        if let Some(name_end_rel) = list_content[name_start..].find("\">>") {
+                            let pkg_name = &list_content[name_start..name_start + name_end_rel];
+
+                            // Now find {<<"requirement">>,<<"version">>} within this entry's property list
+                            // First, find the property list start
+                            let props_search_start = name_start + name_end_rel;
+                            if let Some(props_start) = list_content[props_search_start..].find('[') {
+                                let props_abs_start = props_search_start + props_start;
+                                // Find matching ]
+                                let mut props_depth = 1;
+                                let mut props_end = props_abs_start + 1;
+                                while props_end < list_content.len() && props_depth > 0 {
+                                    if list_content.as_bytes()[props_end] == b'[' {
+                                        props_depth += 1;
+                                    } else if list_content.as_bytes()[props_end] == b']' {
+                                        props_depth -= 1;
+                                    }
+                                    props_end += 1;
+                                }
+
+                                let props_content = &list_content[props_abs_start..props_end];
+
+                                // Find {<<"requirement">>,<<"version">>} in props
+                                if let Some(req_key_pos) = props_content.find("{<<\"requirement\">>") {
+                                    let after_req_key = req_key_pos + "{<<\"requirement\">>".len();
+                                    // Skip comma and find <<"version">>
+                                    if let Some(ver_start) = props_content[after_req_key..].find("<<\"") {
+                                        let ver_content_start = after_req_key + ver_start + 3;
+                                        if let Some(ver_end) = props_content[ver_content_start..].find("\">>") {
+                                            let version = &props_content[ver_content_start..ver_content_start + ver_end];
+                                            requirements.push((pkg_name.to_string(), version.to_string()));
+                                        }
+                                    }
+                                }
+
+                                pos = props_end;
+                            } else {
+                                pos += 1;
+                            }
+                        } else {
+                            pos += 1;
+                        }
+                    } else {
+                        pos += 1;
+                    }
+                }
+            }
+        }
+
+        requirements
     }
 
     /// Fetch a package from a git repository.
