@@ -1,3 +1,0 @@
-// Serde derive macros
-
-pub mod derive;
