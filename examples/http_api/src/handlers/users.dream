@@ -4,7 +4,7 @@
 
 use crate::models::user::User;
 
-pub fn init(req: Any, state: Any) -> (Atom, Any, Any) {
+pub fn init(req: Map, state: Any) -> (Atom, Map, Any) {
     let data = [(1, "Alice"), (2, "Bob"), (3, "Charlie")];
 
     let headers = {"content-type": "application/json"};

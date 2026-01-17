@@ -1248,8 +1248,9 @@ fn parse_single_spec(spec: &str, registry: &TypeRegistry) -> Option<ErlangSpec> 
 
     // Find -> to split params from return type
     let arrow_pos = main_spec.rfind("->")?;
-    let params_str = &main_spec[1..arrow_pos].trim();
-    let params_str = params_str.trim_end_matches(')');
+    let params_str = main_spec[1..arrow_pos].trim();
+    // Strip only the outermost closing paren (not all of them)
+    let params_str = params_str.strip_suffix(')').unwrap_or(params_str);
     let return_str = main_spec[arrow_pos + 2..].trim();
 
     // Parse parameters with names
@@ -1702,8 +1703,13 @@ fn parse_type(s: &str) -> ErlangType {
         return parse_type(s[pos + 2..].trim());
     }
 
-    // Skip problematic types
-    if s.contains('?') || s.starts_with('#') {
+    // Handle Erlang map type: #{key := type, ...} or #{key => type, ...}
+    if s.starts_with("#{") && s.ends_with('}') {
+        return ErlangType::Named("map".to_string());
+    }
+
+    // Skip problematic types (but not maps which start with #{)
+    if s.contains('?') || (s.starts_with('#') && !s.starts_with("#{")) {
         return ErlangType::Any;
     }
 
@@ -2786,5 +2792,108 @@ mod tests {
             "Expected commented extern type declaration, got:\n{}", output);
         assert!(output.contains("//     message: String,"),
             "Expected message field, got:\n{}", output);
+    }
+}
+
+#[cfg(test)]
+mod test_map_parsing {
+    use super::*;
+    
+    #[test]
+    fn test_parse_erlang_map_type() {
+        let ty = parse_type("#{method := binary()}");
+        println!("Parsed type: {:?}", ty);
+        assert!(matches!(ty, ErlangType::Named(ref n) if n == "map"), 
+            "Expected Named(map), got {:?}", ty);
+    }
+    
+    #[test]
+    fn test_type_resolution_for_req() {
+        // Parse a type definition like -type req() :: #{...}
+        let td = parse_single_type_def("-type req() :: #{method := binary()}.").unwrap();
+        println!("Type def: {:?}", td);
+        assert_eq!(td.name, "req");
+        assert!(matches!(td.definition, ErlangType::Named(ref n) if n == "map"),
+            "Expected definition to be Named(map), got {:?}", td.definition);
+        
+        // Register and resolve
+        let mut registry = TypeRegistry::new();
+        registry.register(td);
+        
+        let ty = parse_type("req()");
+        println!("Before resolve: {:?}", ty);
+        let resolved = resolve_type_refs(&ty, &registry);
+        println!("After resolve: {:?}", resolved);
+        assert!(matches!(resolved, ErlangType::Named(ref n) if n == "map"),
+            "Expected resolved to be Named(map), got {:?}", resolved);
+    }
+}
+
+#[cfg(test)]
+mod test_multiline {
+    use super::*;
+    
+    #[test]
+    fn test_multiline_map_type_def() {
+        let source = r#"
+-type req() :: #{
+    method := binary(),
+    path := binary()
+}.
+
+-spec method(req()) -> binary().
+method(Req) -> maps:get(method, Req).
+"#;
+        
+        let type_defs = parse_type_defs(source);
+        println!("Type defs: {:?}", type_defs);
+        assert!(!type_defs.is_empty(), "Should have parsed type defs");
+        
+        let req_def = type_defs.iter().find(|td| td.name == "req");
+        println!("req type def: {:?}", req_def);
+        assert!(req_def.is_some(), "Should have found req type");
+        
+        let req_def = req_def.unwrap();
+        assert!(matches!(req_def.definition, ErlangType::Named(ref n) if n == "map"),
+            "Expected req() to be a map, got {:?}", req_def.definition);
+    }
+}
+
+#[cfg(test)]
+mod test_full_flow {
+    use super::*;
+    
+    #[test]
+    fn test_full_spec_resolution() {
+        let source = r#"
+-type req() :: #{
+    method := binary(),
+    path := binary()
+}.
+
+-spec method(req()) -> binary().
+method(Req) -> maps:get(method, Req).
+"#;
+        
+        let type_defs = parse_type_defs(source);
+        let mut registry = TypeRegistry::new();
+        for td in &type_defs {
+            registry.register(td.clone());
+        }
+        
+        let specs = parse_specs(source, &registry);
+        println!("Specs: {:?}", specs);
+        
+        let method_spec = specs.iter().find(|s| s.name == "method");
+        assert!(method_spec.is_some(), "Should have found method spec");
+        
+        let method_spec = method_spec.unwrap();
+        println!("Method spec params: {:?}", method_spec.params);
+        
+        // The param type should be resolved to map, then to Map
+        let param_type = &method_spec.params[0].1;
+        let dream_type = erlang_type_to_dream(param_type);
+        println!("Dream type: {}", dream_type);
+        assert_eq!(dream_type, "Map", "Expected Map, got {}", dream_type);
     }
 }

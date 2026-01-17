@@ -1,6 +1,6 @@
 // Handler for 404 Not Found
 
-pub fn init(req: Any, state: Any) -> (Atom, Any, Any) {
+pub fn init(req: Map, state: Any) -> (Atom, Map, Any) {
     let path = :cowboy_req::path(req);
     let body = :io_lib::format("Not Found: ~s", [path]);
     let headers = {"content-type": "text/plain"};

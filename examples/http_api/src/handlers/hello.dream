@@ -1,6 +1,6 @@
 // Handler for GET /api/hello
 
-pub fn init(req: Any, state: Any) -> (Atom, Any, Any) {
+pub fn init(req: Map, state: Any) -> (Atom, Map, Any) {
     let headers = {
         "content-type": "application/json"
     };
