@@ -2909,9 +2909,17 @@ impl CoreErlangEmitter {
                                     self.emit_args(args)?;
                                     self.emit(")");
                                 } else {
+                                    // Check if this is an external crate call (e.g., serde_json::to_string_value)
+                                    // If so, resolve to the crate's lib module: dream::crate::crate
+                                    let module_name = if self.module_context.dependencies.contains(&segments[0]) {
+                                        // External crate - lib module is at crate::crate
+                                        format!("dream::{}::{}", segments[0], segments[0])
+                                    } else {
+                                        Self::beam_module_name(&segments[0].to_lowercase())
+                                    };
                                     self.emit(&format!(
                                         "call '{}':'{}'",
-                                        Self::beam_module_name(&segments[0].to_lowercase()),
+                                        module_name,
                                         segments[1]
                                     ));
                                     self.emit("(");

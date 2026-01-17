@@ -146,6 +146,9 @@ pub struct ModuleContext {
     pub local_modules: std::collections::HashSet<String>,
     /// If true, don't add the dream:: prefix to module names (for REPL modules)
     pub skip_stdlib_prefix: bool,
+    /// Set of external dependency names (e.g., "serde_json", "cowboy")
+    /// Used to resolve crate::function calls to crate::crate::function
+    pub dependencies: std::collections::HashSet<String>,
 }
 
 impl ModuleContext {
@@ -159,6 +162,7 @@ impl ModuleContext {
             current_path: vec![],
             local_modules: std::collections::HashSet::new(),
             skip_stdlib_prefix: false,
+            dependencies: std::collections::HashSet::new(),
         }
     }
 
@@ -182,12 +186,19 @@ impl ModuleContext {
             current_path,
             local_modules: std::collections::HashSet::new(),
             skip_stdlib_prefix: false,
+            dependencies: std::collections::HashSet::new(),
         }
     }
 
     /// Set the local modules for this context.
     pub fn with_local_modules(mut self, modules: std::collections::HashSet<String>) -> Self {
         self.local_modules = modules;
+        self
+    }
+
+    /// Set the external dependencies for this context.
+    pub fn with_dependencies(mut self, deps: std::collections::HashSet<String>) -> Self {
+        self.dependencies = deps;
         self
     }
 

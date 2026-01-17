@@ -328,6 +328,9 @@ fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>, features:
     let deps_manager = DepsManager::new(project_root.clone(), config.clone());
     let dep_ebin_paths = deps_manager.dep_ebin_paths();
 
+    // Get dependency names for module resolution
+    let dependency_names: std::collections::HashSet<String> = config.dependencies.keys().cloned().collect();
+
     // Compile all loaded modules with package name for module resolution
     let result = compile_modules_with_options(
         modules,
@@ -336,6 +339,7 @@ fn cmd_build(file: Option<&Path>, target: &str, output: Option<&Path>, features:
         Some(&config.package.name),
         &compile_options,
         &dep_ebin_paths,
+        &dependency_names,
     );
 
     // Generate .app file if compilation succeeded
@@ -402,6 +406,9 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
             let deps_manager = DepsManager::new(project_root.clone(), config.clone());
             let dep_ebin_paths = deps_manager.dep_ebin_paths();
 
+            // Get dependency names for module resolution
+            let dependency_names: std::collections::HashSet<String> = config.dependencies.keys().cloned().collect();
+
             let result = compile_modules_with_options(
                 modules,
                 &build_dir,
@@ -409,6 +416,7 @@ fn build_standalone_file(source_file: &Path, target: &str, output: Option<&Path>
                 Some(&config.package.name),
                 &compile_options,
                 &dep_ebin_paths,
+                &dependency_names,
             );
 
             // Generate .app file if compilation succeeded
@@ -471,7 +479,7 @@ fn compile_and_emit(entry_file: &Path, build_dir: &Path, target: &str, features:
     let compile_options = CompileOptions::with_features(resolved_features);
 
     // Standalone files don't have a package context or dependencies
-    compile_modules_with_options(loader.into_modules(), build_dir, target, None, &compile_options, &[])
+    compile_modules_with_options(loader.into_modules(), build_dir, target, None, &compile_options, &[], &std::collections::HashSet::new())
 }
 
 /// Compile modules to Core Erlang and optionally BEAM.
@@ -494,6 +502,7 @@ fn compile_modules_with_options(
     package_name: Option<&str>,
     compile_options: &CompileOptions,
     dep_ebin_paths: &[PathBuf],
+    dependencies: &std::collections::HashSet<String>,
 ) -> ExitCode {
     // Use stdlib generics registry if available
     let stdlib_registry = load_stdlib_generics();
@@ -505,6 +514,7 @@ fn compile_modules_with_options(
         package_name,
         compile_options,
         dep_ebin_paths,
+        dependencies,
     )
 }
 
@@ -698,6 +708,7 @@ fn compile_modules_with_registry(
                     &extern_module_names,
                     package_name,
                     &local_module_names,
+                    &std::collections::HashSet::new(),
                 ) {
                     Ok(_) => {
                         // Get the BEAM module name
@@ -747,6 +758,7 @@ fn compile_modules_with_registry(
     let mut core_files = Vec::new();
     for module in &modules {
         // Create module-specific context for path resolution (crate::/super::/self::)
+        // Note: No external dependencies in stdlib compilation
         let module_context = match package_name {
             Some(pkg) => ModuleContext::for_module(pkg, &module.name)
                 .with_local_modules(local_module_names.clone()),
@@ -862,6 +874,7 @@ fn compile_modules_with_registry_and_options(
     package_name: Option<&str>,
     compile_options: &CompileOptions,
     dep_ebin_paths: &[PathBuf],
+    dependencies: &std::collections::HashSet<String>,
 ) -> ExitCode {
     if modules.is_empty() {
         eprintln!("No modules to compile");
@@ -1044,6 +1057,7 @@ fn compile_modules_with_registry_and_options(
                     &extern_module_names,
                     package_name,
                     &local_module_names,
+                    dependencies,
                 ) {
                     Ok(_) => {
                         // Get the BEAM module name
@@ -1112,7 +1126,8 @@ fn compile_modules_with_registry_and_options(
         // Create module-specific context for path resolution (crate::/super::/self::)
         let module_context = match package_name {
             Some(pkg) => ModuleContext::for_module(pkg, &module.name)
-                .with_local_modules(local_module_names.clone()),
+                .with_local_modules(local_module_names.clone())
+                .with_dependencies(dependencies.clone()),
             None => ModuleContext::default(),
         };
 
@@ -2164,11 +2179,13 @@ fn compile_module_to_beam(
     extern_module_names: &std::collections::HashMap<String, String>,
     package_name: Option<&str>,
     local_module_names: &std::collections::HashSet<String>,
+    dependencies: &std::collections::HashSet<String>,
 ) -> Result<PathBuf, String> {
     // Create module-specific context for path resolution
     let module_context = match package_name {
         Some(pkg) => ModuleContext::for_module(pkg, &module.name)
-            .with_local_modules(local_module_names.clone()),
+            .with_local_modules(local_module_names.clone())
+            .with_dependencies(dependencies.clone()),
         None => ModuleContext::default(),
     };
 
@@ -2317,6 +2334,9 @@ fn cmd_test(filter: Option<&str>, features: &[String]) -> ExitCode {
     let deps_manager = DepsManager::new(project_root.clone(), config.clone());
     let dep_ebin_paths = deps_manager.dep_ebin_paths();
 
+    // Get dependency names for module resolution
+    let dependency_names: std::collections::HashSet<String> = config.dependencies.keys().cloned().collect();
+
     // Compile all modules in test mode
     let result = compile_modules_with_options(
         modules,
@@ -2325,6 +2345,7 @@ fn cmd_test(filter: Option<&str>, features: &[String]) -> ExitCode {
         Some(&config.package.name),
         &compile_options,
         &dep_ebin_paths,
+        &dependency_names,
     );
 
     if result != ExitCode::SUCCESS {
