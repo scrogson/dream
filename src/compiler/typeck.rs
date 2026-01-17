@@ -6,11 +6,23 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::compiler::ast::{
-    self, AttributeArgs, BinOp, Block, EnumPatternFields, EnumVariantArgs, Expr, ExternItem,
-    ExternMod, ForClause, Function, ImplBlock, Item, MatchArm, Module, PathPrefix, Pattern, Stmt,
-    StringPart, TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
+    self, Attribute, AttributeArgs, BinOp, Block, EnumPatternFields, EnumVariantArgs, Expr,
+    ExternItem, ExternMod, ForClause, Function, ImplBlock, Item, MatchArm, Module, PathPrefix,
+    Pattern, Stmt, StringPart, TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
 };
 use crate::compiler::error::{TypeError, TypeResult};
+
+/// Extract Erlang record name from #[record = "name"] attribute.
+fn get_record_name(attrs: &[Attribute]) -> Option<String> {
+    for attr in attrs {
+        if attr.name == "record" {
+            if let AttributeArgs::Eq(name) = &attr.args {
+                return Some(name.clone());
+            }
+        }
+    }
+    None
+}
 
 /// Internal type representation for type checking.
 /// This is separate from ast::Type to allow for inference variables.
@@ -243,6 +255,8 @@ pub struct StructInfo {
     pub name: String,
     pub type_params: Vec<TypeParam>,
     pub fields: Vec<(String, Ty)>,
+    /// Erlang record name if this struct is marked with #[record = "name"]
+    pub record_name: Option<String>,
 }
 
 /// The kind of an enum variant (type-checked version).
@@ -1250,12 +1264,15 @@ impl TypeChecker {
                         .iter()
                         .map(|(name, ty)| (name.clone(), self.ast_type_to_ty(ty)))
                         .collect();
+                    // Check for #[record = "name"] attribute
+                    let record_name = get_record_name(&s.attrs);
                     self.env.structs.insert(
                         s.name.clone(),
                         StructInfo {
                             name: s.name.clone(),
                             type_params: s.type_params.clone(),
                             fields,
+                            record_name,
                         },
                     );
                 }
@@ -3975,6 +3992,8 @@ pub struct TypeCheckResult {
     /// Extern function name mappings (module, dream_name, arity) -> beam_name
     /// Used for #[name = "encode!"] attribute support on functions
     pub extern_function_names: HashMap<(String, String, usize), String>,
+    /// Struct metadata including record names (struct_name -> StructInfo)
+    pub struct_info: HashMap<String, StructInfo>,
 }
 
 /// Type check multiple modules and return results with extern module name mappings.
@@ -4038,6 +4057,7 @@ pub fn check_modules_with_metadata(modules: &[Module]) -> TypeCheckResult {
         modules: results,
         extern_module_names: checker.env.extern_module_names.clone(),
         extern_function_names: checker.env.extern_function_names.clone(),
+        struct_info: checker.env.structs.clone(),
     }
 }
 

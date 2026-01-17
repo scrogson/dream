@@ -1,0 +1,28 @@
+// Test Erlang record support
+// Records compile to tuples instead of maps
+
+#[record = "point"]
+pub struct Point {
+    x: int,
+    y: int,
+}
+
+/// Create a point and access its fields
+pub fn test_create_and_access() -> int {
+    let p = Point { x: 10, y: 20 };
+    p.x + p.y  // Should return 30
+}
+
+/// Test pattern matching on records
+pub fn test_pattern_match(p: Point) -> int {
+    match p {
+        Point { x: 0, y } => y,
+        Point { x, y: 0 } => x,
+        Point { x, y } => x + y,
+    }
+}
+
+/// Test that records work with partial field init
+pub fn test_partial_init() -> Point {
+    Point { x: 5, y: 10 }
+}

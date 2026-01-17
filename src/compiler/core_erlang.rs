@@ -52,6 +52,7 @@ use crate::compiler::ast::{
     Module, ModuleContext, ModulePath, PathPrefix, Pattern, Stmt, StringPart, TraitDef, TraitImpl,
     Type, UnaryOp, UseDecl, UseTree, VariantKind,
 };
+use crate::compiler::typeck::StructInfo;
 
 /// Core Erlang emitter error.
 #[derive(Debug, Clone)]
@@ -142,6 +143,10 @@ pub struct CoreErlangEmitter {
     /// Maps (module, dream_name, arity) -> BEAM function name
     /// Used for #[name = "encode!"] attribute support on functions
     extern_function_names: HashMap<(String, String, usize), String>,
+    /// Struct metadata including record names (struct_name -> StructInfo)
+    struct_info: HashMap<String, StructInfo>,
+    /// Variable type tracking for record field access (var_name -> struct_type_name)
+    variable_types: HashMap<String, String>,
 }
 
 impl CoreErlangEmitter {
@@ -171,6 +176,8 @@ impl CoreErlangEmitter {
             compile_options: CompileOptions::new(),
             extern_module_names: HashMap::new(),
             extern_function_names: HashMap::new(),
+            struct_info: HashMap::new(),
+            variable_types: HashMap::new(),
         }
     }
 
@@ -237,6 +244,12 @@ impl CoreErlangEmitter {
         mappings: HashMap<(String, String, usize), String>,
     ) {
         self.extern_function_names = mappings;
+    }
+
+    /// Set the struct info mappings (struct_name -> StructInfo).
+    /// Used for Erlang record compilation support.
+    pub fn set_struct_info(&mut self, info: HashMap<String, StructInfo>) {
+        self.struct_info = info;
     }
 
     /// Register this module's generic functions in the shared registry.
@@ -2176,6 +2189,11 @@ impl CoreErlangEmitter {
                 // Add bound variables to scope
                 self.collect_pattern_vars(pattern);
 
+                // Track variable type for record field access
+                if let (Pattern::Ident(var_name), Expr::StructInit { name: struct_name, .. }) = (pattern, value) {
+                    self.variable_types.insert(var_name.clone(), struct_name.clone());
+                }
+
                 // If there's an else block, always use case with two arms
                 if let Some(else_blk) = else_block {
                     self.emit("case ");
@@ -3248,40 +3266,70 @@ impl CoreErlangEmitter {
             }
 
             Expr::StructInit { name, fields, base } => {
-                // Structs become maps in Erlang with a __struct__ tag
-                // The tag stores the actual BEAM module name for method dispatch
-                let (beam_module, type_name) = if let Some((module, original_name)) = self.imports.get(name) {
-                    // Imported struct - use the imported module's BEAM name
-                    (Self::beam_module_name(&module.to_lowercase()), original_name.clone())
-                } else {
-                    // Local struct - use current module's BEAM name (already has correct prefix)
-                    (self.module_name.clone(), name.clone())
-                };
+                // Check if this struct is marked as an Erlang record
+                let record_name = self.struct_info.get(name).and_then(|info| info.record_name.clone());
 
-                if let Some(base_expr) = base {
-                    // Struct update syntax: maps:merge(base, #{updated_fields})
-                    self.emit("call 'maps':'merge'(");
-                    self.emit_expr(base_expr)?;
-                    self.emit(", ~{");
-                    for (i, (field_name, value)) in fields.iter().enumerate() {
-                        if i > 0 {
-                            self.emit(", ");
-                        }
-                        self.emit(&format!("'{}' => ", field_name));
-                        self.emit_expr(value)?;
+                if let Some(record_tag) = record_name {
+                    // Erlang record: emit as tuple {'record_name', field1, field2, ...}
+                    // Struct update syntax not supported for records
+                    if base.is_some() {
+                        return Err(CoreErlangError::new(format!(
+                            "Struct update syntax not supported for record types ({})",
+                            name
+                        )));
                     }
-                    self.emit("}~)");
-                } else {
-                    // Full struct init
-                    self.emit("~{");
-                    // Add __struct__ tag with BEAM module name for method dispatch
-                    self.emit(&format!("'__struct__' => '{}::{}'", beam_module, type_name));
-                    for (field_name, value) in fields.iter() {
+
+                    // Get field order from struct_info (clone to avoid borrow issues)
+                    let struct_fields: Vec<_> = self.struct_info.get(name)
+                        .map(|info| info.fields.iter().map(|(n, _)| n.clone()).collect())
+                        .unwrap_or_default();
+                    self.emit(&format!("{{'{}'", record_tag));
+                    for field_name in &struct_fields {
                         self.emit(", ");
-                        self.emit(&format!("'{}' => ", field_name));
-                        self.emit_expr(value)?;
+                        // Find the value for this field in the initialization
+                        if let Some((_, value)) = fields.iter().find(|(n, _)| n == field_name) {
+                            self.emit_expr(value)?;
+                        } else {
+                            // Field not provided - use 'undefined' as default
+                            self.emit("'undefined'");
+                        }
                     }
-                    self.emit("}~");
+                    self.emit("}");
+                } else {
+                    // Regular struct: map with __struct__ tag
+                    let (beam_module, type_name) = if let Some((module, original_name)) = self.imports.get(name) {
+                        // Imported struct - use the imported module's BEAM name
+                        (Self::beam_module_name(&module.to_lowercase()), original_name.clone())
+                    } else {
+                        // Local struct - use current module's BEAM name (already has correct prefix)
+                        (self.module_name.clone(), name.clone())
+                    };
+
+                    if let Some(base_expr) = base {
+                        // Struct update syntax: maps:merge(base, #{updated_fields})
+                        self.emit("call 'maps':'merge'(");
+                        self.emit_expr(base_expr)?;
+                        self.emit(", ~{");
+                        for (i, (field_name, value)) in fields.iter().enumerate() {
+                            if i > 0 {
+                                self.emit(", ");
+                            }
+                            self.emit(&format!("'{}' => ", field_name));
+                            self.emit_expr(value)?;
+                        }
+                        self.emit("}~)");
+                    } else {
+                        // Full struct init
+                        self.emit("~{");
+                        // Add __struct__ tag with BEAM module name for method dispatch
+                        self.emit(&format!("'__struct__' => '{}::{}'", beam_module, type_name));
+                        for (field_name, value) in fields.iter() {
+                            self.emit(", ");
+                            self.emit(&format!("'{}' => ", field_name));
+                            self.emit_expr(value)?;
+                        }
+                        self.emit("}~");
+                    }
                 }
             }
 
@@ -3336,12 +3384,44 @@ impl CoreErlangEmitter {
             }
 
             Expr::FieldAccess { expr, field } => {
-                // Map field access
-                self.emit("call 'maps':'get'('");
-                self.emit(field);
-                self.emit("', ");
-                self.emit_expr(expr)?;
-                self.emit(")");
+                // Check if this is accessing a record type
+                let record_info = if let Expr::Ident(var_name) = expr.as_ref() {
+                    // Look up variable type
+                    if let Some(struct_name) = self.variable_types.get(var_name) {
+                        // Check if the struct is a record
+                        if let Some(info) = self.struct_info.get(struct_name) {
+                            if let Some(record_name) = &info.record_name {
+                                // Find field index
+                                let field_index = info.fields.iter()
+                                    .position(|(f, _)| f == field)
+                                    .map(|i| (record_name.clone(), i + 2)); // +2 because element 1 is record name
+                                field_index
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some((_record_name, field_position)) = record_info {
+                    // Record field access: element(N, Record)
+                    self.emit(&format!("call 'erlang':'element'({}, ", field_position));
+                    self.emit_expr(expr)?;
+                    self.emit(")");
+                } else {
+                    // Map field access
+                    self.emit("call 'maps':'get'('");
+                    self.emit(field);
+                    self.emit("', ");
+                    self.emit_expr(expr)?;
+                    self.emit(")");
+                }
             }
 
             Expr::Try { expr } => {
@@ -4990,25 +5070,45 @@ impl CoreErlangEmitter {
             }
 
             Pattern::Struct { name, fields } => {
-                // Struct patterns become map patterns with __struct__ tag
-                // The tag is a fully qualified atom like 'module::Type'
-                let (module_name, type_name) = if let Some((module, original_name)) = self.imports.get(name) {
-                    (module.to_lowercase(), original_name.clone())
-                } else {
-                    // Local struct - use current module name (strip dream:: prefix for stdlib)
-                    let module_prefix = self.module_name.strip_prefix(Self::STDLIB_PREFIX).unwrap_or(&self.module_name);
-                    (module_prefix.to_string(), name.clone())
-                };
+                // Check if this struct is marked as an Erlang record
+                let record_info = self.struct_info.get(name).and_then(|info| {
+                    info.record_name.as_ref().map(|r| (r.clone(), info.fields.clone()))
+                });
 
-                self.emit("~{");
-                // Match __struct__ tag as fully qualified atom 'module::Type'
-                self.emit(&format!("'__struct__' := '{}::{}'", module_name, type_name));
-                for (field_name, pat) in fields.iter() {
-                    self.emit(", ");
-                    self.emit(&format!("'{}' := ", field_name));
-                    self.emit_pattern(pat)?;
+                if let Some((record_tag, struct_fields)) = record_info {
+                    // Record pattern: tuple pattern {'record_name', Pat1, Pat2, ...}
+                    self.emit(&format!("{{'{}'", record_tag));
+                    for (field_name, _field_ty) in &struct_fields {
+                        self.emit(", ");
+                        // Find the pattern for this field
+                        if let Some((_, pat)) = fields.iter().find(|(n, _)| n == field_name) {
+                            self.emit_pattern(pat)?;
+                        } else {
+                            // Field not specified in pattern - use wildcard
+                            self.emit("_");
+                        }
+                    }
+                    self.emit("}");
+                } else {
+                    // Regular struct pattern: map pattern with __struct__ tag
+                    let (module_name, type_name) = if let Some((module, original_name)) = self.imports.get(name) {
+                        (module.to_lowercase(), original_name.clone())
+                    } else {
+                        // Local struct - use current module name (strip dream:: prefix for stdlib)
+                        let module_prefix = self.module_name.strip_prefix(Self::STDLIB_PREFIX).unwrap_or(&self.module_name);
+                        (module_prefix.to_string(), name.clone())
+                    };
+
+                    self.emit("~{");
+                    // Match __struct__ tag as fully qualified atom 'module::Type'
+                    self.emit(&format!("'__struct__' := '{}::{}'", module_name, type_name));
+                    for (field_name, pat) in fields.iter() {
+                        self.emit(", ");
+                        self.emit(&format!("'{}' := ", field_name));
+                        self.emit_pattern(pat)?;
+                    }
+                    self.emit("}~");
                 }
-                self.emit("}~");
             }
 
             Pattern::Enum { name, variant, fields } => {

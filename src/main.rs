@@ -575,6 +575,7 @@ fn compile_modules_with_registry(
     let mut annotated_modules: Vec<Module> = Vec::new();
     let type_check_result = check_modules_with_metadata(&all_modules_for_typeck);
     let extern_module_names = type_check_result.extern_module_names.clone();
+    let struct_info = type_check_result.struct_info.clone();
 
     // List of stdlib module names for filtering
     let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
@@ -706,6 +707,7 @@ fn compile_modules_with_registry(
                     build_dir,
                     &generic_registry,
                     &extern_module_names,
+                    &struct_info,
                     package_name,
                     &local_module_names,
                     &std::collections::HashSet::new(),
@@ -771,6 +773,8 @@ fn compile_modules_with_registry(
         );
         // Set extern module name mappings for #[name = "..."] attribute support
         emitter.set_extern_module_names(extern_module_names.clone());
+        // Set struct info for Erlang record compilation support
+        emitter.set_struct_info(struct_info.clone());
 
         let core_erlang = match emitter.emit_module(module) {
             Ok(c) => c,
@@ -924,6 +928,7 @@ fn compile_modules_with_registry_and_options(
     let mut annotated_modules: Vec<Module> = Vec::new();
     let type_check_result = check_modules_with_metadata(&all_modules_for_typeck);
     let extern_module_names = type_check_result.extern_module_names.clone();
+    let struct_info = type_check_result.struct_info.clone();
 
     // List of stdlib module names for filtering
     let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
@@ -1055,6 +1060,7 @@ fn compile_modules_with_registry_and_options(
                     build_dir,
                     &generic_registry,
                     &extern_module_names,
+                    &struct_info,
                     package_name,
                     &local_module_names,
                     dependencies,
@@ -1139,6 +1145,8 @@ fn compile_modules_with_registry_and_options(
         );
         // Set extern module name mappings for #[name = "..."] attribute support
         emitter.set_extern_module_names(extern_module_names.clone());
+        // Set struct info for Erlang record compilation support
+        emitter.set_struct_info(struct_info.clone());
 
         let core_erlang = match emitter.emit_module(module) {
             Ok(c) => c,
@@ -2177,6 +2185,7 @@ fn compile_module_to_beam(
     build_dir: &Path,
     generic_registry: &SharedGenericRegistry,
     extern_module_names: &std::collections::HashMap<String, String>,
+    struct_info: &std::collections::HashMap<String, dream::compiler::typeck::StructInfo>,
     package_name: Option<&str>,
     local_module_names: &std::collections::HashSet<String>,
     dependencies: &std::collections::HashSet<String>,
@@ -2194,6 +2203,7 @@ fn compile_module_to_beam(
         module_context,
     );
     emitter.set_extern_module_names(extern_module_names.clone());
+    emitter.set_struct_info(struct_info.clone());
 
     let core_erlang = emitter.emit_module(module)
         .map_err(|e| format!("Compile error in {}: {}", module.name, e))?;
