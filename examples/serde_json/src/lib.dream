@@ -1,11 +1,12 @@
 // serde_json - JSON serialization using Erlang's json module
 //
-// Provides JSON encoding for types implementing serde::Serialize.
+// Provides JSON encoding/decoding for types implementing serde traits.
 // Uses the Erlang OTP json module (OTP 27+) for actual JSON encoding.
 
 mod json;
 
 use serde::serialize::Serialize;
+use serde::serialize::Deserialize;
 use serde::serialize::serialize_value;
 
 /// Serialize a value to a JSON string.
@@ -40,7 +41,7 @@ pub fn to_string<T: Serialize>(value: T) -> Binary {
 ///
 /// Use `to_string` when you know the type implements Serialize.
 /// Use `to_string_value` for dynamic/unknown types.
-pub fn to_string_value(value: Any) -> Binary {
+pub fn to_string_value(value: any) -> Binary {
     let data = serialize_value(value);
     json::encode(data)
 }
@@ -54,6 +55,28 @@ pub fn to_string_value(value: Any) -> Binary {
 /// - Numbers for JSON numbers
 /// - true/false for JSON booleans
 /// - null atom for JSON null
-pub fn from_str(json_str: Binary) -> Any {
+pub fn from_str(json_str: Binary) -> any {
     json::decode(json_str)
+}
+
+/// Deserialize a JSON string to a typed value.
+///
+/// The type must implement the Deserialize trait.
+/// Decodes the JSON and then constructs the typed struct.
+///
+/// Example:
+/// ```
+/// #[derive(serde::Deserialize)]
+/// pub struct User {
+///     id: int,
+///     name: String,
+/// }
+///
+/// let json_str = "{\"id\":1,\"name\":\"Alice\"}";
+/// let user: User = serde_json::from_str_typed(json_str);
+/// // user.id == 1, user.name == "Alice"
+/// ```
+pub fn from_str_typed<T: Deserialize>(json_str: Binary) -> T {
+    let data = json::decode(json_str);
+    Deserialize::deserialize(data)
 }

@@ -1,7 +1,10 @@
-// Serialization trait and runtime dispatch helper
+// Serialization and deserialization traits with runtime dispatch helpers
 //
 // The Serialize trait provides a `serialize()` method that converts
 // a value to a JSON-compatible representation (maps, lists, primitives).
+//
+// The Deserialize trait provides a `deserialize()` method that converts
+// JSON-compatible data back into typed structs.
 
 /// Trait for types that can be serialized to JSON-compatible data.
 ///
@@ -11,6 +14,15 @@ pub trait Serialize {
     /// Convert this value to a JSON-compatible representation.
     /// Returns maps for structs, lists for arrays, and primitives as-is.
     fn serialize(self) -> any;
+}
+
+/// Trait for types that can be deserialized from JSON-compatible data.
+///
+/// Implement this trait for custom types to enable JSON deserialization.
+/// Use the `#[derive(Deserialize)]` macro for automatic implementation.
+pub trait Deserialize {
+    /// Convert JSON-compatible data to this type.
+    fn deserialize(data: any) -> Self;
 }
 
 /// Serialize any value with automatic type dispatch.

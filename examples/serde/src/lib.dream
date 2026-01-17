@@ -1,18 +1,23 @@
 // Serde - Serialization framework for Dream
 //
-// Provides the Serialize trait for converting data structures to
-// JSON-compatible representations, with automatic recursive serialization.
+// Provides the Serialize and Deserialize traits for converting data structures
+// to/from JSON-compatible representations, with automatic recursive handling.
 //
 // Usage:
 //   use serde::serialize::Serialize;
+//   use serde::serialize::Deserialize;
 //   use serde::serialize::serialize_value;
 //
-//   #[derive(Serialize)]
+//   #[derive(Serialize, Deserialize)]
 //   pub struct MyStruct { ... }
 
 pub mod serialize;
 
 use syn::{parse_derive_input, get_struct_fields, DeriveInput, Field};
+
+// =============================================================================
+// Serialize Derive Macro
+// =============================================================================
 
 /// Derive macro for serde::Serialize trait.
 /// Use as #[derive(Serialize)] on structs.
@@ -26,7 +31,7 @@ pub fn serialize_derive(input: any) -> any {
     let fields = get_struct_fields(derive_input);
 
     // Build field serialization statements using quote
-    let field_stmts = build_field_stmts(fields);
+    let field_stmts = build_serialize_field_stmts(fields);
 
     // Use quote with repetition to generate the entire trait impl
     quote {
@@ -41,7 +46,7 @@ pub fn serialize_derive(input: any) -> any {
 }
 
 /// Build a list of quoted statements that serialize each field.
-fn build_field_stmts(fields: [Field]) -> [any] {
+fn build_serialize_field_stmts(fields: [Field]) -> [any] {
     :lists::filtermap(|field| {
         // Get field name - extract from the Option wrapper
         let field_ident = field.ident;
@@ -53,6 +58,58 @@ fn build_field_stmts(fields: [Field]) -> [any] {
             // quote { let x = y; } produces ([stmt], :none) at runtime
             let stmt_block = quote {
                 let map = :maps::put(:#field_name, :"dream::serde::serialize"::serialize_value(self.#field_name), map);
+            };
+            // Extract the first statement from the block tuple (stmts, expr)
+            let stmt = :hd(:erlang::element(1, stmt_block));
+
+            (true, stmt)
+        } else {
+            // Skip unnamed fields
+            false
+        }
+    }, fields)
+}
+
+// =============================================================================
+// Deserialize Derive Macro
+// =============================================================================
+
+#[proc_macro_derive(Deserialize)]
+pub fn deserialize_derive(input: any) -> any {
+    // Parse input using syn-like API
+    let derive_input = parse_derive_input(input);
+    let name = derive_input.ident;
+    let fields = get_struct_fields(derive_input);
+
+    // Build field deserialization statements (similar to Serialize approach)
+    let field_stmts = build_deserialize_field_stmts(fields);
+
+    // Use quote with repetition to generate the entire trait impl
+    // Build struct as a map (since Dream structs are maps on BEAM)
+    quote {
+        impl Deserialize for #name {
+            fn deserialize(data: any) -> #name {
+                let result = :maps::new();
+                let result = :maps::put(:__struct__, :#name, result);
+                #(#field_stmts)*
+                result
+            }
+        }
+    }
+}
+
+/// Build a list of quoted statements that deserialize each field.
+fn build_deserialize_field_stmts(fields: [Field]) -> [any] {
+    :lists::filtermap(|field| {
+        // Get field name - extract from the Option wrapper
+        let field_ident = field.ident;
+        if :erlang::is_tuple(field_ident) {
+            // Some(name) is represented as {:Some, name}
+            let field_name = :erlang::element(2, field_ident);
+
+            // Use quote { } to build the statement tuple
+            let stmt_block = quote {
+                let result = :maps::put(:#field_name, :maps::get(:#field_name, data, :undefined), result);
             };
             // Extract the first statement from the block tuple (stmts, expr)
             let stmt = :hd(:erlang::element(1, stmt_block));
