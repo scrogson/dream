@@ -1,0 +1,198 @@
+// Dream Standard Library - Logger Module
+//
+// Provides structured logging with multiple severity levels.
+// Built on Erlang's logger module (OTP 21+).
+
+use erlang::std::logger as erl_logger;
+
+/// Log levels in order of severity (most severe first).
+pub enum Level {
+    Emergency,
+    Alert,
+    Critical,
+    Error,
+    Warning,
+    Notice,
+    Info,
+    Debug,
+}
+
+// ============== Logging Functions ==============
+
+/// Log a debug message.
+pub fn debug(msg: String) -> Atom {
+    erl_logger::debug(msg)
+}
+
+/// Log a debug message with metadata.
+pub fn debug_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::debug(msg, meta)
+}
+
+/// Log an info message.
+pub fn info(msg: String) -> Atom {
+    erl_logger::info(msg)
+}
+
+/// Log an info message with metadata.
+pub fn info_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::info(msg, meta)
+}
+
+/// Log a notice message.
+pub fn notice(msg: String) -> Atom {
+    erl_logger::notice(msg)
+}
+
+/// Log a notice message with metadata.
+pub fn notice_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::notice(msg, meta)
+}
+
+/// Log a warning message.
+pub fn warning(msg: String) -> Atom {
+    erl_logger::warning(msg)
+}
+
+/// Log a warning message with metadata.
+pub fn warning_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::warning(msg, meta)
+}
+
+/// Log an error message.
+pub fn error(msg: String) -> Atom {
+    erl_logger::error(msg)
+}
+
+/// Log an error message with metadata.
+pub fn error_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::error(msg, meta)
+}
+
+/// Log a critical message.
+pub fn critical(msg: String) -> Atom {
+    erl_logger::critical(msg)
+}
+
+/// Log a critical message with metadata.
+pub fn critical_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::critical(msg, meta)
+}
+
+/// Log an alert message.
+pub fn alert(msg: String) -> Atom {
+    erl_logger::alert(msg)
+}
+
+/// Log an alert message with metadata.
+pub fn alert_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::alert(msg, meta)
+}
+
+/// Log an emergency message.
+pub fn emergency(msg: String) -> Atom {
+    erl_logger::emergency(msg)
+}
+
+/// Log an emergency message with metadata.
+pub fn emergency_meta(msg: String, meta: Map) -> Atom {
+    erl_logger::emergency(msg, meta)
+}
+
+/// Log a message with an explicit level.
+pub fn log(level: Level, msg: String) -> Atom {
+    match level {
+        Level::Emergency => erl_logger::emergency(msg),
+        Level::Alert => erl_logger::alert(msg),
+        Level::Critical => erl_logger::critical(msg),
+        Level::Error => erl_logger::error(msg),
+        Level::Warning => erl_logger::warning(msg),
+        Level::Notice => erl_logger::notice(msg),
+        Level::Info => erl_logger::info(msg),
+        Level::Debug => erl_logger::debug(msg),
+    }
+}
+
+/// Log a message with an explicit level and metadata.
+pub fn log_meta(level: Level, msg: String, meta: Map) -> Atom {
+    match level {
+        Level::Emergency => erl_logger::emergency(msg, meta),
+        Level::Alert => erl_logger::alert(msg, meta),
+        Level::Critical => erl_logger::critical(msg, meta),
+        Level::Error => erl_logger::error(msg, meta),
+        Level::Warning => erl_logger::warning(msg, meta),
+        Level::Notice => erl_logger::notice(msg, meta),
+        Level::Info => erl_logger::info(msg, meta),
+        Level::Debug => erl_logger::debug(msg, meta),
+    }
+}
+
+// ============== Configuration ==============
+
+/// Get the current primary log level.
+pub fn get_level() -> Atom {
+    let config = erl_logger::get_primary_config();
+    :maps::get(:level, config, :all)
+}
+
+/// Set the primary log level to debug.
+pub fn set_level_debug() -> Atom {
+    erl_logger::set_primary_config(:level, :debug)
+}
+
+/// Set the primary log level to info.
+pub fn set_level_info() -> Atom {
+    erl_logger::set_primary_config(:level, :info)
+}
+
+/// Set the primary log level to notice.
+pub fn set_level_notice() -> Atom {
+    erl_logger::set_primary_config(:level, :notice)
+}
+
+/// Set the primary log level to warning.
+pub fn set_level_warning() -> Atom {
+    erl_logger::set_primary_config(:level, :warning)
+}
+
+/// Set the primary log level to error.
+pub fn set_level_error() -> Atom {
+    erl_logger::set_primary_config(:level, :error)
+}
+
+/// Set the primary log level using an atom directly.
+/// Valid levels: :emergency, :alert, :critical, :error, :warning, :notice, :info, :debug, :all, :none
+pub fn set_level(level: Atom) -> Atom {
+    erl_logger::set_primary_config(:level, level)
+}
+
+/// Get the primary logger configuration.
+pub fn get_config() -> Map {
+    erl_logger::get_primary_config()
+}
+
+/// Get all handler IDs.
+pub fn get_handlers() -> [Atom] {
+    erl_logger::get_handler_ids()
+}
+
+/// Get configuration for a specific handler.
+pub fn get_handler_config(handler_id: Atom) -> Result<Map, Any> {
+    erl_logger::get_handler_config(handler_id)
+}
+
+/// Set log level for specific modules.
+/// Useful for enabling debug logging for specific modules.
+pub fn set_module_level(modules: [Atom], level: Atom) -> Atom {
+    erl_logger::set_module_level(modules, level)
+}
+
+/// Reset module-level configuration for specific modules.
+pub fn unset_module_level(modules: [Atom]) -> Atom {
+    erl_logger::unset_module_level(modules)
+}
+
+/// Reset all module-level configuration.
+pub fn reset_module_levels() -> Atom {
+    erl_logger::unset_module_level()
+}

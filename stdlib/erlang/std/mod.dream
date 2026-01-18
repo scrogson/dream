@@ -45,3 +45,6 @@ mod rand;
 // System
 mod os;
 mod init;
+
+// Logging
+mod logger;

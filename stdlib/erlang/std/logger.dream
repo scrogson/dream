@@ -1,0 +1,126 @@
+// Erlang logger module bindings
+//
+// Logging API for Erlang/OTP (OTP 21+).
+// See: https://www.erlang.org/doc/man/logger.html
+
+#[name = "logger"]
+extern mod logger {
+    // ============== Log Functions ==============
+
+    /// Log an emergency message.
+    fn emergency(msg: Any) -> Atom;
+
+    /// Log an emergency message with metadata.
+    fn emergency(msg: Any, meta: Map) -> Atom;
+
+    /// Log an alert message.
+    fn alert(msg: Any) -> Atom;
+
+    /// Log an alert message with metadata.
+    fn alert(msg: Any, meta: Map) -> Atom;
+
+    /// Log a critical message.
+    fn critical(msg: Any) -> Atom;
+
+    /// Log a critical message with metadata.
+    fn critical(msg: Any, meta: Map) -> Atom;
+
+    /// Log an error message.
+    fn error(msg: Any) -> Atom;
+
+    /// Log an error message with metadata.
+    fn error(msg: Any, meta: Map) -> Atom;
+
+    /// Log a warning message.
+    fn warning(msg: Any) -> Atom;
+
+    /// Log a warning message with metadata.
+    fn warning(msg: Any, meta: Map) -> Atom;
+
+    /// Log a notice message.
+    fn notice(msg: Any) -> Atom;
+
+    /// Log a notice message with metadata.
+    fn notice(msg: Any, meta: Map) -> Atom;
+
+    /// Log an info message.
+    fn info(msg: Any) -> Atom;
+
+    /// Log an info message with metadata.
+    fn info(msg: Any, meta: Map) -> Atom;
+
+    /// Log a debug message.
+    fn debug(msg: Any) -> Atom;
+
+    /// Log a debug message with metadata.
+    fn debug(msg: Any, meta: Map) -> Atom;
+
+    /// Log with explicit level.
+    fn log(level: Atom, msg: Any) -> Atom;
+
+    /// Log with explicit level and metadata.
+    fn log(level: Atom, msg: Any, meta: Map) -> Atom;
+
+    // ============== Configuration ==============
+
+    /// Get the primary logger configuration.
+    fn get_primary_config() -> Map;
+
+    /// Set primary logger configuration.
+    fn set_primary_config(key: Atom, value: Any) -> Atom;
+
+    /// Update primary logger configuration.
+    fn update_primary_config(config: Map) -> Atom;
+
+    /// Get handler configuration.
+    fn get_handler_config(handler_id: Atom) -> Result<Map, Any>;
+
+    /// Set handler configuration.
+    fn set_handler_config(handler_id: Atom, key: Atom, value: Any) -> Atom;
+
+    /// Add a handler.
+    fn add_handler(handler_id: Atom, module: Atom, config: Map) -> Result<Atom, Any>;
+
+    /// Remove a handler.
+    fn remove_handler(handler_id: Atom) -> Result<Atom, Any>;
+
+    /// Add a primary filter.
+    fn add_primary_filter(filter_id: Atom, filter: Any) -> Atom;
+
+    /// Remove a primary filter.
+    fn remove_primary_filter(filter_id: Atom) -> Atom;
+
+    /// Add a handler filter.
+    fn add_handler_filter(handler_id: Atom, filter_id: Atom, filter: Any) -> Atom;
+
+    /// Remove a handler filter.
+    fn remove_handler_filter(handler_id: Atom, filter_id: Atom) -> Atom;
+
+    // ============== Module Configuration ==============
+
+    /// Get module-level configuration.
+    fn get_module_level() -> [(Atom, Atom)];
+
+    /// Set module-level log level.
+    fn set_module_level(modules: [Atom], level: Atom) -> Atom;
+
+    /// Unset module-level configuration.
+    fn unset_module_level(modules: [Atom]) -> Atom;
+
+    /// Unset all module-level configuration.
+    fn unset_module_level() -> Atom;
+
+    // ============== Utilities ==============
+
+    /// Compare log levels.
+    fn compare_levels(level1: Atom, level2: Atom) -> Atom;
+
+    /// Get all handler IDs.
+    fn get_handler_ids() -> [Atom];
+
+    /// Get logger configuration.
+    fn get_config() -> Map;
+
+    /// Format log message for output.
+    fn format_report(report: Any) -> String;
+}
