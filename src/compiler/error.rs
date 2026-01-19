@@ -102,6 +102,94 @@ impl TypeError {
 /// Result type for type checking.
 pub type TypeResult<T> = Result<T, TypeError>;
 
+/// A compiler warning (internal representation during type checking).
+#[derive(Debug, Clone)]
+pub struct Warning {
+    pub message: String,
+    pub help: Option<String>,
+    /// Module where the warning occurred
+    pub module: Option<String>,
+    /// Source span for the warning
+    pub span: Option<Span>,
+}
+
+impl Warning {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            help: None,
+            module: None,
+            span: None,
+        }
+    }
+
+    pub fn with_help(message: impl Into<String>, help: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            help: Some(help.into()),
+            module: None,
+            span: None,
+        }
+    }
+
+    pub fn with_span(message: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            help: None,
+            module: None,
+            span: Some(span),
+        }
+    }
+
+    pub fn with_help_and_span(message: impl Into<String>, help: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            help: Some(help.into()),
+            module: None,
+            span: Some(span),
+        }
+    }
+
+    pub fn in_module(mut self, module: impl Into<String>) -> Self {
+        self.module = Some(module.into());
+        self
+    }
+}
+
+/// A compiler warning with source context for rich diagnostics.
+#[derive(Error, Debug, Diagnostic)]
+#[error("{message}")]
+#[diagnostic(severity(warning), code(dream::warning))]
+pub struct CompilerWarning {
+    pub message: String,
+
+    #[source_code]
+    pub src: NamedSource<String>,
+
+    #[label("this value is unused")]
+    pub span: Option<SourceSpan>,
+
+    #[help]
+    pub help: Option<String>,
+}
+
+impl CompilerWarning {
+    /// Create a compiler warning from a Warning with source context.
+    pub fn from_warning(
+        filename: impl Into<String>,
+        source: impl Into<String>,
+        warning: Warning,
+    ) -> Self {
+        let filename: String = filename.into();
+        Self {
+            message: warning.message,
+            src: NamedSource::new(filename, source.into()),
+            span: warning.span.map(|s| s.into()),
+            help: warning.help,
+        }
+    }
+}
+
 /// A compiler error that can include source code context.
 #[derive(Error, Debug, Diagnostic)]
 #[error("{message}")]

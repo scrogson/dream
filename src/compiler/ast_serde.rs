@@ -335,7 +335,7 @@ pub fn stmt_to_erlang_term(stmt: &Stmt) -> String {
                 expr_to_erlang_term(value),
                 else_str)
         }
-        Stmt::Expr(e) => {
+        Stmt::Expr { expr: e, .. } => {
             format!("{{expr, {}}}", expr_to_erlang_term(e))
         }
     }
@@ -1563,7 +1563,7 @@ fn term_to_stmt(term: &Term) -> TermParseResult<Stmt> {
         }
         "expr" => {
             let expr = term_to_expr(&tuple[1])?;
-            Ok(Stmt::Expr(expr))
+            Ok(Stmt::Expr { expr, span: None })
         }
         _ => Err(TermParseError::new(format!("unknown statement tag: {}", tag), 0)),
     }

@@ -26,7 +26,7 @@ pub use core_erlang::{
     emit_core_erlang, CoreErlangEmitter, CoreErlangError, GenericFunctionRegistry,
     SharedGenericRegistry,
 };
-pub use error::{CompilerError, ParseError, ParseResult, TypeError, TypeResult};
+pub use error::{CompilerError, CompilerWarning, ParseError, ParseResult, TypeError, TypeResult, Warning};
 pub use lexer::Lexer;
 pub use loader::{LoadError, LoadResult, ModuleLoader};
 pub use parser::Parser;

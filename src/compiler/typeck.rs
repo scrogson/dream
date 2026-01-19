@@ -10,7 +10,7 @@ use crate::compiler::ast::{
     ExternItem, ExternMod, ForClause, Function, ImplBlock, Item, MatchArm, Module, PathPrefix,
     Pattern, Stmt, StringPart, TypeParam, UnaryOp, UseDecl, UseTree, VariantKind,
 };
-use crate::compiler::error::{TypeError, TypeResult};
+use crate::compiler::error::{TypeError, TypeResult, Warning};
 
 /// Extract Erlang record name from #[record = "name"] attribute.
 fn get_record_name(attrs: &[Attribute]) -> Option<String> {
@@ -676,6 +676,8 @@ pub struct TypeChecker {
     infer_counter: u32,
     /// Collected errors (for error recovery)
     errors: Vec<TypeError>,
+    /// Collected warnings
+    warnings: Vec<Warning>,
     /// Current function's return type (for checking return statements)
     current_return_type: Option<Ty>,
     /// Current function's span for error reporting
@@ -696,6 +698,7 @@ impl TypeChecker {
             env: TypeEnv::new(),
             infer_counter: 0,
             errors: Vec::new(),
+            warnings: Vec::new(),
             current_return_type: None,
             current_function_span: None,
             substitutions: HashMap::new(),
@@ -726,6 +729,17 @@ impl TypeChecker {
         let mut err = TypeError::with_span(message, span);
         err.help = Some(help.into());
         self.errors.push(err);
+    }
+
+    /// Record a warning.
+    fn warn(&mut self, warning: Warning) {
+        // Add module context if available
+        let warning = if let Some(module) = &self.current_module {
+            warning.in_module(module.clone())
+        } else {
+            warning
+        };
+        self.warnings.push(warning);
     }
 
     /// Unify two types, recording substitutions for inference variables.
@@ -1815,11 +1829,61 @@ impl TypeChecker {
                 // Bind pattern variables
                 self.bind_pattern(pattern, &value_ty)?;
             }
-            Stmt::Expr(expr) => {
-                self.infer_expr(expr)?;
+            Stmt::Expr { expr, span } => {
+                let ty = self.infer_expr(expr)?;
+                // Warn if a non-unit value is discarded (unless it's a block expression)
+                if !self.is_block_expr(expr) && !self.is_unit_like(&ty) {
+                    let expr_desc = self.describe_expr(expr);
+                    let warning = if let Some(s) = span {
+                        Warning::with_help_and_span(
+                            format!("unused {} result of type `{}`", expr_desc, ty),
+                            "use `let _ = ...` to explicitly ignore the value",
+                            s.clone(),
+                        )
+                    } else {
+                        Warning::with_help(
+                            format!("unused {} result of type `{}`", expr_desc, ty),
+                            "use `let _ = ...` to explicitly ignore the value",
+                        )
+                    };
+                    self.warn(warning);
+                }
             }
         }
         Ok(())
+    }
+
+    /// Check if an expression is a "block expression" that doesn't need its value used.
+    /// These are control flow expressions that naturally act as statements.
+    fn is_block_expr(&self, expr: &Expr) -> bool {
+        matches!(
+            expr,
+            Expr::If { .. }
+                | Expr::Match { .. }
+                | Expr::Block(_)
+                | Expr::Receive { .. }
+                | Expr::For { .. }
+        )
+    }
+
+    /// Check if a type is "unit-like" (no meaningful value to use).
+    fn is_unit_like(&self, ty: &Ty) -> bool {
+        matches!(ty, Ty::Unit)
+    }
+
+    /// Get a short description of an expression for warning messages.
+    fn describe_expr(&self, expr: &Expr) -> &'static str {
+        match expr {
+            Expr::Call { .. } => "function call",
+            Expr::MethodCall { .. } => "method call",
+            Expr::Binary { .. } => "binary operation",
+            Expr::Unary { .. } => "unary operation",
+            Expr::StructInit { .. } => "struct construction",
+            Expr::Tuple(_) => "tuple construction",
+            Expr::List(_) => "list construction",
+            Expr::MapLiteral(_) => "map construction",
+            _ => "expression",
+        }
     }
 
     /// Bind variables from a pattern with a given type.
@@ -3477,7 +3541,7 @@ impl TypeChecker {
                 value: self.annotate_expr(value),
                 else_block: else_block.as_ref().map(|b| self.annotate_block(b)),
             },
-            Stmt::Expr(e) => Stmt::Expr(self.annotate_expr(e)),
+            Stmt::Expr { expr: e, span } => Stmt::Expr { expr: self.annotate_expr(e), span: span.clone() },
         }
     }
 
@@ -4039,6 +4103,8 @@ pub struct TypeCheckResult {
     pub extern_function_names: HashMap<(String, String, usize), String>,
     /// Struct metadata including record names (struct_name -> StructInfo)
     pub struct_info: HashMap<String, StructInfo>,
+    /// Compiler warnings collected during type checking
+    pub warnings: Vec<Warning>,
 }
 
 /// Type check multiple modules and return results with extern module name mappings.
@@ -4103,6 +4169,7 @@ pub fn check_modules_with_metadata(modules: &[Module]) -> TypeCheckResult {
         extern_module_names: checker.env.extern_module_names.clone(),
         extern_function_names: checker.env.extern_function_names.clone(),
         struct_info: checker.env.structs.clone(),
+        warnings: checker.warnings,
     }
 }
 
@@ -4251,7 +4318,7 @@ impl MethodResolver {
                     self.vars.insert(name.clone(), value_ty);
                 }
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr { expr, .. } => {
                 self.resolve_expr(expr);
             }
         }

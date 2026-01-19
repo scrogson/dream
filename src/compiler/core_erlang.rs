@@ -457,7 +457,7 @@ impl CoreErlangEmitter {
     /// Check if a block contains a return statement.
     fn block_contains_return(block: &Block) -> bool {
         block.stmts.iter().any(|stmt| match stmt {
-            Stmt::Expr(e) => Self::contains_return(e),
+            Stmt::Expr { expr: e, .. } => Self::contains_return(e),
             Stmt::Let { value, .. } => Self::contains_return(value),
         }) || block.expr.as_ref().is_some_and(|e| Self::contains_return(e))
     }
@@ -2250,7 +2250,7 @@ impl CoreErlangEmitter {
                     self.emit("end");
                 }
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr { expr, .. } => {
                 // Check for early return patterns
                 if let Expr::Return(ret_val) = expr {
                     // Direct return - emit value and stop
@@ -2361,7 +2361,7 @@ impl CoreErlangEmitter {
         let combined_final = if let Some(expr) = &block.expr {
             if Self::contains_return(expr) {
                 // Convert the expr to a statement so it gets processed with early return logic
-                all_stmts.push(Stmt::Expr((**expr).clone()));
+                all_stmts.push(Stmt::Expr { expr: (**expr).clone(), span: None });
                 final_expr
             } else {
                 // No return in expr - it's the block's normal result
@@ -3939,7 +3939,7 @@ impl CoreErlangEmitter {
                 }
                 self.emit("}");
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr { expr, .. } => {
                 self.emit("{'expr_stmt', ");
                 self.emit_quoted_expr(expr)?;
                 self.emit("}");

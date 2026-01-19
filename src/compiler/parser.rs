@@ -143,20 +143,28 @@ impl<'source> Parser<'source> {
             if self.check(&Token::Let) {
                 stmts.push(self.parse_let_stmt()?);
             } else {
-                // Parse expression
+                // Parse expression, tracking span
+                let start = self.current_span().start;
                 let e = self.parse_expr()?;
+                // Use current position (after parsing) to get end of expression
+                let end = if self.pos > 0 {
+                    self.tokens.get(self.pos - 1).map(|t| t.span.end).unwrap_or(start)
+                } else {
+                    start
+                };
+                let span = start..end;
 
                 // Check if followed by semicolon (statement) or not (trailing expr)
                 if self.check(&Token::Semi) {
                     self.advance();
-                    stmts.push(Stmt::Expr(e));
+                    stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                 } else if self.is_at_end() {
                     // Trailing expression (final result)
                     expr = Some(Box::new(e));
                 } else {
                     // Expression statements that don't need semicolons
                     if Self::is_block_expr(&e) {
-                        stmts.push(Stmt::Expr(e));
+                        stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                     } else {
                         let span = self.current_span();
                         return Err(ParseError::new("expected `;` or end of file", span));
@@ -1229,13 +1237,20 @@ impl<'source> Parser<'source> {
             if self.check(&Token::Let) {
                 stmts.push(self.parse_let_stmt()?);
             } else {
-                // Parse expression
+                // Parse expression, tracking span
+                let start = self.current_span().start;
                 let e = self.parse_expr()?;
+                let end = if self.pos > 0 {
+                    self.tokens.get(self.pos - 1).map(|t| t.span.end).unwrap_or(start)
+                } else {
+                    start
+                };
+                let span = start..end;
 
                 // Check if followed by semicolon (statement) or not (trailing expr)
                 if self.check(&Token::Semi) {
                     self.advance();
-                    stmts.push(Stmt::Expr(e));
+                    stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                 } else if self.check(&Token::RBrace) {
                     // Trailing expression
                     expr = Some(Box::new(e));
@@ -1243,7 +1258,7 @@ impl<'source> Parser<'source> {
                     // Expression statements that don't need semicolons
                     // (if, match, block, etc.)
                     if Self::is_block_expr(&e) {
-                        stmts.push(Stmt::Expr(e));
+                        stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                     } else {
                         let span = self.current_span();
                         return Err(ParseError::new("expected `;` or `}`", span));
@@ -1261,15 +1276,15 @@ impl<'source> Parser<'source> {
         let mut stmts = Vec::new();
         let mut expr = None;
 
-        // Handle the first expression we already parsed
+        // Handle the first expression we already parsed (no span available)
         if self.check(&Token::Semi) {
             self.advance();
-            stmts.push(Stmt::Expr(first));
+            stmts.push(Stmt::Expr { expr: first, span: None });
         } else if self.check(&Token::RBrace) {
             // It's the trailing expression
             return Ok(Block { stmts, expr: Some(Box::new(first)) });
         } else if Self::is_block_expr(&first) {
-            stmts.push(Stmt::Expr(first));
+            stmts.push(Stmt::Expr { expr: first, span: None });
         } else {
             let span = self.current_span();
             return Err(ParseError::new("expected `;` or `}`", span));
@@ -1280,14 +1295,23 @@ impl<'source> Parser<'source> {
             if self.check(&Token::Let) {
                 stmts.push(self.parse_let_stmt()?);
             } else {
+                // Parse expression, tracking span
+                let start = self.current_span().start;
                 let e = self.parse_expr()?;
+                let end = if self.pos > 0 {
+                    self.tokens.get(self.pos - 1).map(|t| t.span.end).unwrap_or(start)
+                } else {
+                    start
+                };
+                let span = start..end;
+
                 if self.check(&Token::Semi) {
                     self.advance();
-                    stmts.push(Stmt::Expr(e));
+                    stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                 } else if self.check(&Token::RBrace) {
                     expr = Some(Box::new(e));
                 } else if Self::is_block_expr(&e) {
-                    stmts.push(Stmt::Expr(e));
+                    stmts.push(Stmt::Expr { expr: e, span: Some(span) });
                 } else {
                     let span = self.current_span();
                     return Err(ParseError::new("expected `;` or `}`", span));

@@ -63,7 +63,7 @@ fn expand_stmt_quotes(stmt: &mut Stmt) {
         Stmt::Let { value, .. } => {
             *value = expand_expr_quotes(value.clone());
         }
-        Stmt::Expr(expr) => {
+        Stmt::Expr { expr, .. } => {
             *expr = expand_expr_quotes(expr.clone());
         }
     }
@@ -300,7 +300,7 @@ fn quote_expr_to_tuple(expr: &Expr) -> Expr {
 fn quote_block_to_tuple(block: &Block) -> Expr {
     // Check if any statement is a splice (UnquoteSplice) or repetition (QuoteRepetition)
     let has_splice = block.stmts.iter().any(|s| {
-        matches!(s, Stmt::Expr(Expr::UnquoteSplice(_)) | Stmt::Expr(Expr::QuoteRepetition { .. }))
+        matches!(s, Stmt::Expr { expr: Expr::UnquoteSplice(_), .. } | Stmt::Expr { expr: Expr::QuoteRepetition { .. }, .. })
     });
 
     let expr_tuple = block
@@ -338,7 +338,7 @@ fn quote_block_with_splice(block: &Block, expr_tuple: Expr) -> Expr {
 
     for stmt in &block.stmts {
         match stmt {
-            Stmt::Expr(Expr::UnquoteSplice(inner)) => {
+            Stmt::Expr { expr: Expr::UnquoteSplice(inner), .. } => {
                 // Flush current group as a list
                 if !current_group.is_empty() {
                     concat_parts.push(Expr::List(current_group.clone()));
@@ -347,7 +347,7 @@ fn quote_block_with_splice(block: &Block, expr_tuple: Expr) -> Expr {
                 // Add the splice variable directly (it's already a list)
                 concat_parts.push(*inner.clone());
             }
-            Stmt::Expr(Expr::QuoteRepetition { pattern, separator }) => {
+            Stmt::Expr { expr: Expr::QuoteRepetition { pattern, separator }, .. } => {
                 // Flush current group as a list
                 if !current_group.is_empty() {
                     concat_parts.push(Expr::List(current_group.clone()));
@@ -624,7 +624,7 @@ fn find_unquoted_vars_recursive(expr: &Expr, vars: &mut Vec<String>) {
             for stmt in &block.stmts {
                 match stmt {
                     Stmt::Let { value, .. } => find_unquoted_vars_recursive(value, vars),
-                    Stmt::Expr(e) => find_unquoted_vars_recursive(e, vars),
+                    Stmt::Expr { expr: e, .. } => find_unquoted_vars_recursive(e, vars),
                 }
             }
             if let Some(e) = &block.expr {
@@ -715,7 +715,7 @@ fn substitute_var_in_expr(expr: &Expr, var_name: &str, replacement: &str) -> Exp
                     value: substitute_var_in_expr(value, var_name, replacement),
                     else_block: else_block.clone(),
                 },
-                Stmt::Expr(e) => Stmt::Expr(substitute_var_in_expr(e, var_name, replacement)),
+                Stmt::Expr { expr: e, span } => Stmt::Expr { expr: substitute_var_in_expr(e, var_name, replacement), span: span.clone() },
             }).collect();
             let expr_opt = block.expr.as_ref().map(|e| {
                 Box::new(substitute_var_in_expr(e, var_name, replacement))
@@ -754,7 +754,7 @@ fn quote_stmt_to_tuple(stmt: &Stmt) -> Expr {
                 else_tuple,
             ])
         }
-        Stmt::Expr(expr) => quote_expr_to_tuple(expr),
+        Stmt::Expr { expr, .. } => quote_expr_to_tuple(expr),
     }
 }
 

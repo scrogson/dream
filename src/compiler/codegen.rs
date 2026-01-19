@@ -338,13 +338,13 @@ impl Codegen {
                 Self::contains_call(cond)
                     || then_block.stmts.iter().any(|s| match s {
                         Stmt::Let { value, .. } => Self::contains_call(value),
-                        Stmt::Expr(e) => Self::contains_call(e),
+                        Stmt::Expr { expr: e, .. } => Self::contains_call(e),
                     })
                     || then_block.expr.as_ref().map_or(false, |e| Self::contains_call(e))
                     || else_block.as_ref().map_or(false, |b| {
                         b.stmts.iter().any(|s| match s {
                             Stmt::Let { value, .. } => Self::contains_call(value),
-                            Stmt::Expr(e) => Self::contains_call(e),
+                            Stmt::Expr { expr: e, .. } => Self::contains_call(e),
                         }) || b.expr.as_ref().map_or(false, |e| Self::contains_call(e))
                     })
             }
@@ -355,7 +355,7 @@ impl Codegen {
             Expr::Block(block) => {
                 block.stmts.iter().any(|s| match s {
                     Stmt::Let { value, .. } => Self::contains_call(value),
-                    Stmt::Expr(e) => Self::contains_call(e),
+                    Stmt::Expr { expr: e, .. } => Self::contains_call(e),
                 }) || block.expr.as_ref().map_or(false, |e| Self::contains_call(e))
             }
             Expr::Tuple(elems) | Expr::List(elems) => elems.iter().any(|e| Self::contains_call(e)),
@@ -384,7 +384,7 @@ impl Codegen {
                 self.bind_pattern(pattern, value_reg)?;
                 Ok(())
             }
-            Stmt::Expr(expr) => {
+            Stmt::Expr { expr, .. } => {
                 self.compile_expr(expr)?;
                 Ok(())
             }

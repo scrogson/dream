@@ -11,7 +11,7 @@ use dream::{
     compiler::{
         cfg, check_modules_with_metadata, expand_derives_with_registry, expand_quotes,
         get_derive_macro_name, is_derive_macro, is_macro, resolve_stdlib_methods,
-        CompilerError, CoreErlangEmitter, GenericFunctionRegistry, Item, MacroRegistry,
+        CompilerError, CompilerWarning, CoreErlangEmitter, GenericFunctionRegistry, Item, MacroRegistry,
         Module, ModuleContext, ModuleLoader, Parser as DreamParser, SharedGenericRegistry,
     },
     config::{generate_dream_toml, generate_main_dream, ApplicationConfig, CompileOptions, ProjectConfig},
@@ -587,6 +587,30 @@ fn compile_modules_with_registry(
         .map(|m| m.name.clone())
         .collect();
 
+    // Display warnings (filter out stdlib warnings) using miette
+    for warning in &type_check_result.warnings {
+        let is_stdlib = warning.module.as_ref()
+            .map(|m| stdlib_module_names.contains(m))
+            .unwrap_or(false);
+        if !is_stdlib {
+            // Try to find source code for rich diagnostics
+            if let Some(module_name) = &warning.module {
+                if let Some(module) = modules.iter().find(|m| &m.name == module_name) {
+                    if let Some(ref source) = module.source {
+                        let compiler_warning = CompilerWarning::from_warning(module_name, source, warning.clone());
+                        eprintln!("{:?}", miette::Report::new(compiler_warning));
+                        continue;
+                    }
+                }
+            }
+            // Fallback: simple warning without source context
+            eprintln!("  warning: {}", warning.message);
+            if let Some(help) = &warning.help {
+                eprintln!("    help: {}", help);
+            }
+        }
+    }
+
     for (module_name, result) in type_check_result.modules {
         // Skip stub modules (they don't have function bodies)
         if module_name.ends_with("_stubs") || module_name == "erlang" {
@@ -939,6 +963,30 @@ fn compile_modules_with_registry_and_options(
     let stdlib_module_names: std::collections::HashSet<_> = stdlib_modules.iter()
         .map(|m| m.name.clone())
         .collect();
+
+    // Display warnings (filter out stdlib warnings) using miette
+    for warning in &type_check_result.warnings {
+        let is_stdlib = warning.module.as_ref()
+            .map(|m| stdlib_module_names.contains(m))
+            .unwrap_or(false);
+        if !is_stdlib {
+            // Try to find source code for rich diagnostics
+            if let Some(module_name) = &warning.module {
+                if let Some(module) = modules.iter().find(|m| &m.name == module_name) {
+                    if let Some(ref source) = module.source {
+                        let compiler_warning = CompilerWarning::from_warning(module_name, source, warning.clone());
+                        eprintln!("{:?}", miette::Report::new(compiler_warning));
+                        continue;
+                    }
+                }
+            }
+            // Fallback: simple warning without source context
+            eprintln!("  warning: {}", warning.message);
+            if let Some(help) = &warning.help {
+                eprintln!("    help: {}", help);
+            }
+        }
+    }
 
     for (module_name, result) in type_check_result.modules {
         // Skip stub modules (they don't have function bodies)

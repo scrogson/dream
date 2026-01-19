@@ -526,7 +526,11 @@ pub enum Stmt {
         else_block: Option<Block>,
     },
     /// Expression statement (with semicolon).
-    Expr(Expr),
+    Expr {
+        expr: Expr,
+        /// Source span for diagnostics
+        span: Option<Span>,
+    },
 }
 
 /// Part of an interpolated string.
